@@ -54,7 +54,7 @@ export default function SignupPage() {
 
       <div className="glass animate-fadeUp relative z-10 w-full max-w-md rounded-3xl p-8 shadow-2xl">
         <Link href="/" className="font-display text-lg font-bold text-white">
-          Think<span className="text-gradient">chat</span>
+                    Aira<span className="text-gradient">Think!</span>
         </Link>
 
         {done ? (
