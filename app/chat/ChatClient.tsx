@@ -59,9 +59,9 @@ function isVerified(username?: string) {
   return username?.toLowerCase() === "sudhakarin";
 }
 
-function VerifiedBadge() {
+function VerifiedBadge({ size = 14 }: { size?: number }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="ml-1 inline-block shrink-0 align-middle">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="ml-1 inline-block shrink-0 align-middle">
       <path
         d="M12 2l2.4 1.5 2.8-.4 1.2 2.6 2.6 1.2-.4 2.8L22 12l-1.5 2.4.4 2.8-2.6 1.2-1.2 2.6-2.8-.4L12 22l-2.4-1.5-2.8.4-1.2-2.6-2.6-1.2.4-2.8L2 12l1.5-2.4-.4-2.8 2.6-1.2 1.2-2.6 2.8.4L12 2z"
         fill="#3B9EFF"
@@ -166,6 +166,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const router = useRouter();
 
   const [myProfile, setMyProfile] = useState<Profile>(initialProfile);
+  const [myEmail, setMyEmail] = useState<string>("");
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -179,10 +180,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [uploading, setUploading] = useState(false);
+  const [showContactInfo, setShowContactInfo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const active = conversations.find((c) => c.id === activeId);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setMyEmail(data.user.email);
+    });
+  }, [supabase]);
 
   const loadConversations = useCallback(async () => {
     setLoadingConvos(true);
@@ -348,6 +356,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .then(() => {});
   }, [messages, activeId, myProfile.id, supabase]);
 
+  useEffect(() => {
+    setShowContactInfo(false);
+  }, [activeId]);
+
   async function handleSearch(q: string) {
     setSearch(q);
     if (q.trim().length < 2) {
@@ -501,6 +513,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
+  const otherDisplayProfile = otherProfileFresh ?? active?.otherProfile ?? null;
 
   return (
     <div className="flex h-screen bg-ink-900 text-white">
@@ -510,7 +523,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         } w-full max-w-xs flex-col border-r border-white/5 bg-ink-800/60`}
       >
         <div className="flex items-center justify-between px-5 py-5">
-                    <span className="font-display text-lg font-bold">
+          <span className="font-display text-lg font-bold">
             Aira<span className="text-gradient">Think</span>
           </span>
           <button
@@ -540,7 +553,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </defs>
                 </svg>
               </div>
-                            <h2 className="font-display text-2xl font-bold text-white">
+              <h2 className="font-display text-2xl font-bold text-white">
                 Welcome to <span className="text-gradient">AiraThink</span>!
               </h2>
               <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
@@ -627,61 +640,72 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
 
           {mobileTab === "profile" && (
-            <div className="flex flex-col items-center px-6 py-8">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarPick}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="group relative"
-                disabled={uploading}
-              >
-                <Avatar
-                  name={myProfile.display_name}
-                  color={myProfile.avatar_color}
-                  size={96}
-                  avatarUrl={myProfile.avatar_url}
-                />
-                <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"
-                      stroke="white"
-                      strokeWidth="1.6"
-                      strokeLinejoin="round"
-                    />
-                    <circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" />
-                  </svg>
-                </span>
-              </button>
-              <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
+            <div className="px-5 py-6">
+              <h2 className="mb-6 text-center font-display text-lg font-bold text-white">Edit Profile</h2>
 
-              <div className="mt-6 w-full">
-                <label className="mb-1.5 block text-xs font-medium text-mist-light">Display name</label>
-                <div className="flex gap-2">
+              <div className="flex flex-col items-center">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleAvatarPick}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="group relative"
+                  disabled={uploading}
+                >
+                  <Avatar
+                    name={myProfile.display_name}
+                    color={myProfile.avatar_color}
+                    size={96}
+                    avatarUrl={myProfile.avatar_url}
+                  />
+                  <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"
+                        stroke="white"
+                        strokeWidth="1.6"
+                        strokeLinejoin="round"
+                      />
+                      <circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" />
+                    </svg>
+                  </span>
+                </button>
+                <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
+              </div>
+
+              <div className="glass mt-6 divide-y divide-white/5 overflow-hidden rounded-2xl">
+                <div className="flex items-center justify-between px-4 py-3.5">
+                  <span className="text-xs font-medium text-mist">Full name</span>
                   <input
                     value={nameDraft}
                     onChange={(e) => setNameDraft(e.target.value)}
-                    className="flex-1 rounded-lg border border-white/10 bg-ink-800 px-3 py-2 text-sm text-white focus:border-violet focus:outline-none"
+                    className="w-40 bg-transparent text-right text-sm text-white outline-none"
                   />
-                  <button
-                    onClick={saveDisplayName}
-                    disabled={!nameDraft.trim() || nameDraft.trim() === myProfile.display_name}
-                    className="rounded-lg bg-violet px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
-                  >
-                    Save
-                  </button>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3.5">
+                  <span className="text-xs font-medium text-mist">Email</span>
+                  <span className="truncate text-sm text-white">{myEmail || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3.5">
+                  <span className="text-xs font-medium text-mist">Username</span>
+                  <span className="inline-flex items-center text-sm text-white">
+                    @{myProfile.username}
+                    {isVerified(myProfile.username) && <VerifiedBadge />}
+                  </span>
                 </div>
               </div>
 
-              <div className="mt-4 flex w-full items-center gap-1 text-sm text-mist">
-                @{myProfile.username}
-                {isVerified(myProfile.username) && <VerifiedBadge />}
-              </div>
+              <button
+                onClick={saveDisplayName}
+                disabled={!nameDraft.trim() || nameDraft.trim() === myProfile.display_name}
+                className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
+              >
+                Save Changes
+              </button>
             </div>
           )}
         </div>
@@ -722,6 +746,47 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               Or start a new one from Search — your messages sync in real time.
             </p>
           </div>
+        ) : showContactInfo ? (
+          <div className="relative z-10 flex flex-1 flex-col">
+            <header className="glass flex items-center gap-3 border-b border-white/5 px-4 py-4">
+              <button
+                onClick={() => setShowContactInfo(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white"
+                aria-label="Back to chat"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <p className="text-sm font-semibold">Contact info</p>
+            </header>
+
+            <div className="flex flex-1 flex-col items-center px-6 py-10 text-center">
+              <Avatar
+                name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
+                color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"}
+                size={140}
+                online={otherIsOnline}
+                avatarUrl={otherDisplayProfile?.avatar_url}
+              />
+              <p className="mt-5 flex items-center font-display text-xl font-bold text-white">
+                {active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
+                {isVerified(otherDisplayProfile?.username) && <VerifiedBadge size={18} />}
+              </p>
+              {!active.is_group && (
+                <>
+                  <p className="mt-1 text-sm text-mist">@{otherDisplayProfile?.username}</p>
+                  <p className="mt-3 text-sm">
+                    {otherIsOnline ? (
+                      <span className="text-teal">Active now</span>
+                    ) : otherDisplayProfile?.last_seen ? (
+                      <span className="text-mist">Last seen {formatLastSeen(otherDisplayProfile.last_seen)}</span>
+                    ) : null}
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         ) : (
           <>
             <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4 md:px-6">
@@ -734,29 +799,34 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
-              <Avatar
-                name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
-                color={active.otherProfile?.avatar_color ?? "#7C5CFF"}
-                online={otherIsOnline}
-                avatarUrl={active.otherProfile?.avatar_url}
-              />
-              <div>
-                <p className="flex items-center text-sm font-semibold">
-                  <span>{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
-                  {isVerified(active.otherProfile?.username) && <VerifiedBadge />}
-                </p>
-                {!active.is_group && (
-                  <p className="text-xs text-mist">
-                    {otherIsOnline ? (
-                      <span className="text-teal">Active now</span>
-                    ) : otherProfileFresh?.last_seen ? (
-                      `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}`
-                    ) : (
-                      `@${active.otherProfile?.username}`
-                    )}
+              <button
+                onClick={() => setShowContactInfo(true)}
+                className="flex flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-white/5"
+              >
+                <Avatar
+                  name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
+                  color={active.otherProfile?.avatar_color ?? "#7C5CFF"}
+                  online={otherIsOnline}
+                  avatarUrl={active.otherProfile?.avatar_url}
+                />
+                <div>
+                  <p className="flex items-center text-sm font-semibold">
+                    <span>{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
+                    {isVerified(active.otherProfile?.username) && <VerifiedBadge />}
                   </p>
-                )}
-              </div>
+                  {!active.is_group && (
+                    <p className="text-xs text-mist">
+                      {otherIsOnline ? (
+                        <span className="text-teal">Active now</span>
+                      ) : otherProfileFresh?.last_seen ? (
+                        `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}`
+                      ) : (
+                        `@${active.otherProfile?.username}`
+                      )}
+                    </p>
+                  )}
+                </div>
+              </button>
             </header>
 
             <div ref={scrollRef} className="relative z-10 flex-1 space-y-3 overflow-y-auto px-6 py-6">
