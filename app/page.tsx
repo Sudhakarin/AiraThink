@@ -9,7 +9,7 @@ export default function Home() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 md:px-12">
         <div className="flex items-center gap-2">
           <span className="font-display text-xl font-bold tracking-tight text-white">
-                        Aira<span className="text-gradient">Think</span>
+                        Aira<span className="text-gradient">Think!</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -44,9 +44,7 @@ export default function Home() {
         </h1>
 
         <p className="mt-6 max-w-xl text-balance text-lg text-mist">
-          Thinkchat is a calm, quietly premium space to talk. No clutter, no
-          noise — just fast, real-time messages wrapped in a design that gets
-          out of your way.
+                    AiraThink! is a calm, quietly premium space to talk. No clutter, no
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
