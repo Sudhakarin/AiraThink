@@ -9,9 +9,10 @@ const jbmono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono", w
 export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export const metadata: Metadata = {
-  title: "Thinkchat — Where conversations think ahead",
+  title: "AiraThink — Where conversations think ahead",
   description: "A premium, real-time chat experience. Fast, private, beautifully simple.",
 };
+
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
