@@ -52,8 +52,9 @@ function Avatar({ name, color, size = 40 }: { name: string; color: string; size?
 export default function ChatClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
-
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
+    const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
@@ -240,10 +241,13 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     setActiveId(convo.id);
   }
 
-  async function sendMessage(e: React.FormEvent) {
+    async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
+    if (sending) return;
     const content = input.trim();
     if (!content || !activeId) return;
+
+    setSending(true);
     setInput("");
 
     const optimisticMsg: Message = {
@@ -261,7 +265,9 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       content,
     });
     loadConversations();
+    setSending(false);
   }
+
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -448,9 +454,10 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                 placeholder="Type a message…"
                 className="flex-1 rounded-full border border-white/10 bg-ink-800 px-5 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
-              <button
+                            <button
                 type="submit"
-                disabled={!input.trim()}
+                disabled={!input.trim() || sending}
+
                 className="rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
               >
                 Send
