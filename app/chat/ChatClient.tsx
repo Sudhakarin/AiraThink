@@ -10,6 +10,7 @@ type Profile = {
   display_name: string;
   avatar_color: string;
   status: string;
+  last_seen?: string;
 };
 
 type Message = {
@@ -18,6 +19,7 @@ type Message = {
   sender_id: string;
   content: string;
   created_at: string;
+  read_at?: string | null;
 };
 
 type ConversationRow = {
@@ -38,20 +40,64 @@ function initials(name: string) {
     .toUpperCase();
 }
 
-function Avatar({ name, color, size = 40 }: { name: string; color: string; size?: number }) {
+function formatLastSeen(iso?: string) {
+  if (!iso) return "";
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
+}
+
+function Avatar({
+  name,
+  color,
+  size = 40,
+  online = false,
+}: {
+  name: string;
+  color: string;
+  size?: number;
+  online?: boolean;
+}) {
   return (
-    <div
-      className="flex shrink-0 items-center justify-center rounded-full font-display text-xs font-bold text-white"
-      style={{ width: size, height: size, background: color }}
-    >
-      {initials(name)}
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <div
+        className="flex h-full w-full items-center justify-center rounded-full font-display text-xs font-bold text-white"
+        style={{ background: color }}
+      >
+        {initials(name)}
+      </div>
+      {online && (
+        <span
+          className="absolute bottom-0 right-0 rounded-full border-2 border-ink-900 bg-teal"
+          style={{ width: size * 0.3, height: size * 0.3 }}
+        />
+      )}
     </div>
+  );
+}
+
+function Ticks({ read }: { read: boolean }) {
+  return read ? (
+    <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="inline-block align-middle">
+      <path d="M1 5l3 3 5-7" stroke="#22D3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 5l3 3 6-8" stroke="#22D3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block align-middle">
+      <path d="M1 5l3 3 6-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
 export default function ChatClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
+
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -62,7 +108,11 @@ export default function ChatClient({ profile }: { profile: Profile }) {
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [showSearch, setShowSearch] = useState(false);
   const [loadingConvos, setLoadingConvos] = useState(true);
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
+  const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const active = conversations.find((c) => c.id === activeId);
 
   const loadConversations = useCallback(async () => {
     setLoadingConvos(true);
@@ -118,6 +168,55 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     loadConversations();
   }, [loadConversations]);
 
+  // Presence: track who's online
+  useEffect(() => {
+    const channel = supabase.channel("presence:online", {
+      config: { presence: { key: profile.id } },
+    });
+
+    channel
+      .on("presence", { event: "sync" }, () => {
+        const state = channel.presenceState();
+        setOnlineIds(new Set(Object.keys(state)));
+      })
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await channel.track({ online_at: new Date().toISOString() });
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile.id, supabase]);
+
+  // Heartbeat: keep my last_seen fresh while the app is open
+  useEffect(() => {
+    const update = () => {
+      supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", profile.id).then(() => {});
+    };
+    update();
+    const interval = setInterval(update, 20000);
+    return () => clearInterval(interval);
+  }, [profile.id, supabase]);
+
+  // Fetch a fresh copy of the other person's profile (for accurate last_seen) when opening a chat
+  useEffect(() => {
+    const otherId = active?.otherProfile?.id;
+    if (!otherId) {
+      setOtherProfileFresh(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.from("profiles").select("*").eq("id", otherId).single();
+      if (!cancelled) setOtherProfileFresh(data ?? null);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.otherProfile?.id, supabase]);
+
   // Load messages + subscribe when active conversation changes
   useEffect(() => {
     if (!activeId) return;
@@ -150,6 +249,14 @@ export default function ChatClient({ profile }: { profile: Profile }) {
           loadConversations();
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` },
+        (payload) => {
+          const updated = payload.new as Message;
+          setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+        }
+      )
       .subscribe();
 
     return () => {
@@ -162,9 +269,22 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Mark incoming messages as read when they're visible in the open chat
+  useEffect(() => {
+    if (!activeId) return;
+    const unreadIds = messages
+      .filter((m) => m.sender_id !== profile.id && !m.read_at && !m.id.startsWith("temp-"))
+      .map((m) => m.id);
+    if (unreadIds.length === 0) return;
+    supabase
+      .from("messages")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", unreadIds)
+      .then(() => {});
+  }, [messages, activeId, profile.id, supabase]);
+
   // Cache profiles for message sender lookups
   useEffect(() => {
-    const active = conversations.find((c) => c.id === activeId);
     if (active?.otherProfile) {
       setProfilesById((prev) => ({ ...prev, [active.otherProfile!.id]: active.otherProfile! }));
     }
@@ -240,7 +360,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     setActiveId(convo.id);
   }
 
-    async function sendMessage(e: React.FormEvent) {
+  async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (sending) return;
     const content = input.trim();
@@ -255,6 +375,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       sender_id: profile.id,
       content,
       created_at: new Date().toISOString(),
+      read_at: null,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
@@ -267,14 +388,13 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     setSending(false);
   }
 
-
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
   }
 
-  const active = conversations.find((c) => c.id === activeId);
+  const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
 
   return (
     <div className="flex h-screen bg-ink-900 text-white">
@@ -344,6 +464,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
           {conversations.map((c) => {
             const name = c.is_group ? c.name ?? "Group" : c.otherProfile?.display_name ?? "Unknown";
             const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
+            const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
             return (
               <button
                 key={c.id}
@@ -355,7 +476,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                   activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
                 }`}
               >
-                <Avatar name={name} color={color} />
+                <Avatar name={name} color={color} online={online} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{name}</p>
                   <p className="truncate text-xs text-mist">{c.lastMessage}</p>
@@ -410,13 +531,22 @@ export default function ChatClient({ profile }: { profile: Profile }) {
               <Avatar
                 name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
                 color={active.otherProfile?.avatar_color ?? "#7C5CFF"}
+                online={otherIsOnline}
               />
               <div>
                 <p className="text-sm font-semibold">
                   {active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
                 </p>
                 {!active.is_group && (
-                  <p className="text-xs text-mist">@{active.otherProfile?.username}</p>
+                  <p className="text-xs text-mist">
+                    {otherIsOnline ? (
+                      <span className="text-teal">Active now</span>
+                    ) : otherProfileFresh?.last_seen ? (
+                      `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}`
+                    ) : (
+                      `@${active.otherProfile?.username}`
+                    )}
+                  </p>
                 )}
               </div>
             </header>
@@ -434,8 +564,9 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                       }`}
                     >
                       <p>{m.content}</p>
-                      <p className={`mt-1 text-[10px] ${mine ? "text-white/60" : "text-mist"}`}>
+                      <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-white/60" : "text-mist"}`}>
                         {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {mine && <Ticks read={!!m.read_at} />}
                       </p>
                     </div>
                   </div>
@@ -453,10 +584,9 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                 placeholder="Type a message…"
                 className="flex-1 rounded-full border border-white/10 bg-ink-800 px-5 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
-                            <button
+              <button
                 type="submit"
                 disabled={!input.trim() || sending}
-
                 className="rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
               >
                 Send
