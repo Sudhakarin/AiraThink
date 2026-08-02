@@ -320,7 +320,11 @@ export default function ChatClient({ profile }: { profile: Profile }) {
             return (
               <button
                 key={c.id}
-                onClick={() => setActiveId(c.id)}
+                                onClick={() => {
+                  setActiveId(c.id);
+                  setShowSearch(false);
+                }}
+
                 className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                   activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
                 }`}
