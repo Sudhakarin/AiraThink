@@ -234,17 +234,29 @@ export default function ChatClient({ profile }: { profile: Profile }) {
   }
 
 
-  async function sendMessage(e: React.FormEvent) {
+    async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
     if (!content || !activeId) return;
     setInput("");
+
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      conversation_id: activeId,
+      sender_id: profile.id,
+      content,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     await supabase.from("messages").insert({
       conversation_id: activeId,
       sender_id: profile.id,
       content,
     });
+    loadConversations();
   }
+
 
   async function handleLogout() {
     await supabase.auth.signOut();
