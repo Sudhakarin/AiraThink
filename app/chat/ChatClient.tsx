@@ -96,7 +96,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       .in("conversation_id", convoIds)
       .order("created_at", { ascending: false });
 
-    const rows: ConversationRow[] = (convos ?? []).map((c) => {
+    const rows = (convos ?? []).map((c) => {
       const other = (otherParticipants ?? []).find((p) => p.conversation_id === c.id);
       const last = (lastMessages ?? []).find((m) => m.conversation_id === c.id);
       return {
