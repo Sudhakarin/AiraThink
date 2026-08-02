@@ -52,6 +52,22 @@ function formatLastSeen(iso?: string) {
   return `${diffDay}d ago`;
 }
 
+function isVerified(username?: string) {
+  return username?.toLowerCase() === "sudhakarin";
+}
+
+function VerifiedBadge() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="ml-1 inline-block shrink-0 align-middle">
+      <path
+        d="M12 2l2.4 1.5 2.8-.4 1.2 2.6 2.6 1.2-.4 2.8L22 12l-1.5 2.4.4 2.8-2.6 1.2-1.2 2.6-2.8-.4L12 22l-2.4-1.5-2.8.4-1.2-2.6-2.6-1.2.4-2.8L2 12l1.5-2.4-.4-2.8 2.6-1.2 1.2-2.6 2.8.4L12 2z"
+        fill="#3B9EFF"
+      />
+      <path d="M8.5 12.3l2.2 2.2 4.8-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function Avatar({
   name,
   color,
@@ -441,8 +457,10 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                     className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-white/5"
                   >
                     <Avatar name={r.display_name} color={r.avatar_color} size={28} />
-                    <span>
-                      {r.display_name} <span className="text-mist">@{r.username}</span>
+                    <span className="inline-flex items-center">
+                      {r.display_name}
+                      {isVerified(r.username) && <VerifiedBadge />}
+                      <span className="ml-1 text-mist">@{r.username}</span>
                     </span>
                   </button>
                 ))}
@@ -478,7 +496,10 @@ export default function ChatClient({ profile }: { profile: Profile }) {
               >
                 <Avatar name={name} color={color} online={online} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{name}</p>
+                  <p className="flex items-center truncate text-sm font-medium">
+                    <span className="truncate">{name}</span>
+                    {isVerified(c.otherProfile?.username) && <VerifiedBadge />}
+                  </p>
                   <p className="truncate text-xs text-mist">{c.lastMessage}</p>
                 </div>
               </button>
@@ -489,7 +510,10 @@ export default function ChatClient({ profile }: { profile: Profile }) {
         <div className="flex items-center gap-3 border-t border-white/5 px-4 py-4">
           <Avatar name={profile.display_name} color={profile.avatar_color} />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium">{profile.display_name}</p>
+            <p className="flex items-center truncate text-sm font-medium">
+              <span className="truncate">{profile.display_name}</span>
+              {isVerified(profile.username) && <VerifiedBadge />}
+            </p>
             <p className="truncate text-xs text-mist">@{profile.username}</p>
           </div>
         </div>
@@ -534,8 +558,9 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                 online={otherIsOnline}
               />
               <div>
-                <p className="text-sm font-semibold">
-                  {active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
+                <p className="flex items-center text-sm font-semibold">
+                  <span>{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
+                  {isVerified(active.otherProfile?.username) && <VerifiedBadge />}
                 </p>
                 {!active.is_group && (
                   <p className="text-xs text-mist">
