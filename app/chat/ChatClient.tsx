@@ -110,7 +110,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     });
 
     rows.sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1));
-        setConversations(rows as any);
+    setConversations(rows as any);
     setLoadingConvos(false);
   }, [profile.id, supabase]);
 
@@ -118,6 +118,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     loadConversations();
   }, [loadConversations]);
 
+  // Load messages + subscribe when active conversation changes
   useEffect(() => {
     if (!activeId) return;
 
@@ -138,7 +139,14 @@ export default function ChatClient({ profile }: { profile: Profile }) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` },
         (payload) => {
-          setMessages((prev) => [...prev, payload.new as Message]);
+          setMessages((prev) => {
+            const incoming = payload.new as Message;
+            if (prev.some((m) => m.id === incoming.id)) return prev;
+            const withoutTemp = prev.filter(
+              (m) => !(m.id.startsWith("temp-") && m.content === incoming.content && m.sender_id === incoming.sender_id)
+            );
+            return [...withoutTemp, incoming];
+          });
           loadConversations();
         }
       )
@@ -154,6 +162,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // Cache profiles for message sender lookups
   useEffect(() => {
     const active = conversations.find((c) => c.id === activeId);
     if (active?.otherProfile) {
@@ -176,9 +185,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     setSearchResults(data ?? []);
   }
 
-    async function startConversation(other: Profile) {
-    alert("Button tapped, starting...");
-
+  async function startConversation(other: Profile) {
     const { data: mine, error: mineError } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
@@ -233,8 +240,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     setActiveId(convo.id);
   }
 
-
-    async function sendMessage(e: React.FormEvent) {
+  async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     const content = input.trim();
     if (!content || !activeId) return;
@@ -257,7 +263,6 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     loadConversations();
   }
 
-
   async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/login");
@@ -268,7 +273,12 @@ export default function ChatClient({ profile }: { profile: Profile }) {
 
   return (
     <div className="flex h-screen bg-ink-900 text-white">
-      <aside className="flex w-full max-w-xs flex-col border-r border-white/5 bg-ink-800/60">
+      {/* Sidebar — hidden on mobile once a chat is open, always visible on md+ */}
+      <aside
+        className={`${
+          activeId ? "hidden md:flex" : "flex"
+        } w-full max-w-xs flex-col border-r border-white/5 bg-ink-800/60`}
+      >
         <div className="flex items-center justify-between px-5 py-5">
           <span className="font-display text-lg font-bold">
             Think<span className="text-gradient">chat</span>
@@ -332,11 +342,10 @@ export default function ChatClient({ profile }: { profile: Profile }) {
             return (
               <button
                 key={c.id}
-                                onClick={() => {
+                onClick={() => {
                   setActiveId(c.id);
                   setShowSearch(false);
                 }}
-
                 className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
                   activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
                 }`}
@@ -360,7 +369,8 @@ export default function ChatClient({ profile }: { profile: Profile }) {
         </div>
       </aside>
 
-      <section className="relative flex flex-1 flex-col">
+      {/* Main panel — hidden on mobile until a chat is open, always visible on md+ */}
+      <section className={`${activeId ? "flex" : "hidden md:flex"} relative flex-1 flex-col`}>
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
         {!active ? (
@@ -382,7 +392,16 @@ export default function ChatClient({ profile }: { profile: Profile }) {
           </div>
         ) : (
           <>
-            <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-6 py-4">
+            <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4 md:px-6">
+              <button
+                onClick={() => setActiveId(null)}
+                className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white md:hidden"
+                aria-label="Back to conversations"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
               <Avatar
                 name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
                 color={active.otherProfile?.avatar_color ?? "#7C5CFF"}
