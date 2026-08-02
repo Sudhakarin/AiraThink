@@ -510,8 +510,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         } w-full max-w-xs flex-col border-r border-white/5 bg-ink-800/60`}
       >
         <div className="flex items-center justify-between px-5 py-5">
-          <span className="font-display text-lg font-bold">
-            Think<span className="text-gradient">chat</span>
+                    <span className="font-display text-lg font-bold">
+            Aira<span className="text-gradient">Think</span>
           </span>
           <button
             onClick={handleLogout}
@@ -540,8 +540,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </defs>
                 </svg>
               </div>
-              <h2 className="font-display text-2xl font-bold text-white">
-                Welcome to <span className="text-gradient">Thinkchat</span>!
+                            <h2 className="font-display text-2xl font-bold text-white">
+                Welcome to <span className="text-gradient">AiraThink</span>!
               </h2>
               <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
               <button
