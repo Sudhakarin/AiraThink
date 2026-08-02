@@ -6,6 +6,8 @@ const sora = Sora({ subsets: ["latin"], variable: "--font-sora", weight: ["400",
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600"] });
 const jbmono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jbmono", weight: ["400", "500"] });
 
+export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
+
 export const metadata: Metadata = {
   title: "Thinkchat — Where conversations think ahead",
   description: "A premium, real-time chat experience. Fast, private, beautifully simple.",
