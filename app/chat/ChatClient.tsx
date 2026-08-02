@@ -110,7 +110,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     });
 
     rows.sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1));
-    setConversations(rows);
+        setConversations(rows as any);
     setLoadingConvos(false);
   }, [profile.id, supabase]);
 
