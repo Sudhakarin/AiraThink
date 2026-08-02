@@ -32,7 +32,7 @@ type ConversationRow = {
   lastAt: string;
 };
 
-type MobileTab = "chats" | "search" | "profile";
+type MobileTab = "home" | "chats" | "search" | "profile";
 
 function initials(name: string) {
   return name
@@ -125,6 +125,14 @@ function Ticks({ read }: { read: boolean }) {
 }
 
 function TabIcon({ tab }: { tab: MobileTab }) {
+  if (tab === "home") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path d="M4 11l8-7 8 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   if (tab === "chats") {
     return (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -168,7 +176,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("chats");
+  const [mobileTab, setMobileTab] = useState<MobileTab>("home");
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -230,7 +238,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadConversations();
   }, [loadConversations]);
 
-  // Presence: track who's online
   useEffect(() => {
     const channel = supabase.channel("presence:online", {
       config: { presence: { key: myProfile.id } },
@@ -252,7 +259,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [myProfile.id, supabase]);
 
-  // Heartbeat: keep my last_seen fresh while the app is open
   useEffect(() => {
     const update = () => {
       supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", myProfile.id).then(() => {});
@@ -262,7 +268,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => clearInterval(interval);
   }, [myProfile.id, supabase]);
 
-  // Fetch a fresh copy of the other person's profile (for accurate last_seen) when opening a chat
   useEffect(() => {
     const otherId = active?.otherProfile?.id;
     if (!otherId) {
@@ -279,7 +284,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [active?.otherProfile?.id, supabase]);
 
-  // Load messages + subscribe when active conversation changes
   useEffect(() => {
     if (!activeId) return;
 
@@ -331,7 +335,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Mark incoming messages as read when they're visible in the open chat
   useEffect(() => {
     if (!activeId) return;
     const unreadIds = messages
@@ -501,7 +504,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div className="flex h-screen bg-ink-900 text-white">
-      {/* Sidebar — hidden on mobile once a chat is open, always visible on md+ */}
       <aside
         className={`${
           activeId ? "hidden md:flex" : "flex"
@@ -520,6 +522,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {mobileTab === "home" && (
+            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+              <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"
+                    stroke="url(#homeGrad)"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <defs>
+                    <linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21">
+                      <stop stopColor="#9C82FF" />
+                      <stop offset="1" stopColor="#22D3B8" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </div>
+              <h2 className="font-display text-2xl font-bold text-white">
+                Welcome to <span className="text-gradient">Thinkchat</span>!
+              </h2>
+              <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
+              <button
+                onClick={() => setMobileTab("search")}
+                className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
+              >
+                Start a conversation
+              </button>
+              {conversations.length > 0 && (
+                <button
+                  onClick={() => setMobileTab("chats")}
+                  className="mt-3 text-xs font-medium text-mist transition hover:text-white"
+                >
+                  Or go to your chats →
+                </button>
+              )}
+            </div>
+          )}
+
           {mobileTab === "chats" && (
             <div className="px-2 pb-4">
               {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
@@ -645,9 +686,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
         </div>
 
-        {/* Bottom tab bar */}
-        <div className="grid grid-cols-3 border-t border-white/5 bg-ink-800/80">
-          {(["chats", "search", "profile"] as MobileTab[]).map((tab) => (
+        <div className="grid grid-cols-4 border-t border-white/5 bg-ink-800/80">
+          {(["home", "chats", "search", "profile"] as MobileTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setMobileTab(tab)}
@@ -662,7 +702,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       </aside>
 
-      {/* Main panel — hidden on mobile until a chat is open, always visible on md+ */}
       <section className={`${activeId ? "flex" : "hidden md:flex"} relative flex-1 flex-col`}>
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
