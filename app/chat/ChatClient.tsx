@@ -176,11 +176,19 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     setSearchResults(data ?? []);
   }
 
-  async function startConversation(other: Profile) {
-    const { data: mine } = await supabase
+    async function startConversation(other: Profile) {
+    alert("Button tapped, starting...");
+
+    const { data: mine, error: mineError } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
       .eq("user_id", profile.id);
+
+    if (mineError) {
+      alert("Error reading my conversations: " + mineError.message);
+      return;
+    }
+
     const myIds = (mine ?? []).map((r) => r.conversation_id);
 
     if (myIds.length > 0) {
@@ -204,18 +212,27 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       .select()
       .single();
 
-    if (error || !convo) return;
+    if (error || !convo) {
+      alert("Error creating conversation: " + (error?.message ?? "unknown"));
+      return;
+    }
 
-    await supabase.from("conversation_participants").insert([
+    const { error: partError } = await supabase.from("conversation_participants").insert([
       { conversation_id: convo.id, user_id: profile.id },
       { conversation_id: convo.id, user_id: other.id },
     ]);
+
+    if (partError) {
+      alert("Error adding participants: " + partError.message);
+      return;
+    }
 
     setShowSearch(false);
     setSearch("");
     await loadConversations();
     setActiveId(convo.id);
   }
+
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
