@@ -103,7 +103,6 @@ export default function ChatClient({ profile }: { profile: Profile }) {
         id: c.id,
         is_group: c.is_group,
         name: c.name,
-        // @ts-expect-error joined shape
         otherProfile: other?.profiles ?? null,
         lastMessage: last?.content ?? "Say hello 👋",
         lastAt: last?.created_at ?? "",
