@@ -33,6 +33,15 @@ type ConversationRow = {
 };
 
 type MobileTab = "home" | "chats" | "search" | "profile";
+type CallStatus = "idle" | "outgoing" | "incoming" | "connected";
+type CallType = "audio" | "video";
+
+const ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ],
+};
 
 function initials(name: string) {
   return name
@@ -183,6 +192,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [showContactInfo, setShowContactInfo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ---- Calling state ----
+  const [callStatus, setCallStatus] = useState<CallStatus>("idle");
+  const [callType, setCallType] = useState<CallType>("audio");
+  const [callPeer, setCallPeer] = useState<Profile | null>(null);
+  const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [callSeconds, setCallSeconds] = useState(0);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const active = conversations.find((c) => c.id === activeId);
 
@@ -360,6 +385,106 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setShowContactInfo(false);
   }, [activeId]);
 
+  // Attach streams to video elements
+  useEffect(() => {
+    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+  }, [localStream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
+
+  // Call timer
+  useEffect(() => {
+    if (callStatus === "connected") {
+      setCallSeconds(0);
+      callTimerRef.current = setInterval(() => setCallSeconds((s) => s + 1), 1000);
+    } else if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
+    return () => {
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    };
+  }, [callStatus]);
+
+  async function sendToUser(targetId: string, event: string, payload: any) {
+    const channel = supabase.channel(`calls:${targetId}`);
+    await new Promise<void>((resolve) => {
+      channel.subscribe((status) => {
+        if (status === "SUBSCRIBED") resolve();
+      });
+    });
+    await channel.send({ type: "broadcast", event, payload });
+    setTimeout(() => supabase.removeChannel(channel), 500);
+  }
+
+  function endCall(notifyPeer = true) {
+    if (notifyPeer && callPeer) sendToUser(callPeer.id, "hangup", {});
+    pcRef.current?.close();
+    pcRef.current = null;
+    localStream?.getTracks().forEach((t) => t.stop());
+    setLocalStream(null);
+    setRemoteStream(null);
+    pendingCandidatesRef.current = [];
+    setCallStatus("idle");
+    setCallPeer(null);
+    setCallType("audio");
+    setIncomingOffer(null);
+    setMicOn(true);
+    setCamOn(true);
+  }
+
+  // Global inbox: listen for incoming calls regardless of which screen is open
+  useEffect(() => {
+    const channel = supabase.channel(`calls:${myProfile.id}`);
+    channel
+      .on("broadcast", { event: "offer" }, ({ payload }: any) => {
+        if (payload.from === myProfile.id) return;
+        setIncomingOffer(payload.offer);
+        setCallPeer({
+          id: payload.from,
+          username: payload.fromUsername,
+          display_name: payload.fromName,
+          avatar_color: payload.fromColor,
+          status: "",
+          avatar_url: payload.fromAvatar,
+        });
+        setCallType(payload.callType);
+        setCallStatus("incoming");
+      })
+      .on("broadcast", { event: "answer" }, async ({ payload }: any) => {
+        if (!pcRef.current) return;
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
+        for (const c of pendingCandidatesRef.current) {
+          try {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(c));
+          } catch {}
+        }
+        pendingCandidatesRef.current = [];
+        setCallStatus("connected");
+      })
+      .on("broadcast", { event: "ice-candidate" }, async ({ payload }: any) => {
+        if (!pcRef.current) return;
+        if (pcRef.current.remoteDescription) {
+          try {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } catch {}
+        } else {
+          pendingCandidatesRef.current.push(payload.candidate);
+        }
+      })
+      .on("broadcast", { event: "hangup" }, () => {
+        endCall(false);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myProfile.id, supabase]);
+
   async function handleSearch(q: string) {
     setSearch(q);
     if (q.trim().length < 2) {
@@ -512,11 +637,214 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
+  async function startCall(type: CallType) {
+    if (!active?.otherProfile || callStatus !== "idle") return;
+    const peer = active.otherProfile;
+
+    setCallType(type);
+    setCallPeer(peer);
+    setCallStatus("outgoing");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
+      setLocalStream(stream);
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      pcRef.current = pc;
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      pc.ontrack = (e) => setRemoteStream(e.streams[0]);
+      pc.onicecandidate = (e) => {
+        if (e.candidate) sendToUser(peer.id, "ice-candidate", { candidate: e.candidate.toJSON() });
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      await sendToUser(peer.id, "offer", {
+        from: myProfile.id,
+        fromName: myProfile.display_name,
+        fromUsername: myProfile.username,
+        fromColor: myProfile.avatar_color,
+        fromAvatar: myProfile.avatar_url,
+        offer,
+        callType: type,
+      });
+    } catch (err: any) {
+      alert("Could not start call: " + (err?.message ?? "permission denied"));
+      endCall(false);
+    }
+  }
+
+  async function acceptCall() {
+    if (!incomingOffer || !callPeer) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callType === "video" });
+      setLocalStream(stream);
+
+      const pc = new RTCPeerConnection(ICE_SERVERS);
+      pcRef.current = pc;
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+      pc.ontrack = (e) => setRemoteStream(e.streams[0]);
+      pc.onicecandidate = (e) => {
+        if (e.candidate) sendToUser(callPeer.id, "ice-candidate", { candidate: e.candidate.toJSON() });
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(incomingOffer));
+      for (const c of pendingCandidatesRef.current) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(c));
+        } catch {}
+      }
+      pendingCandidatesRef.current = [];
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await sendToUser(callPeer.id, "answer", { answer });
+
+      setCallStatus("connected");
+    } catch (err: any) {
+      alert("Could not join call: " + (err?.message ?? "permission denied"));
+      declineCall();
+    }
+  }
+
+  function declineCall() {
+    endCall(true);
+  }
+
+  function toggleMic() {
+    localStream?.getAudioTracks().forEach((t) => (t.enabled = !micOn));
+    setMicOn((v) => !v);
+  }
+
+  function toggleCam() {
+    localStream?.getVideoTracks().forEach((t) => (t.enabled = !camOn));
+    setCamOn((v) => !v);
+  }
+
+  function formatCallTime(s: number) {
+    const m = Math.floor(s / 60)
+      .toString()
+      .padStart(2, "0");
+    const sec = (s % 60).toString().padStart(2, "0");
+    return `${m}:${sec}`;
+  }
+
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
   const otherDisplayProfile = otherProfileFresh ?? active?.otherProfile ?? null;
 
   return (
-    <div className="flex h-screen bg-ink-900 text-white">
+    <div className="relative flex h-screen bg-ink-900 text-white">
+      {/* ---- Call overlay ---- */}
+      {callStatus !== "idle" && callPeer && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-ink-900">
+          <div className="pointer-events-none absolute inset-0 bg-aurora" />
+
+          {callType === "video" && callStatus === "connected" ? (
+            <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
+          ) : null}
+
+          <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
+            {!(callType === "video" && callStatus === "connected") && (
+              <Avatar
+                name={callPeer.display_name}
+                color={callPeer.avatar_color}
+                size={120}
+                avatarUrl={callPeer.avatar_url}
+              />
+            )}
+            <p className="mt-5 flex items-center font-display text-xl font-bold text-white">
+              {callPeer.display_name}
+              {isVerified(callPeer.username) && <VerifiedBadge size={18} />}
+            </p>
+            <p className="mt-2 text-sm text-mist">
+              {callStatus === "outgoing" && `Calling… (${callType})`}
+              {callStatus === "incoming" && `Incoming ${callType} call…`}
+              {callStatus === "connected" && formatCallTime(callSeconds)}
+            </p>
+          </div>
+
+          {callType === "video" && (callStatus === "connected" || callStatus === "outgoing") && localStream && (
+            <video
+              ref={localVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute bottom-28 right-4 z-20 h-32 w-24 rounded-xl border border-white/20 object-cover shadow-lg"
+            />
+          )}
+
+          <div className="relative z-10 flex items-center justify-center gap-6 pb-12">
+            {callStatus === "incoming" ? (
+              <>
+                <button
+                  onClick={declineCall}
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg"
+                  aria-label="Decline"
+                >
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 6l12 12M18 6L6 18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
+                </button>
+                <button
+                  onClick={acceptCall}
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-teal text-white shadow-lg"
+                  aria-label="Accept"
+                >
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z"
+                      stroke="white"
+                      strokeWidth="1.8"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </>
+            ) : (
+              <>
+                {callStatus === "connected" && (
+                  <button
+                    onClick={toggleMic}
+                    className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${
+                      micOn ? "bg-white/10" : "bg-white text-ink-900"
+                    }`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                )}
+                {callType === "video" && callStatus === "connected" && (
+                  <button
+                    onClick={toggleCam}
+                    className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${
+                      camOn ? "bg-white/10" : "bg-white text-ink-900"
+                    }`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="6" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
+                      <path d="M15 10l6-3v10l-6-3" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  onClick={() => endCall(true)}
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg"
+                  aria-label="End call"
+                >
+                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                    <path d="M6 6l12 12M18 6L6 18" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar */}
       <aside
         className={`${
           activeId ? "hidden md:flex" : "flex"
@@ -726,6 +1054,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       </aside>
 
+      {/* Main panel */}
       <section className={`${activeId ? "flex" : "hidden md:flex"} relative flex-1 flex-col`}>
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
@@ -827,6 +1156,37 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   )}
                 </div>
               </button>
+
+              {!active.is_group && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => startCall("audio")}
+                    disabled={callStatus !== "idle"}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                    aria-label="Voice call"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => startCall("video")}
+                    disabled={callStatus !== "idle"}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                    aria-label="Video call"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <rect x="3" y="6" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                      <path d="M15 10l6-3v10l-6-3" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
+              )}
             </header>
 
             <div ref={scrollRef} className="relative z-10 flex-1 space-y-3 overflow-y-auto px-6 py-6">
