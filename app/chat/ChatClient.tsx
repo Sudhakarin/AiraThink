@@ -53,7 +53,6 @@ export default function ChatClient({ profile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
-    const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
