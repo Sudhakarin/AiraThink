@@ -11,6 +11,7 @@ type Profile = {
   avatar_color: string;
   status: string;
   last_seen?: string;
+  avatar_url?: string | null;
 };
 
 type Message = {
@@ -30,6 +31,8 @@ type ConversationRow = {
   lastMessage: string;
   lastAt: string;
 };
+
+type MobileTab = "chats" | "search" | "profile";
 
 function initials(name: string) {
   return name
@@ -73,20 +76,31 @@ function Avatar({
   color,
   size = 40,
   online = false,
+  avatarUrl,
 }: {
   name: string;
   color: string;
   size?: number;
   online?: boolean;
+  avatarUrl?: string | null;
 }) {
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <div
-        className="flex h-full w-full items-center justify-center rounded-full font-display text-xs font-bold text-white"
-        style={{ background: color }}
-      >
-        {initials(name)}
-      </div>
+      {avatarUrl ? (
+        <img
+          src={avatarUrl}
+          alt={name}
+          className="h-full w-full rounded-full object-cover"
+          style={{ width: size, height: size }}
+        />
+      ) : (
+        <div
+          className="flex h-full w-full items-center justify-center rounded-full font-display text-xs font-bold text-white"
+          style={{ background: color }}
+        >
+          {initials(name)}
+        </div>
+      )}
       {online && (
         <span
           className="absolute bottom-0 right-0 rounded-full border-2 border-ink-900 bg-teal"
@@ -110,23 +124,55 @@ function Ticks({ read }: { read: boolean }) {
   );
 }
 
-export default function ChatClient({ profile }: { profile: Profile }) {
+function TabIcon({ tab }: { tab: MobileTab }) {
+  if (tab === "chats") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+  if (tab === "search") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
 
+  const [myProfile, setMyProfile] = useState<Profile>(initialProfile);
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
   const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [profilesById, setProfilesById] = useState<Record<string, Profile>>({});
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
-  const [showSearch, setShowSearch] = useState(false);
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
+  const [mobileTab, setMobileTab] = useState<MobileTab>("chats");
+  const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
+  const [uploading, setUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const active = conversations.find((c) => c.id === activeId);
 
@@ -136,7 +182,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     const { data: participantRows } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
-      .eq("user_id", profile.id);
+      .eq("user_id", myProfile.id);
 
     const convoIds = (participantRows ?? []).map((r) => r.conversation_id);
     if (convoIds.length === 0) {
@@ -154,7 +200,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       .from("conversation_participants")
       .select("conversation_id, user_id, profiles(*)")
       .in("conversation_id", convoIds)
-      .neq("user_id", profile.id);
+      .neq("user_id", myProfile.id);
 
     const { data: lastMessages } = await supabase
       .from("messages")
@@ -178,7 +224,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     rows.sort((a, b) => (a.lastAt < b.lastAt ? 1 : -1));
     setConversations(rows as any);
     setLoadingConvos(false);
-  }, [profile.id, supabase]);
+  }, [myProfile.id, supabase]);
 
   useEffect(() => {
     loadConversations();
@@ -187,7 +233,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
   // Presence: track who's online
   useEffect(() => {
     const channel = supabase.channel("presence:online", {
-      config: { presence: { key: profile.id } },
+      config: { presence: { key: myProfile.id } },
     });
 
     channel
@@ -204,17 +250,17 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [profile.id, supabase]);
+  }, [myProfile.id, supabase]);
 
   // Heartbeat: keep my last_seen fresh while the app is open
   useEffect(() => {
     const update = () => {
-      supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", profile.id).then(() => {});
+      supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", myProfile.id).then(() => {});
     };
     update();
     const interval = setInterval(update, 20000);
     return () => clearInterval(interval);
-  }, [profile.id, supabase]);
+  }, [myProfile.id, supabase]);
 
   // Fetch a fresh copy of the other person's profile (for accurate last_seen) when opening a chat
   useEffect(() => {
@@ -289,7 +335,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
   useEffect(() => {
     if (!activeId) return;
     const unreadIds = messages
-      .filter((m) => m.sender_id !== profile.id && !m.read_at && !m.id.startsWith("temp-"))
+      .filter((m) => m.sender_id !== myProfile.id && !m.read_at && !m.id.startsWith("temp-"))
       .map((m) => m.id);
     if (unreadIds.length === 0) return;
     supabase
@@ -297,14 +343,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       .update({ read_at: new Date().toISOString() })
       .in("id", unreadIds)
       .then(() => {});
-  }, [messages, activeId, profile.id, supabase]);
-
-  // Cache profiles for message sender lookups
-  useEffect(() => {
-    if (active?.otherProfile) {
-      setProfilesById((prev) => ({ ...prev, [active.otherProfile!.id]: active.otherProfile! }));
-    }
-  }, [activeId, conversations]);
+  }, [messages, activeId, myProfile.id, supabase]);
 
   async function handleSearch(q: string) {
     setSearch(q);
@@ -316,7 +355,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       .from("profiles")
       .select("*")
       .ilike("username", `%${q.trim()}%`)
-      .neq("id", profile.id)
+      .neq("id", myProfile.id)
       .limit(8);
     setSearchResults(data ?? []);
   }
@@ -325,7 +364,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     const { data: mine, error: mineError } = await supabase
       .from("conversation_participants")
       .select("conversation_id")
-      .eq("user_id", profile.id);
+      .eq("user_id", myProfile.id);
 
     if (mineError) {
       alert("Error reading my conversations: " + mineError.message);
@@ -342,8 +381,8 @@ export default function ChatClient({ profile }: { profile: Profile }) {
         .in("conversation_id", myIds);
 
       if (theirs && theirs.length > 0) {
-        setShowSearch(false);
         setSearch("");
+        setMobileTab("chats");
         setActiveId(theirs[0].conversation_id);
         return;
       }
@@ -351,7 +390,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
 
     const { data: convo, error } = await supabase
       .from("conversations")
-      .insert({ is_group: false, created_by: profile.id })
+      .insert({ is_group: false, created_by: myProfile.id })
       .select()
       .single();
 
@@ -361,7 +400,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     }
 
     const { error: partError } = await supabase.from("conversation_participants").insert([
-      { conversation_id: convo.id, user_id: profile.id },
+      { conversation_id: convo.id, user_id: myProfile.id },
       { conversation_id: convo.id, user_id: other.id },
     ]);
 
@@ -370,8 +409,8 @@ export default function ChatClient({ profile }: { profile: Profile }) {
       return;
     }
 
-    setShowSearch(false);
     setSearch("");
+    setMobileTab("chats");
     await loadConversations();
     setActiveId(convo.id);
   }
@@ -388,7 +427,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     const optimisticMsg: Message = {
       id: `temp-${Date.now()}`,
       conversation_id: activeId,
-      sender_id: profile.id,
+      sender_id: myProfile.id,
       content,
       created_at: new Date().toISOString(),
       read_at: null,
@@ -397,7 +436,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
 
     await supabase.from("messages").insert({
       conversation_id: activeId,
-      sender_id: profile.id,
+      sender_id: myProfile.id,
       content,
     });
     loadConversations();
@@ -408,6 +447,54 @@ export default function ChatClient({ profile }: { profile: Profile }) {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  }
+
+  async function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${myProfile.id}/avatar-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, {
+      cacheControl: "3600",
+      upsert: true,
+    });
+
+    if (uploadError) {
+      alert("Upload failed: " + uploadError.message);
+      setUploading(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(path);
+    const avatarUrl = publicUrlData.publicUrl;
+
+    const { error: updateError } = await supabase
+      .from("profiles")
+      .update({ avatar_url: avatarUrl })
+      .eq("id", myProfile.id);
+
+    if (updateError) {
+      alert("Saving avatar failed: " + updateError.message);
+      setUploading(false);
+      return;
+    }
+
+    setMyProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
+    setUploading(false);
+  }
+
+  async function saveDisplayName() {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === myProfile.display_name) return;
+    const { error } = await supabase.from("profiles").update({ display_name: trimmed }).eq("id", myProfile.id);
+    if (error) {
+      alert("Could not save name: " + error.message);
+      return;
+    }
+    setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
@@ -432,16 +519,43 @@ export default function ChatClient({ profile }: { profile: Profile }) {
           </button>
         </div>
 
-        <div className="px-4">
-          <button
-            onClick={() => setShowSearch((s) => !s)}
-            className="mb-3 flex w-full items-center gap-2 rounded-xl border border-white/10 bg-ink-700/60 px-4 py-2.5 text-sm text-mist transition hover:border-violet/40 hover:text-white"
-          >
-            <span className="text-lg leading-none">+</span> New conversation
-          </button>
+        <div className="flex-1 overflow-y-auto">
+          {mobileTab === "chats" && (
+            <div className="px-2 pb-4">
+              {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
+              {!loadingConvos && conversations.length === 0 && (
+                <p className="px-3 py-6 text-center text-sm text-mist">
+                  No conversations yet. Tap Search to start one.
+                </p>
+              )}
+              {conversations.map((c) => {
+                const name = c.is_group ? c.name ?? "Group" : c.otherProfile?.display_name ?? "Unknown";
+                const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
+                const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
+                return (
+                  <button
+                    key={c.id}
+                    onClick={() => setActiveId(c.id)}
+                    className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                      activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
+                    }`}
+                  >
+                    <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center truncate text-sm font-medium">
+                        <span className="truncate">{name}</span>
+                        {isVerified(c.otherProfile?.username) && <VerifiedBadge />}
+                      </p>
+                      <p className="truncate text-xs text-mist">{c.lastMessage}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
-          {showSearch && (
-            <div className="glass animate-fadeUp mb-3 rounded-xl p-3">
+          {mobileTab === "search" && (
+            <div className="p-4">
               <input
                 autoFocus
                 value={search}
@@ -449,14 +563,14 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                 placeholder="Search by username…"
                 className="w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
-              <div className="mt-2 max-h-48 overflow-y-auto">
+              <div className="mt-3">
                 {searchResults.map((r) => (
                   <button
                     key={r.id}
                     onClick={() => startConversation(r)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition hover:bg-white/5"
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-white/5"
                   >
-                    <Avatar name={r.display_name} color={r.avatar_color} size={28} />
+                    <Avatar name={r.display_name} color={r.avatar_color} size={32} avatarUrl={r.avatar_url} />
                     <span className="inline-flex items-center">
                       {r.display_name}
                       {isVerified(r.username) && <VerifiedBadge />}
@@ -470,52 +584,81 @@ export default function ChatClient({ profile }: { profile: Profile }) {
               </div>
             </div>
           )}
-        </div>
 
-        <div className="flex-1 overflow-y-auto px-2 pb-4">
-          {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
-          {!loadingConvos && conversations.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm text-mist">
-              No conversations yet. Start one above.
-            </p>
-          )}
-          {conversations.map((c) => {
-            const name = c.is_group ? c.name ?? "Group" : c.otherProfile?.display_name ?? "Unknown";
-            const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
-            const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
-            return (
+          {mobileTab === "profile" && (
+            <div className="flex flex-col items-center px-6 py-8">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarPick}
+              />
               <button
-                key={c.id}
-                onClick={() => {
-                  setActiveId(c.id);
-                  setShowSearch(false);
-                }}
-                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                  activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
-                }`}
+                onClick={() => fileInputRef.current?.click()}
+                className="group relative"
+                disabled={uploading}
               >
-                <Avatar name={name} color={color} online={online} />
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center truncate text-sm font-medium">
-                    <span className="truncate">{name}</span>
-                    {isVerified(c.otherProfile?.username) && <VerifiedBadge />}
-                  </p>
-                  <p className="truncate text-xs text-mist">{c.lastMessage}</p>
-                </div>
+                <Avatar
+                  name={myProfile.display_name}
+                  color={myProfile.avatar_color}
+                  size={96}
+                  avatarUrl={myProfile.avatar_url}
+                />
+                <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"
+                      stroke="white"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                    <circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" />
+                  </svg>
+                </span>
               </button>
-            );
-          })}
+              <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
+
+              <div className="mt-6 w-full">
+                <label className="mb-1.5 block text-xs font-medium text-mist-light">Display name</label>
+                <div className="flex gap-2">
+                  <input
+                    value={nameDraft}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    className="flex-1 rounded-lg border border-white/10 bg-ink-800 px-3 py-2 text-sm text-white focus:border-violet focus:outline-none"
+                  />
+                  <button
+                    onClick={saveDisplayName}
+                    disabled={!nameDraft.trim() || nameDraft.trim() === myProfile.display_name}
+                    className="rounded-lg bg-violet px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex w-full items-center gap-1 text-sm text-mist">
+                @{myProfile.username}
+                {isVerified(myProfile.username) && <VerifiedBadge />}
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex items-center gap-3 border-t border-white/5 px-4 py-4">
-          <Avatar name={profile.display_name} color={profile.avatar_color} />
-          <div className="min-w-0">
-            <p className="flex items-center truncate text-sm font-medium">
-              <span className="truncate">{profile.display_name}</span>
-              {isVerified(profile.username) && <VerifiedBadge />}
-            </p>
-            <p className="truncate text-xs text-mist">@{profile.username}</p>
-          </div>
+        {/* Bottom tab bar */}
+        <div className="grid grid-cols-3 border-t border-white/5 bg-ink-800/80">
+          {(["chats", "search", "profile"] as MobileTab[]).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setMobileTab(tab)}
+              className={`flex flex-col items-center gap-1 py-3 text-[11px] font-medium capitalize transition ${
+                mobileTab === tab ? "text-violet-light" : "text-mist"
+              }`}
+            >
+              <TabIcon tab={tab} />
+              {tab}
+            </button>
+          ))}
         </div>
       </aside>
 
@@ -537,7 +680,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
             </div>
             <h2 className="font-display text-xl font-semibold">Pick a conversation</h2>
             <p className="mt-1 max-w-xs text-sm text-mist">
-              Or start a new one from the sidebar — your messages sync in real time.
+              Or start a new one from Search — your messages sync in real time.
             </p>
           </div>
         ) : (
@@ -556,6 +699,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
                 name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
                 color={active.otherProfile?.avatar_color ?? "#7C5CFF"}
                 online={otherIsOnline}
+                avatarUrl={active.otherProfile?.avatar_url}
               />
               <div>
                 <p className="flex items-center text-sm font-semibold">
@@ -578,7 +722,7 @@ export default function ChatClient({ profile }: { profile: Profile }) {
 
             <div ref={scrollRef} className="relative z-10 flex-1 space-y-3 overflow-y-auto px-6 py-6">
               {messages.map((m) => {
-                const mine = m.sender_id === profile.id;
+                const mine = m.sender_id === myProfile.id;
                 return (
                   <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                     <div
