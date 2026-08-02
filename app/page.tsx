@@ -9,7 +9,7 @@ export default function Home() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 md:px-12">
         <div className="flex items-center gap-2">
           <span className="font-display text-xl font-bold tracking-tight text-white">
-            Think<span className="text-gradient">chat</span>
+                        Aira<span className="text-gradient">Think</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
