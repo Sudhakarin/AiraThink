@@ -12,6 +12,7 @@ type Profile = {
   status: string;
   last_seen?: string;
   avatar_url?: string | null;
+  bio?: string | null;
 };
 
 type MessageType = "text" | "image" | "voice";
@@ -62,6 +63,7 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
 const SWIPE_REPLY_MAX = 64;
+const MAX_BIO_LENGTH = 160;
 
 function initials(name: string) {
   return name
@@ -360,6 +362,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
+  const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1197,6 +1200,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
+  async function saveBio() {
+    const trimmed = bioDraft.trim();
+    if (trimmed === (myProfile.bio ?? "")) return;
+    const { error } = await supabase.from("profiles").update({ bio: trimmed }).eq("id", myProfile.id);
+    if (error) {
+      alert("Could not save bio: " + error.message);
+      return;
+    }
+    setMyProfile((prev) => ({ ...prev, bio: trimmed }));
+  }
+
   async function startCall() {
     if (!active?.otherProfile || callStatus !== "idle") return;
     const peer = active.otherProfile;
@@ -1597,9 +1611,31 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
               </div>
 
+              <div className="glass mt-4 rounded-2xl px-4 py-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-mist">Bio</span>
+                  <span className="text-[10px] text-mist/70">
+                    {bioDraft.length}/{MAX_BIO_LENGTH}
+                  </span>
+                </div>
+                <textarea
+                  value={bioDraft}
+                  onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))}
+                  placeholder="Write something about yourself…"
+                  rows={3}
+                  className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none"
+                />
+              </div>
+
               <button
-                onClick={saveDisplayName}
-                disabled={!nameDraft.trim() || nameDraft.trim() === myProfile.display_name}
+                onClick={() => {
+                  saveDisplayName();
+                  saveBio();
+                }}
+                disabled={
+                  (!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) &&
+                  bioDraft.trim() === (myProfile.bio ?? "")
+                }
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
               >
                 Save Changes
@@ -1681,6 +1717,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       <span className="text-mist">Last seen {formatLastSeen(otherDisplayProfile.last_seen)}</span>
                     ) : null}
                   </p>
+                  {otherDisplayProfile?.bio && (
+                    <p className="mt-5 max-w-xs whitespace-pre-wrap text-sm text-white/80">
+                      {otherDisplayProfile.bio}
+                    </p>
+                  )}
                 </>
               )}
             </div>
