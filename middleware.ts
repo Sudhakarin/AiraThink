@@ -26,17 +26,29 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login") || request.nextUrl.pathname.startsWith("/signup");
+  const isAuthRoute =
+    request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/signup");
   const isChatRoute = request.nextUrl.pathname.startsWith("/chat");
 
   if (!user && isChatRoute) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const redirectResponse = NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie);
+    });
+    return redirectResponse;
   }
 
   if (user && isAuthRoute) {
-    return NextResponse.redirect(new URL("/chat", request.url));
+    const redirectResponse = NextResponse.redirect(new URL("/chat", request.url));
+    response.cookies.getAll().forEach((cookie) => {
+      redirectResponse.cookies.set(cookie);
+    });
+    return redirectResponse;
   }
 
   return response;
