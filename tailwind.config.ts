@@ -1,16 +1,17 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
         ink: {
-          DEFAULT: "#0A0C12",
-          900: "#0A0C12",
-          800: "#10131C",
-          700: "#161A26",
-          600: "#1E2333",
+          DEFAULT: "var(--color-ink-900)",
+          900: "var(--color-ink-900)",
+          800: "var(--color-ink-800)",
+          700: "var(--color-ink-700)",
+          600: "var(--color-ink-600)",
         },
         violet: {
           DEFAULT: "#7C5CFF",
@@ -21,8 +22,8 @@ const config: Config = {
           DEFAULT: "#22D3B8",
         },
         mist: {
-          DEFAULT: "#8B8FA3",
-          light: "#C7C9D9",
+          DEFAULT: "var(--color-mist)",
+          light: "var(--color-mist-light)",
         },
       },
       fontFamily: {
