@@ -1,6 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
 
-export default function Home() {
+export default async function Home() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    redirect("/chat");
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-ink-900">
       <div className="pointer-events-none absolute inset-0 bg-aurora" />
@@ -9,7 +20,7 @@ export default function Home() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 md:px-12">
         <div className="flex items-center gap-2">
           <span className="font-display text-xl font-bold tracking-tight text-white">
-                        Aira<span className="text-gradient">Think!</span>
+            Aira<span className="text-gradient">Think</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -44,7 +55,9 @@ export default function Home() {
         </h1>
 
         <p className="mt-6 max-w-xl text-balance text-lg text-mist">
-                    AiraThink! is a calm, quietly premium space to talk. No clutter, no
+          AiraThink is a calm, quietly premium space to talk. No clutter, no
+          noise — just fast, real-time messages wrapped in a design that gets
+          out of your way.
         </p>
 
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
@@ -92,7 +105,7 @@ export default function Home() {
       </section>
 
       <footer className="relative z-10 mt-24 px-6 pb-10 text-center text-xs text-mist/60">
-        Built with Thinkchat · Your messages, your database, your rules.
+        Built with AiraThink · Your messages, your database, your rules.
       </footer>
     </main>
   );
