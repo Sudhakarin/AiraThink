@@ -30,11 +30,11 @@ type ConversationRow = {
   otherProfile: Profile | null;
   lastMessage: string;
   lastAt: string;
+  unreadCount: number;
 };
 
 type MobileTab = "home" | "chats" | "search" | "profile";
 type CallStatus = "idle" | "outgoing" | "incoming" | "connected";
-type CallType = "audio" | "video";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -42,6 +42,8 @@ const ICE_SERVERS: RTCConfiguration = {
     { urls: "stun:stun1.l.google.com:19302" },
   ],
 };
+
+const PAGE_SIZE = 30;
 
 function initials(name: string) {
   return name
@@ -122,12 +124,12 @@ function Avatar({
 
 function Ticks({ read }: { read: boolean }) {
   return read ? (
-    <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="inline-block align-middle">
-      <path d="M1 5l3 3 5-7" stroke="#22D3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M6 5l3 3 6-8" stroke="#22D3B8" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="inline-block align-middle text-white">
+      <path d="M1 5l3 3 5-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M6 5l3 3 6-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ) : (
-    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block align-middle">
+    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block align-middle text-white/40">
       <path d="M1 5l3 3 6-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -180,6 +182,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
@@ -192,21 +196,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [showContactInfo, setShowContactInfo] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isPrependingRef = useRef(false);
 
-  // ---- Calling state ----
+  // ---- Calling state (audio only) ----
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
-  const [callType, setCallType] = useState<CallType>("audio");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [micOn, setMicOn] = useState(true);
-  const [camOn, setCamOn] = useState(true);
   const [callSeconds, setCallSeconds] = useState(0);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const active = conversations.find((c) => c.id === activeId);
@@ -249,6 +251,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .in("conversation_id", convoIds)
       .order("created_at", { ascending: false });
 
+    const { data: unreadRows } = await supabase
+      .from("messages")
+      .select("id, conversation_id")
+      .in("conversation_id", convoIds)
+      .neq("sender_id", myProfile.id)
+      .is("read_at", null);
+
+    const unreadCounts: Record<string, number> = {};
+    (unreadRows ?? []).forEach((m: any) => {
+      unreadCounts[m.conversation_id] = (unreadCounts[m.conversation_id] || 0) + 1;
+    });
+
     const rows = (convos ?? []).map((c) => {
       const other = (otherParticipants ?? []).find((p) => p.conversation_id === c.id);
       const last = (lastMessages ?? []).find((m) => m.conversation_id === c.id);
@@ -259,6 +273,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         otherProfile: other?.profiles ?? null,
         lastMessage: last?.content ?? "Say hello 👋",
         lastAt: last?.created_at ?? "",
+        unreadCount: unreadCounts[c.id] ?? 0,
       };
     });
 
@@ -270,6 +285,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  // Refresh unread badges when any message arrives anywhere (RLS filters what we actually receive)
+  useEffect(() => {
+    const channel = supabase
+      .channel("global-messages")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, (payload) => {
+        const msg = payload.new as Message;
+        if (msg.sender_id !== myProfile.id) {
+          loadConversations();
+        }
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [myProfile.id, supabase, loadConversations]);
 
   useEffect(() => {
     const channel = supabase.channel("presence:online", {
@@ -317,18 +348,25 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [active?.otherProfile?.id, supabase]);
 
+  // Initial (latest PAGE_SIZE) message load + realtime subscription
   useEffect(() => {
     if (!activeId) return;
 
     let cancelled = false;
+    setMessages([]);
+    setHasMore(true);
 
     (async () => {
       const { data } = await supabase
         .from("messages")
         .select("*")
         .eq("conversation_id", activeId)
-        .order("created_at", { ascending: true });
-      if (!cancelled) setMessages(data ?? []);
+        .order("created_at", { ascending: false })
+        .limit(PAGE_SIZE);
+      if (cancelled) return;
+      const ordered = (data ?? []).slice().reverse();
+      setMessages(ordered);
+      setHasMore((data ?? []).length === PAGE_SIZE);
     })();
 
     const channel = supabase
@@ -365,8 +403,49 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [activeId, supabase, loadConversations]);
 
   useEffect(() => {
+    if (isPrependingRef.current) {
+      isPrependingRef.current = false;
+      return;
+    }
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  async function loadMoreMessages() {
+    if (!activeId || loadingMore || !hasMore || messages.length === 0) return;
+    setLoadingMore(true);
+    const oldest = messages[0];
+    const { data } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", activeId)
+      .lt("created_at", oldest.created_at)
+      .order("created_at", { ascending: false })
+      .limit(PAGE_SIZE);
+
+    const older = (data ?? []).slice().reverse();
+    if (older.length < PAGE_SIZE) setHasMore(false);
+
+    if (older.length > 0) {
+      const container = scrollRef.current;
+      const prevHeight = container?.scrollHeight ?? 0;
+      isPrependingRef.current = true;
+      setMessages((prev) => [...older, ...prev]);
+      requestAnimationFrame(() => {
+        if (container) {
+          container.scrollTop = container.scrollHeight - prevHeight;
+        }
+      });
+    }
+    setLoadingMore(false);
+  }
+
+  function handleMessagesScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (el.scrollTop < 60) {
+      loadMoreMessages();
+    }
+  }
 
   useEffect(() => {
     if (!activeId) return;
@@ -378,23 +457,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .from("messages")
       .update({ read_at: new Date().toISOString() })
       .in("id", unreadIds)
-      .then(() => {});
-  }, [messages, activeId, myProfile.id, supabase]);
+      .then(() => loadConversations());
+  }, [messages, activeId, myProfile.id, supabase, loadConversations]);
 
   useEffect(() => {
     setShowContactInfo(false);
   }, [activeId]);
 
-  // Attach streams to video elements
   useEffect(() => {
-    if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
-  }, [localStream]);
-
-  useEffect(() => {
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
   }, [remoteStream]);
 
-  // Call timer
   useEffect(() => {
     if (callStatus === "connected") {
       setCallSeconds(0);
@@ -429,13 +502,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     pendingCandidatesRef.current = [];
     setCallStatus("idle");
     setCallPeer(null);
-    setCallType("audio");
     setIncomingOffer(null);
     setMicOn(true);
-    setCamOn(true);
   }
 
-  // Global inbox: listen for incoming calls regardless of which screen is open
   useEffect(() => {
     const channel = supabase.channel(`calls:${myProfile.id}`);
     channel
@@ -450,7 +520,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           status: "",
           avatar_url: payload.fromAvatar,
         });
-        setCallType(payload.callType);
         setCallStatus("incoming");
       })
       .on("broadcast", { event: "answer" }, async ({ payload }: any) => {
@@ -637,16 +706,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
-  async function startCall(type: CallType) {
+  async function startCall() {
     if (!active?.otherProfile || callStatus !== "idle") return;
     const peer = active.otherProfile;
 
-    setCallType(type);
     setCallPeer(peer);
     setCallStatus("outgoing");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: type === "video" });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setLocalStream(stream);
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -667,7 +735,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         fromColor: myProfile.avatar_color,
         fromAvatar: myProfile.avatar_url,
         offer,
-        callType: type,
       });
     } catch (err: any) {
       alert("Could not start call: " + (err?.message ?? "permission denied"));
@@ -678,7 +745,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function acceptCall() {
     if (!incomingOffer || !callPeer) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: callType === "video" });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setLocalStream(stream);
 
       const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -717,11 +784,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMicOn((v) => !v);
   }
 
-  function toggleCam() {
-    localStream?.getVideoTracks().forEach((t) => (t.enabled = !camOn));
-    setCamOn((v) => !v);
-  }
-
   function formatCallTime(s: number) {
     const m = Math.floor(s / 60)
       .toString()
@@ -735,44 +797,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div className="relative flex h-screen bg-ink-900 text-white">
-      {/* ---- Call overlay ---- */}
+      <audio ref={remoteAudioRef} autoPlay />
+
+      {/* ---- Call overlay (audio only) ---- */}
       {callStatus !== "idle" && callPeer && (
         <div className="fixed inset-0 z-50 flex flex-col bg-ink-900">
           <div className="pointer-events-none absolute inset-0 bg-aurora" />
 
-          {callType === "video" && callStatus === "connected" ? (
-            <video ref={remoteVideoRef} autoPlay playsInline className="absolute inset-0 h-full w-full object-cover" />
-          ) : null}
-
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
-            {!(callType === "video" && callStatus === "connected") && (
-              <Avatar
-                name={callPeer.display_name}
-                color={callPeer.avatar_color}
-                size={120}
-                avatarUrl={callPeer.avatar_url}
-              />
-            )}
+            <Avatar
+              name={callPeer.display_name}
+              color={callPeer.avatar_color}
+              size={120}
+              avatarUrl={callPeer.avatar_url}
+            />
             <p className="mt-5 flex items-center font-display text-xl font-bold text-white">
               {callPeer.display_name}
               {isVerified(callPeer.username) && <VerifiedBadge size={18} />}
             </p>
             <p className="mt-2 text-sm text-mist">
-              {callStatus === "outgoing" && `Calling… (${callType})`}
-              {callStatus === "incoming" && `Incoming ${callType} call…`}
+              {callStatus === "outgoing" && "Calling…"}
+              {callStatus === "incoming" && "Incoming call…"}
               {callStatus === "connected" && formatCallTime(callSeconds)}
             </p>
           </div>
-
-          {callType === "video" && (callStatus === "connected" || callStatus === "outgoing") && localStream && (
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="absolute bottom-28 right-4 z-20 h-32 w-24 rounded-xl border border-white/20 object-cover shadow-lg"
-            />
-          )}
 
           <div className="relative z-10 flex items-center justify-center gap-6 pb-12">
             {callStatus === "incoming" ? (
@@ -813,19 +861,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                       <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" />
                       <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                  </button>
-                )}
-                {callType === "video" && callStatus === "connected" && (
-                  <button
-                    onClick={toggleCam}
-                    className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${
-                      camOn ? "bg-white/10" : "bg-white text-ink-900"
-                    }`}
-                  >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="6" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
-                      <path d="M15 10l6-3v10l-6-3" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
                     </svg>
                   </button>
                 )}
@@ -930,6 +965,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       </p>
                       <p className="truncate text-xs text-mist">{c.lastMessage}</p>
                     </div>
+                    {c.unreadCount > 0 && (
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1.5 text-[11px] font-bold text-ink-900">
+                        {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -1158,38 +1198,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
 
               {!active.is_group && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => startCall("audio")}
-                    disabled={callStatus !== "idle"}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40"
-                    aria-label="Voice call"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => startCall("video")}
-                    disabled={callStatus !== "idle"}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40"
-                    aria-label="Video call"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                      <rect x="3" y="6" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="1.6" />
-                      <path d="M15 10l6-3v10l-6-3" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-                    </svg>
-                  </button>
-                </div>
+                <button
+                  onClick={startCall}
+                  disabled={callStatus !== "idle"}
+                  className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40"
+                  aria-label="Voice call"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z"
+                      stroke="white"
+                      strokeWidth="1.8"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               )}
             </header>
 
-            <div ref={scrollRef} className="relative z-10 flex-1 space-y-3 overflow-y-auto px-6 py-6">
+            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-3 overflow-y-auto px-6 py-6">
+              {loadingMore && <p className="pb-2 text-center text-xs text-mist">Loading older messages…</p>}
               {messages.map((m) => {
                 const mine = m.sender_id === myProfile.id;
                 return (
