@@ -80,6 +80,15 @@ const MAX_BIO_LENGTH = 160;
 const STATUS_DURATION_MS = 5000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
 
+// Feature highlights shown on the Home tab, animated in on scroll/load.
+const HOME_FEATURES = [
+  { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
+  { icon: "⚡", title: "Realtime chat", desc: "Messages arrive instantly, no delay." },
+  { icon: "⏳", title: "24 hours disappearing", desc: "Status updates vanish after a day." },
+  { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
+  { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
+];
+
 function initials(name: string) {
   return name
     .split(" ")
@@ -1803,41 +1812,68 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
         <div className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
-            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"
-                    stroke="url(#homeGrad)"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                  <defs>
-                    <linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21">
-                      <stop stopColor="#9C82FF" />
-                      <stop offset="1" stopColor="#22D3B8" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-              </div>
-              <h2 className="font-display text-2xl font-bold">
-                Welcome to <span className="text-gradient">AiraThink</span>!
-              </h2>
-              <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
-              <button
-                onClick={() => setMobileTab("search")}
-                className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
-              >
-                Start a conversation
-              </button>
-              {conversations.length > 0 && (
+            <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 text-center">
+              <style>{`
+                @keyframes fadeUp {
+                  from { opacity: 0; transform: translateY(18px); }
+                  to { opacity: 1; transform: translateY(0); }
+                }
+              `}</style>
+
+              <div className="flex flex-col items-center pt-10">
+                <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"
+                      stroke="url(#homeGrad)"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                    <defs>
+                      <linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21">
+                        <stop stopColor="#9C82FF" />
+                        <stop offset="1" stopColor="#22D3B8" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                </div>
+                <h2 className="font-display text-2xl font-bold">
+                  Welcome to <span className="text-gradient">AiraThink</span>!
+                </h2>
+                <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
                 <button
-                  onClick={() => setMobileTab("chats")}
-                  className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white"
+                  onClick={() => setMobileTab("search")}
+                  className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
                 >
-                  Or go to your chats →
+                  Start a conversation
                 </button>
-              )}
+                {conversations.length > 0 && (
+                  <button
+                    onClick={() => setMobileTab("chats")}
+                    className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white"
+                  >
+                    Or go to your chats →
+                  </button>
+                )}
+              </div>
+
+              <div className="mt-10 flex flex-col gap-3 text-left">
+                {HOME_FEATURES.map((f, i) => (
+                  <div
+                    key={f.title}
+                    className="glass flex items-center gap-3 rounded-2xl px-4 py-3.5 opacity-0"
+                    style={{ animation: `fadeUp 0.6s ease-out ${0.15 + i * 0.12}s forwards` }}
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet/15 text-lg">
+                      {f.icon}
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">{f.title}</p>
+                      <p className="text-xs text-mist">{f.desc}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -1966,7 +2002,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} />
                     </StatusRing>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-sm font-medium">
+                      <p className="flex items-center truncate text-base font-semibold">
                         <span className="truncate">{name}</span>
                         {isVerified(c.otherProfile?.username) && <VerifiedBadge />}
                       </p>
