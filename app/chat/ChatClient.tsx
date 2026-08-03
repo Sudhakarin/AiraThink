@@ -37,6 +37,17 @@ type Reaction = {
   emoji: string;
 };
 
+type Status = {
+  id: string;
+  user_id: string;
+  media_url: string | null;
+  text_content: string | null;
+  bg_color: string | null;
+  created_at: string;
+  expires_at: string;
+  profile?: Profile;
+};
+
 type ConversationRow = {
   id: string;
   is_group: boolean;
@@ -47,7 +58,7 @@ type ConversationRow = {
   unreadCount: number;
 };
 
-type MobileTab = "home" | "chats" | "search" | "profile";
+type MobileTab = "home" | "status" | "chats" | "search" | "profile";
 type CallStatus = "idle" | "outgoing" | "incoming" | "connected";
 
 const ICE_SERVERS: RTCConfiguration = {
@@ -59,11 +70,14 @@ const ICE_SERVERS: RTCConfiguration = {
 
 const PAGE_SIZE = 30;
 const CHAT_MEDIA_BUCKET = "chat-media";
+const STATUS_MEDIA_BUCKET = "status-media";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
 const SWIPE_REPLY_MAX = 64;
 const MAX_BIO_LENGTH = 160;
+const STATUS_DURATION_MS = 5000;
+const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
 
 function initials(name: string) {
   return name
@@ -151,6 +165,30 @@ function Avatar({
   );
 }
 
+// Wraps an Avatar with a story-style ring when the user has an active status.
+// Gradient ring = unseen update, grey ring = already viewed, no ring = no status.
+function StatusRing({
+  hasStatus,
+  viewed,
+  children,
+}: {
+  hasStatus: boolean;
+  viewed: boolean;
+  children: React.ReactNode;
+}) {
+  if (!hasStatus) return <>{children}</>;
+  return (
+    <div
+      className="rounded-full p-[2px]"
+      style={{
+        background: viewed ? "#4B5563" : "linear-gradient(45deg, #7C5CFF, #22D3B8)",
+      }}
+    >
+      <div className="rounded-full bg-ink-900 p-[2px]">{children}</div>
+    </div>
+  );
+}
+
 function Ticks({ read }: { read: boolean }) {
   return read ? (
     <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="inline-block align-middle text-white">
@@ -170,6 +208,14 @@ function TabIcon({ tab }: { tab: MobileTab }) {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
         <path d="M4 11l8-7 8 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
+  if (tab === "status") {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="3 3" />
+        <circle cx="12" cy="12" r="3.5" fill="currentColor" />
       </svg>
     );
   }
@@ -386,6 +432,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingMimeTypeRef = useRef<string>("audio/webm");
+
+  // --- status / story feature ---
+  const [statuses, setStatuses] = useState<Status[]>([]);
+  const [myViewedStatusIds, setMyViewedStatusIds] = useState<Set<string>>(new Set());
+  const [statusViewerUserId, setStatusViewerUserId] = useState<string | null>(null);
+  const [statusViewerIndex, setStatusViewerIndex] = useState(0);
+  const [uploadingStatus, setUploadingStatus] = useState(false);
+  const [showTextStatusComposer, setShowTextStatusComposer] = useState(false);
+  const [textStatusDraft, setTextStatusDraft] = useState("");
+  const [textStatusColor, setTextStatusColor] = useState(STATUS_COLORS[0]);
+  const statusFileInputRef = useRef<HTMLInputElement>(null);
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
@@ -729,6 +787,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
       recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     };
   }, []);
 
@@ -1211,6 +1270,159 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
+  // --- status / story helpers ---
+  const loadStatuses = useCallback(async () => {
+    const { data } = await supabase
+      .from("statuses")
+      .select("*, profile:profiles(*)")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: true });
+    setStatuses((data ?? []) as any);
+  }, [supabase]);
+
+  useEffect(() => {
+    loadStatuses();
+  }, [loadStatuses]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("statuses-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "statuses" }, () => loadStatuses())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, loadStatuses]);
+
+  useEffect(() => {
+    supabase
+      .from("status_views")
+      .select("status_id")
+      .eq("viewer_id", myProfile.id)
+      .then(({ data }) => setMyViewedStatusIds(new Set((data ?? []).map((r: any) => r.status_id))));
+  }, [myProfile.id, supabase, statuses.length]);
+
+  const myStatuses = statuses.filter((s) => s.user_id === myProfile.id);
+  const otherStatusesGrouped: Record<string, Status[]> = {};
+  statuses
+    .filter((s) => s.user_id !== myProfile.id)
+    .forEach((s) => {
+      otherStatusesGrouped[s.user_id] = [...(otherStatusesGrouped[s.user_id] ?? []), s];
+    });
+
+  function statusRingPropsFor(userId: string) {
+    const list = userId === myProfile.id ? myStatuses : otherStatusesGrouped[userId] ?? [];
+    if (list.length === 0) return { hasStatus: false, viewed: true };
+    const allViewed = list.every((s) => myViewedStatusIds.has(s.id));
+    return { hasStatus: true, viewed: allViewed };
+  }
+
+  async function markStatusViewed(statusId: string) {
+    if (myViewedStatusIds.has(statusId)) return;
+    setMyViewedStatusIds((prev) => new Set(prev).add(statusId));
+    await supabase
+      .from("status_views")
+      .upsert({ status_id: statusId, viewer_id: myProfile.id }, { onConflict: "status_id,viewer_id", ignoreDuplicates: true });
+  }
+
+  async function handleStatusFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      alert("Image is too large — please pick one under 8MB.");
+      return;
+    }
+
+    setUploadingStatus(true);
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${myProfile.id}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      contentType: file.type || undefined,
+    });
+
+    if (uploadError) {
+      alert("Status upload failed: " + uploadError.message);
+      setUploadingStatus(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
+    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
+    if (error) alert("Could not post status: " + error.message);
+
+    setUploadingStatus(false);
+    loadStatuses();
+  }
+
+  async function postTextStatus() {
+    const trimmed = textStatusDraft.trim();
+    if (!trimmed) return;
+    const { error } = await supabase.from("statuses").insert({
+      user_id: myProfile.id,
+      text_content: trimmed,
+      bg_color: textStatusColor,
+    });
+    if (error) {
+      alert("Could not post status: " + error.message);
+      return;
+    }
+    setTextStatusDraft("");
+    setShowTextStatusComposer(false);
+    loadStatuses();
+  }
+
+  async function deleteStatus(id: string) {
+    await supabase.from("statuses").delete().eq("id", id);
+    closeStatusViewer();
+    loadStatuses();
+  }
+
+  function openStatusViewer(userId: string) {
+    setStatusViewerUserId(userId);
+    setStatusViewerIndex(0);
+  }
+
+  function closeStatusViewer() {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    setStatusViewerUserId(null);
+    setStatusViewerIndex(0);
+  }
+
+  function advanceStatus(dir: 1 | -1) {
+    if (!statusViewerUserId) return;
+    const list = statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? [];
+    const next = statusViewerIndex + dir;
+    if (next < 0) return;
+    if (next >= list.length) {
+      closeStatusViewer();
+      return;
+    }
+    setStatusViewerIndex(next);
+  }
+
+  useEffect(() => {
+    if (!statusViewerUserId) return;
+    const list = statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? [];
+    const current = list[statusViewerIndex];
+    if (!current) {
+      closeStatusViewer();
+      return;
+    }
+    markStatusViewed(current.id);
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    statusTimerRef.current = setTimeout(() => {
+      advanceStatus(1);
+    }, STATUS_DURATION_MS);
+    return () => {
+      if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusViewerUserId, statusViewerIndex, statuses]);
+
   async function startCall() {
     if (!active?.otherProfile || callStatus !== "idle") return;
     const peer = active.otherProfile;
@@ -1338,6 +1550,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
   const otherDisplayProfile = otherProfileFresh ?? active?.otherProfile ?? null;
 
+  const activeStatusList = statusViewerUserId
+    ? statusViewerUserId === myProfile.id
+      ? myStatuses
+      : otherStatusesGrouped[statusViewerUserId] ?? []
+    : [];
+  const activeStatusItem = activeStatusList[statusViewerIndex] ?? null;
+  const activeStatusProfile =
+    activeStatusItem?.profile ?? (statusViewerUserId === myProfile.id ? myProfile : active?.otherProfile) ?? null;
+
   return (
     <div
       className="relative flex w-full bg-ink-900 text-white"
@@ -1424,6 +1645,121 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
+      {/* Status viewer overlay */}
+      {statusViewerUserId && activeStatusItem && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+          <div className="flex gap-1 px-3 pt-3">
+            {activeStatusList.map((s, i) => (
+              <div key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/30">
+                <div
+                  className="h-full bg-white"
+                  style={{ width: i <= statusViewerIndex ? "100%" : "0%" }}
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 px-4 py-3">
+            <Avatar
+              name={activeStatusProfile?.display_name ?? ""}
+              color={activeStatusProfile?.avatar_color ?? "#7C5CFF"}
+              avatarUrl={activeStatusProfile?.avatar_url}
+              size={36}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center text-sm font-semibold text-white">
+                <span className="truncate">{activeStatusProfile?.display_name}</span>
+                {isVerified(activeStatusProfile?.username) && <VerifiedBadge />}
+              </p>
+              <p className="text-xs text-white/60">{formatLastSeen(activeStatusItem.created_at)}</p>
+            </div>
+            {activeStatusItem.user_id === myProfile.id && (
+              <button
+                onClick={() => deleteStatus(activeStatusItem.id)}
+                className="text-xs font-medium text-white/70 hover:text-white"
+              >
+                Delete
+              </button>
+            )}
+            <button onClick={closeStatusViewer} className="px-2 text-xl leading-none text-white" aria-label="Close">
+              ✕
+            </button>
+          </div>
+
+          <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+            <button
+              className="absolute left-0 top-0 z-10 h-full w-1/3"
+              onClick={() => advanceStatus(-1)}
+              aria-label="Previous status"
+            />
+            <button
+              className="absolute right-0 top-0 z-10 h-full w-1/3"
+              onClick={() => advanceStatus(1)}
+              aria-label="Next status"
+            />
+
+            {activeStatusItem.media_url ? (
+              <img src={activeStatusItem.media_url} alt="Status" className="max-h-full max-w-full object-contain" />
+            ) : (
+              <div
+                className="flex h-full w-full items-center justify-center p-8"
+                style={{ background: activeStatusItem.bg_color ?? "#7C5CFF" }}
+              >
+                <p className="break-words text-center text-2xl font-semibold text-white">
+                  {activeStatusItem.text_content}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Text status composer */}
+      {showTextStatusComposer && (
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: textStatusColor }}>
+          <div className="flex items-center justify-between px-4 py-4">
+            <button
+              onClick={() => {
+                setShowTextStatusComposer(false);
+                setTextStatusDraft("");
+              }}
+              className="text-xl text-white"
+              aria-label="Cancel"
+            >
+              ✕
+            </button>
+            <button
+              onClick={postTextStatus}
+              disabled={!textStatusDraft.trim()}
+              className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40"
+            >
+              Post
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center px-8">
+            <textarea
+              autoFocus
+              value={textStatusDraft}
+              onChange={(e) => setTextStatusDraft(e.target.value.slice(0, 200))}
+              placeholder="Type a status…"
+              rows={4}
+              className="w-full resize-none bg-transparent text-center text-2xl font-semibold text-white placeholder:text-white/60 outline-none"
+            />
+          </div>
+          <div className="flex justify-center gap-3 pb-8">
+            {STATUS_COLORS.map((c) => (
+              <button
+                key={c}
+                onClick={() => setTextStatusColor(c)}
+                className={`h-8 w-8 rounded-full transition ${textStatusColor === c ? "ring-2 ring-white ring-offset-2 ring-offset-black/20" : ""}`}
+                style={{ background: c }}
+                aria-label={`Choose color ${c}`}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <aside
         className={`${
           activeId ? "hidden md:flex" : "flex"
@@ -1481,6 +1817,106 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
           )}
 
+          {mobileTab === "status" && (
+            <div className="px-2 pb-4">
+              <input
+                ref={statusFileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleStatusFilePick}
+              />
+
+              <div className="flex items-center gap-3 px-3 py-3">
+                <div className="relative">
+                  {myStatuses.length > 0 ? (
+                    <button onClick={() => openStatusViewer(myProfile.id)}>
+                      <StatusRing {...statusRingPropsFor(myProfile.id)}>
+                        <Avatar
+                          name={myProfile.display_name}
+                          color={myProfile.avatar_color}
+                          avatarUrl={myProfile.avatar_url}
+                          size={56}
+                        />
+                      </StatusRing>
+                    </button>
+                  ) : (
+                    <Avatar
+                      name={myProfile.display_name}
+                      color={myProfile.avatar_color}
+                      avatarUrl={myProfile.avatar_url}
+                      size={56}
+                    />
+                  )}
+                  <button
+                    onClick={() => statusFileInputRef.current?.click()}
+                    disabled={uploadingStatus}
+                    className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white disabled:opacity-50"
+                    aria-label="Add photo status"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.4" strokeLinecap="round" />
+                    </svg>
+                  </button>
+                </div>
+                <button
+                  onClick={() => (myStatuses.length > 0 ? openStatusViewer(myProfile.id) : setShowTextStatusComposer(true))}
+                  className="flex-1 text-left"
+                >
+                  <p className="text-sm font-medium text-white">My Status</p>
+                  <p className="text-xs text-mist">
+                    {uploadingStatus ? "Uploading…" : myStatuses.length > 0 ? "Tap to view" : "Tap to add a status update"}
+                  </p>
+                </button>
+                <button
+                  onClick={() => setShowTextStatusComposer(true)}
+                  className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-white/5"
+                >
+                  Aa
+                </button>
+              </div>
+
+              {Object.keys(otherStatusesGrouped).length > 0 && (
+                <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">
+                  Recent updates
+                </p>
+              )}
+
+              {Object.entries(otherStatusesGrouped).map(([userId, list]) => {
+                const p = list[0].profile;
+                const latest = list[list.length - 1];
+                const ring = statusRingPropsFor(userId);
+                return (
+                  <button
+                    key={userId}
+                    onClick={() => openStatusViewer(userId)}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/5"
+                  >
+                    <StatusRing {...ring}>
+                      <Avatar
+                        name={p?.display_name ?? "Unknown"}
+                        color={p?.avatar_color ?? "#7C5CFF"}
+                        avatarUrl={p?.avatar_url}
+                        size={56}
+                      />
+                    </StatusRing>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center truncate text-sm font-medium text-white">
+                        <span className="truncate">{p?.display_name ?? "Unknown"}</span>
+                        {isVerified(p?.username) && <VerifiedBadge />}
+                      </p>
+                      <p className="text-xs text-mist">{formatLastSeen(latest.created_at)}</p>
+                    </div>
+                  </button>
+                );
+              })}
+
+              {Object.keys(otherStatusesGrouped).length === 0 && myStatuses.length === 0 && (
+                <p className="px-3 py-6 text-center text-sm text-mist">No status updates yet.</p>
+              )}
+            </div>
+          )}
+
           {mobileTab === "chats" && (
             <div className="px-2 pb-4">
               {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
@@ -1493,6 +1929,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const name = c.is_group ? c.name ?? "Group" : c.otherProfile?.display_name ?? "Unknown";
                 const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
+                const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
                 return (
                   <button
                     key={c.id}
@@ -1501,7 +1938,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
                     }`}
                   >
-                    <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} />
+                    <StatusRing {...ring}>
+                      <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} />
+                    </StatusRing>
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center truncate text-sm font-medium">
                         <span className="truncate">{name}</span>
@@ -1644,8 +2083,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
         </div>
 
-        <div className="grid grid-cols-4 border-t border-white/5 bg-ink-800/80">
-          {(["home", "chats", "search", "profile"] as MobileTab[]).map((tab) => (
+        <div className="grid grid-cols-5 border-t border-white/5 bg-ink-800/80">
+          {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setMobileTab(tab)}
