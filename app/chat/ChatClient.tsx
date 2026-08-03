@@ -14,6 +14,8 @@ type Profile = {
   avatar_url?: string | null;
 };
 
+type MessageType = "text" | "image" | "voice";
+
 type Message = {
   id: string;
   conversation_id: string;
@@ -21,6 +23,9 @@ type Message = {
   content: string;
   created_at: string;
   read_at?: string | null;
+  message_type?: MessageType;
+  media_url?: string | null;
+  media_duration?: number | null;
 };
 
 type ConversationRow = {
@@ -44,6 +49,8 @@ const ICE_SERVERS: RTCConfiguration = {
 };
 
 const PAGE_SIZE = 30;
+const CHAT_MEDIA_BUCKET = "chat-media";
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
 
 function initials(name: string) {
   return name
@@ -64,6 +71,15 @@ function formatLastSeen(iso?: string) {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDay = Math.floor(diffHr / 24);
   return `${diffDay}d ago`;
+}
+
+function formatDuration(totalSeconds: number) {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60)
+    .toString()
+    .padStart(2, "0");
+  const sec = (s % 60).toString().padStart(2, "0");
+  return `${m}:${sec}`;
 }
 
 function isVerified(username?: string) {
@@ -172,9 +188,115 @@ function TabIcon({ tab }: { tab: MobileTab }) {
   );
 }
 
+// Compact inline audio player used for voice-note messages
+function VoiceMessage({ url, duration, mine }: { url: string; duration: number; mine: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [liveDuration, setLiveDuration] = useState(duration);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const onTime = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setProgress(audio.currentTime / audio.duration);
+      }
+    };
+    const onLoaded = () => {
+      if (audio.duration && isFinite(audio.duration)) setLiveDuration(audio.duration);
+    };
+    const onEnd = () => {
+      setPlaying(false);
+      setProgress(0);
+    };
+
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("loadedmetadata", onLoaded);
+    audio.addEventListener("ended", onEnd);
+    return () => {
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("loadedmetadata", onLoaded);
+      audio.removeEventListener("ended", onEnd);
+    };
+  }, []);
+
+  function toggle() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) {
+      audio.pause();
+      setPlaying(false);
+    } else {
+      audio.play();
+      setPlaying(true);
+    }
+  }
+
+  return (
+    <div className="flex min-w-[190px] items-center gap-2.5 py-0.5">
+      <audio ref={audioRef} src={url} preload="metadata" className="hidden" />
+      <button
+        type="button"
+        onClick={toggle}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+          mine ? "bg-white/20 hover:bg-white/30" : "bg-violet/20 hover:bg-violet/30"
+        }`}
+        aria-label={playing ? "Pause" : "Play"}
+      >
+        {playing ? (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="5" y="4" width="5" height="16" rx="1" />
+            <rect x="14" y="4" width="5" height="16" rx="1" />
+          </svg>
+        ) : (
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 4l14 8-14 8V4z" />
+          </svg>
+        )}
+      </button>
+      <div className="flex-1">
+        <div className={`h-1 w-full overflow-hidden rounded-full ${mine ? "bg-white/25" : "bg-white/15"}`}>
+          <div
+            className={`h-full rounded-full ${mine ? "bg-white" : "bg-violet-light"}`}
+            style={{ width: `${Math.min(100, progress * 100)}%` }}
+          />
+        </div>
+      </div>
+      <span className={`shrink-0 text-[10px] tabular-nums ${mine ? "text-white/70" : "text-mist"}`}>
+        {formatDuration(liveDuration)}
+      </span>
+    </div>
+  );
+}
+
+// Keeps the app's height in sync with the visible viewport (visualViewport),
+// so that on mobile, opening the keyboard shrinks the layout instead of
+// pushing the input/send button off-screen behind the keyboard.
+function useVisualViewportHeight() {
+  useEffect(() => {
+    function setHeight() {
+      const vv = window.visualViewport;
+      const height = vv ? vv.height : window.innerHeight;
+      document.documentElement.style.setProperty("--app-height", `${height}px`);
+    }
+    setHeight();
+    window.visualViewport?.addEventListener("resize", setHeight);
+    window.visualViewport?.addEventListener("scroll", setHeight);
+    window.addEventListener("resize", setHeight);
+    return () => {
+      window.visualViewport?.removeEventListener("resize", setHeight);
+      window.visualViewport?.removeEventListener("scroll", setHeight);
+      window.removeEventListener("resize", setHeight);
+    };
+  }, []);
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
+  useVisualViewportHeight();
 
   const [myProfile, setMyProfile] = useState<Profile>(initialProfile);
   const [myEmail, setMyEmail] = useState<string>("");
@@ -197,6 +319,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
+
+  // --- image + voice note messaging ---
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
@@ -246,7 +378,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     const { data: lastMessages } = await supabase
       .from("messages")
-      .select("conversation_id, content, created_at")
+      .select("conversation_id, content, message_type, created_at")
       .in("conversation_id", convoIds)
       .order("created_at", { ascending: false });
 
@@ -262,6 +394,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       unreadCounts[m.conversation_id] = (unreadCounts[m.conversation_id] || 0) + 1;
     });
 
+    const previewFor = (m: any) => {
+      if (!m) return "Say hello 👋";
+      if (m.message_type === "image") return "📷 Photo";
+      if (m.message_type === "voice") return "🎤 Voice message";
+      return m.content;
+    };
+
     const rows = (convos ?? []).map((c) => {
       const other = (otherParticipants ?? []).find((p) => p.conversation_id === c.id);
       const last = (lastMessages ?? []).find((m) => m.conversation_id === c.id);
@@ -270,7 +409,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         is_group: c.is_group,
         name: c.name,
         otherProfile: other?.profiles ?? null,
-        lastMessage: last?.content ?? "Say hello 👋",
+        lastMessage: previewFor(last),
         lastAt: last?.created_at ?? "",
         unreadCount: unreadCounts[c.id] ?? 0,
       };
@@ -376,7 +515,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             const incoming = payload.new as Message;
             if (prev.some((m) => m.id === incoming.id)) return prev;
             const withoutTemp = prev.filter(
-              (m) => !(m.id.startsWith("temp-") && m.content === incoming.content && m.sender_id === incoming.sender_id)
+              (m) =>
+                !(
+                  m.id.startsWith("temp-") &&
+                  m.sender_id === incoming.sender_id &&
+                  (m.content === incoming.content ||
+                    (m.media_url && m.media_url === incoming.media_url))
+                )
             );
             return [...withoutTemp, incoming];
           });
@@ -460,6 +605,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   useEffect(() => {
     setShowContactInfo(false);
   }, [activeId]);
+
+  // Stop any in-progress recording if the user switches conversations
+  useEffect(() => {
+    if (recording) cancelRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  // Safety cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
 
   useEffect(() => {
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
@@ -637,6 +796,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       content,
       created_at: new Date().toISOString(),
       read_at: null,
+      message_type: "text",
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
@@ -644,9 +804,150 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       conversation_id: activeId,
       sender_id: myProfile.id,
       content,
+      message_type: "text",
     });
     loadConversations();
     setSending(false);
+  }
+
+  // Shared insert for image / voice messages
+  async function sendMediaMessage(opts: { type: "image" | "voice"; url: string; duration?: number }) {
+    if (!activeId) return;
+
+    const optimisticMsg: Message = {
+      id: `temp-${Date.now()}`,
+      conversation_id: activeId,
+      sender_id: myProfile.id,
+      content: "",
+      created_at: new Date().toISOString(),
+      read_at: null,
+      message_type: opts.type,
+      media_url: opts.url,
+      media_duration: opts.duration ?? null,
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
+    await supabase.from("messages").insert({
+      conversation_id: activeId,
+      sender_id: myProfile.id,
+      content: "",
+      message_type: opts.type,
+      media_url: opts.url,
+      media_duration: opts.duration ?? null,
+    });
+    loadConversations();
+  }
+
+  async function handleMediaFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !activeId) return;
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      alert("Image is too large — please pick one under 8MB.");
+      return;
+    }
+
+    setUploadingMedia(true);
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+      contentType: file.type || undefined,
+    });
+
+    if (uploadError) {
+      alert("Image upload failed: " + uploadError.message);
+      setUploadingMedia(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
+    await sendMediaMessage({ type: "image", url: publicUrlData.publicUrl });
+    setUploadingMedia(false);
+  }
+
+  async function startRecording() {
+    if (!activeId || recording) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      recordingStreamRef.current = stream;
+
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data);
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+
+      setRecording(true);
+      setRecordingSeconds(0);
+      recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+    } catch (err: any) {
+      alert("Could not access microphone: " + (err?.message ?? "permission denied"));
+    }
+  }
+
+  function cancelRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+    recordingStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    setRecording(false);
+    setRecordingSeconds(0);
+  }
+
+  async function stopAndSendRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") return;
+
+    const finalDuration = recordingSeconds;
+
+    const blob: Blob = await new Promise((resolve) => {
+      recorder.onstop = () => {
+        resolve(new Blob(audioChunksRef.current, { type: "audio/webm" }));
+      };
+      recorder.stop();
+    });
+
+    recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+    recordingStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    setRecording(false);
+    setRecordingSeconds(0);
+
+    if (!activeId || finalDuration < 1) return; // ignore accidental taps
+
+    setUploadingMedia(true);
+    const path = `${activeId}/${myProfile.id}-${Date.now()}.webm`;
+
+    const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, blob, {
+      cacheControl: "3600",
+      contentType: "audio/webm",
+    });
+
+    if (uploadError) {
+      alert("Voice note upload failed: " + uploadError.message);
+      setUploadingMedia(false);
+      return;
+    }
+
+    const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
+    await sendMediaMessage({ type: "voice", url: publicUrlData.publicUrl, duration: finalDuration });
+    setUploadingMedia(false);
   }
 
   async function handleLogout() {
@@ -793,7 +1094,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const otherDisplayProfile = otherProfileFresh ?? active?.otherProfile ?? null;
 
   return (
-    <div className="relative flex h-screen w-full bg-ink-900 text-white">
+    <div
+      className="relative flex w-full bg-ink-900 text-white"
+      style={{ height: "var(--app-height, 100dvh)" }}
+    >
       <audio ref={remoteAudioRef} autoPlay />
 
       {callStatus !== "idle" && callPeer && (
@@ -1214,17 +1518,37 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               {loadingMore && <p className="pb-2 text-center text-xs text-mist">Loading older messages…</p>}
               {messages.map((m) => {
                 const mine = m.sender_id === myProfile.id;
+                const isImage = m.message_type === "image" && !!m.media_url;
+                const isVoice = m.message_type === "voice" && !!m.media_url;
+
                 return (
                   <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                     <div
-                      className={`max-w-md rounded-2xl px-4 py-2.5 text-sm ${
+                      className={`max-w-md text-sm ${
+                        isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"
+                      } ${
                         mine
-                          ? "rounded-br-sm bg-gradient-to-br from-violet to-violet-dark text-white"
-                          : "glass rounded-bl-sm text-white"
+                          ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white`
+                          : `${isImage ? "" : "glass"} rounded-bl-sm text-white`
                       }`}
                     >
-                      <p>{m.content}</p>
-                      <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-white/60" : "text-mist"}`}>
+                      {isImage ? (
+                        <img
+                          src={m.media_url!}
+                          alt="Shared photo"
+                          className="max-h-72 w-full cursor-pointer rounded-xl object-cover"
+                          onClick={() => window.open(m.media_url!, "_blank")}
+                        />
+                      ) : isVoice ? (
+                        <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
+                      ) : (
+                        <p>{m.content}</p>
+                      )}
+                      <p
+                        className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
+                          mine ? "text-white/60" : "text-mist"
+                        } ${isImage ? "px-2 pb-1" : ""}`}
+                      >
                         {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         {mine && <Ticks read={!!m.read_at} />}
                       </p>
@@ -1239,18 +1563,88 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
             <form onSubmit={sendMessage} className="relative z-10 flex items-center gap-3 border-t border-white/5 px-6 py-4">
               <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Type a message…"
-                className="flex-1 rounded-full border border-white/10 bg-ink-800 px-5 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+                ref={mediaInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleMediaFilePick}
               />
-              <button
-                type="submit"
-                disabled={!input.trim() || sending}
-                className="rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
-              >
-                Send
-              </button>
+
+              {recording ? (
+                <div className="flex flex-1 items-center gap-3 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3">
+                  <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-400" />
+                  <span className="flex-1 text-sm text-white/80">Recording… {formatDuration(recordingSeconds)}</span>
+                  <button type="button" onClick={cancelRecording} className="text-xs font-medium text-mist hover:text-white">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => mediaInputRef.current?.click()}
+                    disabled={uploadingMedia}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                    aria-label="Send image"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinejoin="round"
+                      />
+                      <circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="1.6" />
+                    </svg>
+                  </button>
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+                      }, 300);
+                    }}
+                    placeholder={uploadingMedia ? "Sending…" : "Type a message…"}
+                    disabled={uploadingMedia}
+                    className="flex-1 rounded-full border border-white/10 bg-ink-800 px-5 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60"
+                  />
+                </>
+              )}
+
+              {recording ? (
+                <button
+                  type="button"
+                  onClick={stopAndSendRecording}
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30"
+                  aria-label="Send voice note"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 13l4 4L19 7" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ) : input.trim() ? (
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className="rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
+                >
+                  Send
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={startRecording}
+                  disabled={uploadingMedia}
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/15 disabled:opacity-40"
+                  aria-label="Record voice note"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
             </form>
           </>
         )}
