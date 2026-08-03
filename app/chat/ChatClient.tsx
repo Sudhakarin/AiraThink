@@ -317,7 +317,7 @@ function VoiceMessage({ url, duration, mine }: { url: string; duration: number; 
         )}
       </button>
       <div className="flex-1">
-        <div className={`h-1 w-full overflow-hidden rounded-full ${mine ? "bg-white/25" : "bg-white/15"}`}>
+        <div className={`h-1 w-full overflow-hidden rounded-full ${mine ? "bg-white/25" : "bg-black/15 dark:bg-white/15"}`}>
           <div
             className={`h-full rounded-full ${mine ? "bg-white" : "bg-violet-light"}`}
             style={{ width: `${Math.min(100, progress * 100)}%` }}
@@ -377,11 +377,13 @@ function ReactionPills({
           key={emoji}
           onClick={() => onToggle(emoji)}
           className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] transition ${
-            info.mine ? "bg-violet/30 ring-1 ring-violet-light" : "bg-white/10 hover:bg-white/15"
+            info.mine
+              ? "bg-violet/30 ring-1 ring-violet-light"
+              : "bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
           }`}
         >
           <span>{emoji}</span>
-          {info.count > 1 && <span className="text-[10px] text-white/70">{info.count}</span>}
+          {info.count > 1 && <span className="text-[10px] text-[color:var(--color-text)]/70">{info.count}</span>}
         </button>
       ))}
     </div>
@@ -1563,13 +1565,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div
-      className="relative flex w-full bg-ink-900 text-white"
+      className="relative flex w-full bg-ink-900 text-[color:var(--color-text)]"
       style={{ height: "var(--app-height, 100dvh)" }}
     >
       <audio ref={remoteAudioRef} autoPlay />
 
       {callStatus !== "idle" && callPeer && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-ink-900">
+        <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0C12]">
           <div className="pointer-events-none absolute inset-0 bg-aurora" />
 
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
@@ -1765,7 +1767,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       <aside
         className={`${
           activeId ? "hidden md:flex" : "flex"
-        } w-full md:max-w-xs flex-col border-r border-white/5 bg-ink-800/60`}
+        } w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}
       >
         <div className="flex items-center justify-between px-5 py-5">
           <span className="font-display text-lg font-bold">
@@ -1773,7 +1775,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </span>
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"
             aria-label="Toggle theme"
           >
             {theme === "dark" ? (
@@ -1818,7 +1820,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </defs>
                 </svg>
               </div>
-              <h2 className="font-display text-2xl font-bold text-white">
+              <h2 className="font-display text-2xl font-bold">
                 Welcome to <span className="text-gradient">AiraThink</span>!
               </h2>
               <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
@@ -1831,7 +1833,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               {conversations.length > 0 && (
                 <button
                   onClick={() => setMobileTab("chats")}
-                  className="mt-3 text-xs font-medium text-mist transition hover:text-white"
+                  className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white"
                 >
                   Or go to your chats →
                 </button>
@@ -1885,14 +1887,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   onClick={() => (myStatuses.length > 0 ? openStatusViewer(myProfile.id) : setShowTextStatusComposer(true))}
                   className="flex-1 text-left"
                 >
-                  <p className="text-sm font-medium text-white">My Status</p>
+                  <p className="text-sm font-medium">My Status</p>
                   <p className="text-xs text-mist">
                     {uploadingStatus ? "Uploading…" : myStatuses.length > 0 ? "Tap to view" : "Tap to add a status update"}
                   </p>
                 </button>
                 <button
                   onClick={() => setShowTextStatusComposer(true)}
-                  className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-white/5"
+                  className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   Aa
                 </button>
@@ -1912,7 +1914,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <button
                     key={userId}
                     onClick={() => openStatusViewer(userId)}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/5"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
                   >
                     <StatusRing {...ring}>
                       <Avatar
@@ -1923,7 +1925,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       />
                     </StatusRing>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-sm font-medium text-white">
+                      <p className="flex items-center truncate text-sm font-medium">
                         <span className="truncate">{p?.display_name ?? "Unknown"}</span>
                         {isVerified(p?.username) && <VerifiedBadge />}
                       </p>
@@ -1957,7 +1959,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     key={c.id}
                     onClick={() => setActiveId(c.id)}
                     className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                      activeId === c.id ? "bg-violet/15" : "hover:bg-white/5"
+                      activeId === c.id ? "bg-violet/15" : "hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                   >
                     <StatusRing {...ring}>
@@ -1971,7 +1973,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       <p className="truncate text-xs text-mist">{c.lastMessage}</p>
                     </div>
                     {c.unreadCount > 0 && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1.5 text-[11px] font-bold text-ink-900">
+                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1.5 text-[11px] font-bold text-[#0A0C12]">
                         {c.unreadCount > 99 ? "99+" : c.unreadCount}
                       </span>
                     )}
@@ -1988,14 +1990,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 value={search}
                 onChange={(e) => handleSearch(e.target.value)}
                 placeholder="Search by username…"
-                className="w-full rounded-lg border border-white/10 bg-ink-800 px-3 py-2 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
               <div className="mt-3">
                 {searchResults.map((r) => (
                   <button
                     key={r.id}
                     onClick={() => startConversation(r)}
-                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-white/5"
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5"
                   >
                     <Avatar name={r.display_name} color={r.avatar_color} size={32} avatarUrl={r.avatar_url} />
                     <span className="inline-flex items-center">
@@ -2014,7 +2016,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
           {mobileTab === "profile" && (
             <div className="px-5 py-6">
-              <h2 className="mb-6 text-center font-display text-lg font-bold text-white">Edit Profile</h2>
+              <h2 className="mb-6 text-center font-display text-lg font-bold">Edit Profile</h2>
 
               <div className="flex flex-col items-center">
                 <input
@@ -2050,29 +2052,29 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-              <div className="glass mt-6 divide-y divide-white/5 overflow-hidden rounded-2xl">
+              <div className="glass mt-6 divide-y divide-black/5 dark:divide-white/5 overflow-hidden rounded-2xl">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <span className="text-xs font-medium text-mist">Full name</span>
                   <input
                     value={nameDraft}
                     onChange={(e) => setNameDraft(e.target.value)}
-                    className="w-40 bg-transparent text-right text-sm text-white outline-none"
+                    className="w-40 bg-transparent text-right text-sm outline-none"
                   />
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <span className="text-xs font-medium text-mist">Email</span>
-                  <span className="truncate text-sm text-white">{myEmail || "—"}</span>
+                  <span className="truncate text-sm">{myEmail || "—"}</span>
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <span className="text-xs font-medium text-mist">Username</span>
-                  <span className="inline-flex items-center text-sm text-white">
+                  <span className="inline-flex items-center text-sm">
                     @{myProfile.username}
                     {isVerified(myProfile.username) && <VerifiedBadge />}
                   </span>
                 </div>
                 <button
                   onClick={handleLogout}
-                  className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-white/5"
+                  className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
                 >
                   <span className="text-xs font-medium text-mist">Account</span>
                   <span className="text-sm font-medium text-red-400">Log out</span>
@@ -2091,7 +2093,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))}
                   placeholder="Write something about yourself…"
                   rows={3}
-                  className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none"
+                  className="mt-2 w-full resize-none bg-transparent text-sm placeholder:text-mist/50 outline-none"
                 />
               </div>
 
@@ -2112,7 +2114,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
         </div>
 
-        <div className="grid grid-cols-5 border-t border-white/5 bg-ink-800/80">
+        <div className="grid grid-cols-5 border-t border-black/5 dark:border-white/5 bg-ink-800/80">
           {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => (
             <button
               key={tab}
@@ -2150,10 +2152,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : showContactInfo ? (
           <div className="relative z-10 flex flex-1 flex-col">
-            <header className="glass flex items-center gap-3 border-b border-white/5 px-4 py-4">
+            <header className="glass flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4">
               <button
                 onClick={() => setShowContactInfo(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"
                 aria-label="Back to chat"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -2171,7 +2173,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 online={otherIsOnline}
                 avatarUrl={otherDisplayProfile?.avatar_url}
               />
-              <p className="mt-5 flex items-center font-display text-xl font-bold text-white">
+              <p className="mt-5 flex items-center font-display text-xl font-bold">
                 {active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
                 {isVerified(otherDisplayProfile?.username) && <VerifiedBadge size={18} />}
               </p>
@@ -2186,7 +2188,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     ) : null}
                   </p>
                   {otherDisplayProfile?.bio && (
-                    <p className="mt-5 max-w-xs whitespace-pre-wrap text-sm text-white/80">
+                    <p className="mt-5 max-w-xs whitespace-pre-wrap text-sm text-[color:var(--color-text)]/80">
                       {otherDisplayProfile.bio}
                     </p>
                   )}
@@ -2196,10 +2198,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4 md:px-6">
+            <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
               <button
                 onClick={() => setActiveId(null)}
-                className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white md:hidden"
+                className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white md:hidden"
                 aria-label="Back to conversations"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -2208,7 +2210,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
               <button
                 onClick={() => setShowContactInfo(true)}
-                className="flex flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-white/5"
+                className="flex flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <Avatar
                   name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
@@ -2318,12 +2320,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         } ${
                           mine
                             ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white`
-                            : `${isImage ? "" : "glass"} rounded-bl-sm text-white`
+                            : `${isImage ? "" : "glass"} rounded-bl-sm text-[color:var(--color-text)]`
                         }`}
                       >
                         {quoted && (
                           <div
-                            className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/20 px-2 py-1 text-xs ${
+                            className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${
                               isImage ? "mx-2 mt-2" : ""
                             }`}
                           >
@@ -2371,7 +2373,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
 
             {replyingTo && (
-              <div className="relative z-10 flex items-center justify-between border-t border-white/5 bg-ink-800/60 px-6 py-2">
+              <div className="relative z-10 flex items-center justify-between border-t border-black/5 dark:border-white/5 bg-ink-800/60 px-6 py-2">
                 <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2">
                   <p className="text-xs font-medium text-violet-light">
                     Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}
@@ -2381,7 +2383,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <button
                   type="button"
                   onClick={() => setReplyingTo(null)}
-                  className="ml-3 shrink-0 text-mist hover:text-white"
+                  className="ml-3 shrink-0 text-mist hover:text-black dark:hover:text-white"
                   aria-label="Cancel reply"
                 >
                   ✕
@@ -2389,7 +2391,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 flex items-center gap-3 border-t border-white/5 px-6 py-4">
+            <form onSubmit={sendMessage} className="relative z-10 flex items-center gap-3 border-t border-black/5 dark:border-white/5 px-6 py-4">
               <input
                 ref={mediaInputRef}
                 type="file"
@@ -2401,8 +2403,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               {recording ? (
                 <div className="flex flex-1 items-center gap-3 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3">
                   <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-400" />
-                  <span className="flex-1 text-sm text-white/80">Recording… {formatDuration(recordingSeconds)}</span>
-                  <button type="button" onClick={cancelRecording} className="text-xs font-medium text-mist hover:text-white">
+                  <span className="flex-1 text-sm text-[color:var(--color-text)]/80">Recording… {formatDuration(recordingSeconds)}</span>
+                  <button type="button" onClick={cancelRecording} className="text-xs font-medium text-mist hover:text-black dark:hover:text-white">
                     Cancel
                   </button>
                 </div>
@@ -2412,7 +2414,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     type="button"
                     onClick={() => mediaInputRef.current?.click()}
                     disabled={uploadingMedia}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white disabled:opacity-40"
                     aria-label="Send image"
                   >
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -2435,7 +2437,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     }}
                     placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"}
                     disabled={uploadingMedia}
-                    className="flex-1 rounded-full border border-white/10 bg-ink-800 px-5 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60"
+                    className="flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60"
                   />
                 </>
               )}
@@ -2464,7 +2466,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   type="button"
                   onClick={startRecording}
                   disabled={uploadingMedia}
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/15 disabled:opacity-40"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-[color:var(--color-text)] transition hover:bg-black/10 dark:hover:bg-white/15 disabled:opacity-40"
                   aria-label="Record voice note"
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
