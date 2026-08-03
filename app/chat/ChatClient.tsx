@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useTheme } from "next-themes";
 import { createClient } from "@/lib/supabase/client";
 
 type Profile = {
@@ -391,7 +390,6 @@ function ReactionPills({
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
   useVisualViewportHeight();
 
   const [myProfile, setMyProfile] = useState<Profile>(initialProfile);
@@ -1772,30 +1770,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             Aira<span className="text-gradient">Think</span>
           </span>
           <button
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white"
-            aria-label="Toggle theme"
+            onClick={handleLogout}
+            className="text-xs font-medium text-mist transition hover:text-white"
           >
-            {theme === "dark" ? (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.7" />
-                <path
-                  d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                />
-              </svg>
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            )}
+            Log out
           </button>
         </div>
 
@@ -2070,13 +2048,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     {isVerified(myProfile.username) && <VerifiedBadge />}
                   </span>
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-white/5"
-                >
-                  <span className="text-xs font-medium text-mist">Account</span>
-                  <span className="text-sm font-medium text-red-400">Log out</span>
-                </button>
               </div>
 
               <div className="glass mt-4 rounded-2xl px-4 py-3.5">
