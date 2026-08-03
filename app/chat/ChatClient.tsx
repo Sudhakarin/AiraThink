@@ -198,7 +198,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
 
-  // ---- Calling state (audio only) ----
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
@@ -286,7 +285,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadConversations();
   }, [loadConversations]);
 
-  // Refresh unread badges when any message arrives anywhere (RLS filters what we actually receive)
   useEffect(() => {
     const channel = supabase
       .channel("global-messages")
@@ -348,7 +346,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [active?.otherProfile?.id, supabase]);
 
-  // Initial (latest PAGE_SIZE) message load + realtime subscription
   useEffect(() => {
     if (!activeId) return;
 
@@ -796,10 +793,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const otherDisplayProfile = otherProfileFresh ?? active?.otherProfile ?? null;
 
   return (
-    <div className="relative flex h-screen bg-ink-900 text-white">
+    <div className="relative flex h-screen w-full bg-ink-900 text-white">
       <audio ref={remoteAudioRef} autoPlay />
 
-      {/* ---- Call overlay (audio only) ---- */}
       {callStatus !== "idle" && callPeer && (
         <div className="fixed inset-0 z-50 flex flex-col bg-ink-900">
           <div className="pointer-events-none absolute inset-0 bg-aurora" />
@@ -879,11 +875,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
-      {/* Sidebar */}
       <aside
         className={`${
           activeId ? "hidden md:flex" : "flex"
-        } w-full max-w-xs flex-col border-r border-white/5 bg-ink-800/60`}
+        } w-full md:max-w-xs flex-col border-r border-white/5 bg-ink-800/60`}
       >
         <div className="flex items-center justify-between px-5 py-5">
           <span className="font-display text-lg font-bold">
@@ -1094,7 +1089,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       </aside>
 
-      {/* Main panel */}
       <section className={`${activeId ? "flex" : "hidden md:flex"} relative flex-1 flex-col`}>
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
