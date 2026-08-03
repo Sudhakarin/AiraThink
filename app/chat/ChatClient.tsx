@@ -26,6 +26,14 @@ type Message = {
   message_type?: MessageType;
   media_url?: string | null;
   media_duration?: number | null;
+  reply_to_id?: string | null;
+};
+
+type Reaction = {
+  id: string;
+  message_id: string;
+  user_id: string;
+  emoji: string;
 };
 
 type ConversationRow = {
@@ -51,6 +59,9 @@ const ICE_SERVERS: RTCConfiguration = {
 const PAGE_SIZE = 30;
 const CHAT_MEDIA_BUCKET = "chat-media";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB
+const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
+const SWIPE_REPLY_THRESHOLD = 44;
+const SWIPE_REPLY_MAX = 64;
 
 function initials(name: string) {
   return name
@@ -293,6 +304,41 @@ function useVisualViewportHeight() {
   }, []);
 }
 
+// Small pill showing grouped reaction emojis under a bubble
+function ReactionPills({
+  msgReactions,
+  myId,
+  onToggle,
+}: {
+  msgReactions: Reaction[];
+  myId: string;
+  onToggle: (emoji: string) => void;
+}) {
+  if (!msgReactions || msgReactions.length === 0) return null;
+  const grouped: Record<string, { count: number; mine: boolean }> = {};
+  msgReactions.forEach((r) => {
+    if (!grouped[r.emoji]) grouped[r.emoji] = { count: 0, mine: false };
+    grouped[r.emoji].count += 1;
+    if (r.user_id === myId) grouped[r.emoji].mine = true;
+  });
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {Object.entries(grouped).map(([emoji, info]) => (
+        <button
+          key={emoji}
+          onClick={() => onToggle(emoji)}
+          className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] transition ${
+            info.mine ? "bg-violet/30 ring-1 ring-violet-light" : "bg-white/10 hover:bg-white/15"
+          }`}
+        >
+          <span>{emoji}</span>
+          {info.count > 1 && <span className="text-[10px] text-white/70">{info.count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
@@ -320,6 +366,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
 
+  // --- reply + reactions ---
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
+  const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
+
   // --- image + voice note messaging ---
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -329,10 +382,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Actual mimeType the browser recorded with (iOS Safari can't do audio/webm,
-  // it needs audio/mp4) — captured at record-start time and used again when
-  // building the Blob / picking the upload extension, so the label always
-  // matches the real audio data.
   const recordingMimeTypeRef = useRef<string>("audio/webm");
 
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
@@ -496,6 +545,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     let cancelled = false;
     setMessages([]);
     setHasMore(true);
+    setReplyingTo(null);
+    setReactionsByMsg({});
 
     (async () => {
       const { data } = await supabase
@@ -508,6 +559,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const ordered = (data ?? []).slice().reverse();
       setMessages(ordered);
       setHasMore((data ?? []).length === PAGE_SIZE);
+      loadReactionsFor(ordered.map((m) => m.id));
     })();
 
     const channel = supabase
@@ -543,11 +595,62 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       )
       .subscribe();
 
+    // Reactions realtime — refetch grouped counts on any change for this conversation's messages
+    const reactionsChannel = supabase
+      .channel(`reactions:${activeId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload: any) => {
+        const row = (payload.new ?? payload.old) as Reaction | undefined;
+        if (!row) return;
+        setMessages((current) => {
+          if (current.some((m) => m.id === row.message_id)) {
+            loadReactionsFor(current.map((m) => m.id));
+          }
+          return current;
+        });
+      })
+      .subscribe();
+
     return () => {
       cancelled = true;
       supabase.removeChannel(channel);
+      supabase.removeChannel(reactionsChannel);
     };
   }, [activeId, supabase, loadConversations]);
+
+  async function loadReactionsFor(messageIds: string[]) {
+    if (messageIds.length === 0) return;
+    const { data } = await supabase
+      .from("message_reactions")
+      .select("*")
+      .in("message_id", messageIds);
+    const grouped: Record<string, Reaction[]> = {};
+    (data ?? []).forEach((r: Reaction) => {
+      grouped[r.message_id] = [...(grouped[r.message_id] ?? []), r];
+    });
+    setReactionsByMsg(grouped);
+  }
+
+  async function toggleReaction(messageId: string, emoji: string) {
+    setReactionPickerFor(null);
+    const existing = reactionsByMsg[messageId]?.find(
+      (r) => r.user_id === myProfile.id && r.emoji === emoji
+    );
+    if (existing) {
+      await supabase
+        .from("message_reactions")
+        .delete()
+        .eq("message_id", messageId)
+        .eq("user_id", myProfile.id)
+        .eq("emoji", emoji);
+    } else {
+      await supabase.from("message_reactions").insert({
+        message_id: messageId,
+        user_id: myProfile.id,
+        emoji,
+      });
+    }
+    loadReactionsFor(messages.map((m) => m.id));
+  }
 
   useEffect(() => {
     if (isPrependingRef.current) {
@@ -577,6 +680,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const prevHeight = container?.scrollHeight ?? 0;
       isPrependingRef.current = true;
       setMessages((prev) => [...older, ...prev]);
+      loadReactionsFor(older.map((m) => m.id));
       requestAnimationFrame(() => {
         if (container) {
           container.scrollTop = container.scrollHeight - prevHeight;
@@ -793,6 +897,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     setSending(true);
     setInput("");
+    const replyTo = replyingTo;
+    setReplyingTo(null);
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
@@ -803,6 +909,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       created_at: new Date().toISOString(),
       read_at: null,
       message_type: "text",
+      reply_to_id: replyTo?.id ?? null,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
@@ -813,6 +920,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         sender_id: myProfile.id,
         content,
         message_type: "text",
+        reply_to_id: replyTo?.id ?? null,
       })
       .select()
       .single();
@@ -823,6 +931,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       console.error("sendMessage insert failed:", error);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content);
+      setReplyingTo(replyTo);
       alert("Message bhej nahi paya:\n" + (error?.message ?? "unknown error"));
       setSending(false);
       return;
@@ -844,6 +953,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   // Shared insert for image / voice messages
   async function sendMediaMessage(opts: { type: "image" | "voice"; url: string; duration?: number }) {
     if (!activeId) return;
+    const replyTo = replyingTo;
+    setReplyingTo(null);
 
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
@@ -856,6 +967,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       message_type: opts.type,
       media_url: opts.url,
       media_duration: opts.duration ?? null,
+      reply_to_id: replyTo?.id ?? null,
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
@@ -868,6 +980,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         message_type: opts.type,
         media_url: opts.url,
         media_duration: opts.duration ?? null,
+        reply_to_id: replyTo?.id ?? null,
       })
       .select()
       .single();
@@ -926,8 +1039,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordingStreamRef.current = stream;
 
-      // Pick a mimeType the browser actually supports.
-      // iOS Safari doesn't support "audio/webm" — it needs audio/mp4.
       const candidates = [
         "audio/mp4",
         "audio/webm;codecs=opus",
@@ -1004,8 +1115,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     setUploadingMedia(true);
 
-    // Pick a file extension that matches the actual recorded format so the
-    // uploaded file's label and its real audio data always agree.
     const ext = mimeType.includes("mp4")
       ? "m4a"
       : mimeType.includes("webm")
@@ -1172,6 +1281,44 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .padStart(2, "0");
     const sec = (s % 60).toString().padStart(2, "0");
     return `${m}:${sec}`;
+  }
+
+  function messageById(id?: string | null) {
+    if (!id) return null;
+    return messages.find((m) => m.id === id) ?? null;
+  }
+
+  function previewForQuote(m: Message | null) {
+    if (!m) return "Message";
+    if (m.message_type === "image") return "📷 Photo";
+    if (m.message_type === "voice") return "🎤 Voice message";
+    return m.content;
+  }
+
+  // --- swipe-to-reply touch handlers ---
+  function onBubbleTouchStart(e: React.TouchEvent, m: Message) {
+    if (reactionPickerFor) setReactionPickerFor(null);
+    swipeStartRef.current = { id: m.id, x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+
+  function onBubbleTouchMove(e: React.TouchEvent, m: Message) {
+    const start = swipeStartRef.current;
+    if (!start || start.id !== m.id) return;
+    const dx = e.touches[0].clientX - start.x;
+    const dy = e.touches[0].clientY - start.y;
+    // ignore mostly-vertical touches so scrolling still works
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    const clamped = Math.max(0, Math.min(dx, SWIPE_REPLY_MAX));
+    setSwipeState({ id: m.id, dx: clamped });
+  }
+
+  function onBubbleTouchEnd(m: Message) {
+    const state = swipeState;
+    swipeStartRef.current = null;
+    setSwipeState(null);
+    if (state && state.id === m.id && state.dx > SWIPE_REPLY_THRESHOLD) {
+      setReplyingTo(m);
+    }
   }
 
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
@@ -1604,38 +1751,107 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const mine = m.sender_id === myProfile.id;
                 const isImage = m.message_type === "image" && !!m.media_url;
                 const isVoice = m.message_type === "voice" && !!m.media_url;
+                const quoted = messageById(m.reply_to_id);
+                const isSwiping = swipeState?.id === m.id;
+                const translateX = isSwiping ? swipeState!.dx : 0;
 
                 return (
-                  <div key={m.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-md text-sm ${
-                        isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"
-                      } ${
-                        mine
-                          ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white`
-                          : `${isImage ? "" : "glass"} rounded-bl-sm text-white`
-                      }`}
-                    >
-                      {isImage ? (
-                        <img
-                          src={m.media_url!}
-                          alt="Shared photo"
-                          className="max-h-72 w-full cursor-pointer rounded-xl object-cover"
-                          onClick={() => window.open(m.media_url!, "_blank")}
-                        />
-                      ) : isVoice ? (
-                        <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
-                      ) : (
-                        <p>{m.content}</p>
-                      )}
-                      <p
-                        className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
-                          mine ? "text-white/60" : "text-mist"
-                        } ${isImage ? "px-2 pb-1" : ""}`}
+                  <div
+                    key={m.id}
+                    className={`relative flex ${mine ? "justify-end" : "justify-start"}`}
+                    onTouchStart={(e) => onBubbleTouchStart(e, m)}
+                    onTouchMove={(e) => onBubbleTouchMove(e, m)}
+                    onTouchEnd={() => onBubbleTouchEnd(m)}
+                  >
+                    {/* reply icon revealed while swiping */}
+                    {isSwiping && translateX > 12 && (
+                      <span
+                        className="absolute left-0 top-1/2 -translate-y-1/2 text-violet-light"
+                        style={{ opacity: Math.min(1, translateX / SWIPE_REPLY_THRESHOLD) }}
                       >
-                        {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        {mine && <Ticks read={!!m.read_at} />}
-                      </p>
+                        ↩
+                      </span>
+                    )}
+
+                    <div
+                      style={{
+                        transform: `translateX(${translateX}px)`,
+                        transition: isSwiping ? "none" : "transform 0.15s ease-out",
+                      }}
+                      className="max-w-md"
+                      onDoubleClick={() => toggleReaction(m.id, "❤️")}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setReactionPickerFor(reactionPickerFor === m.id ? null : m.id);
+                      }}
+                    >
+                      {reactionPickerFor === m.id && (
+                        <div
+                          className={`mb-1 flex gap-1 rounded-full bg-ink-800 px-2 py-1 shadow-lg ${
+                            mine ? "justify-end" : "justify-start"
+                          }`}
+                        >
+                          {QUICK_EMOJIS.map((emo) => (
+                            <button
+                              key={emo}
+                              onClick={() => toggleReaction(m.id, emo)}
+                              className="text-lg leading-none hover:scale-110 transition"
+                            >
+                              {emo}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      <div
+                        className={`text-sm ${
+                          isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"
+                        } ${
+                          mine
+                            ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white`
+                            : `${isImage ? "" : "glass"} rounded-bl-sm text-white`
+                        }`}
+                      >
+                        {quoted && (
+                          <div
+                            className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/20 px-2 py-1 text-xs ${
+                              isImage ? "mx-2 mt-2" : ""
+                            }`}
+                          >
+                            <p className="font-medium text-violet-light">
+                              {quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}
+                            </p>
+                            <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
+                          </div>
+                        )}
+
+                        {isImage ? (
+                          <img
+                            src={m.media_url!}
+                            alt="Shared photo"
+                            className="max-h-72 w-full cursor-pointer rounded-xl object-cover"
+                            onClick={() => window.open(m.media_url!, "_blank")}
+                          />
+                        ) : isVoice ? (
+                          <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
+                        ) : (
+                          <p>{m.content}</p>
+                        )}
+                        <p
+                          className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
+                            mine ? "text-white/60" : "text-mist"
+                          } ${isImage ? "px-2 pb-1" : ""}`}
+                        >
+                          {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          {mine && <Ticks read={!!m.read_at} />}
+                        </p>
+                      </div>
+
+                      <ReactionPills
+                        msgReactions={reactionsByMsg[m.id] ?? []}
+                        myId={myProfile.id}
+                        onToggle={(emoji) => toggleReaction(m.id, emoji)}
+                      />
                     </div>
                   </div>
                 );
@@ -1644,6 +1860,25 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>
               )}
             </div>
+
+            {replyingTo && (
+              <div className="relative z-10 flex items-center justify-between border-t border-white/5 bg-ink-800/60 px-6 py-2">
+                <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2">
+                  <p className="text-xs font-medium text-violet-light">
+                    Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}
+                  </p>
+                  <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyingTo(null)}
+                  className="ml-3 shrink-0 text-mist hover:text-white"
+                  aria-label="Cancel reply"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
 
             <form onSubmit={sendMessage} className="relative z-10 flex items-center gap-3 border-t border-white/5 px-6 py-4">
               <input
@@ -1689,7 +1924,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
                       }, 300);
                     }}
-                    placeholder={uploadingMedia ? "Sending…" : "Type a message…"}
+                    placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"}
                     disabled={uploadingMedia}
                     className="flex-1 rounded-full border border-white/10 bg-ink-800 px-5 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60"
                   />
