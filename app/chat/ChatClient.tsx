@@ -789,9 +789,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setSending(true);
     setInput("");
 
-    const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
-      id: tempId,
+      id: `temp-${Date.now()}`,
       conversation_id: activeId,
       sender_id: myProfile.id,
       content,
@@ -801,36 +800,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
-    const { data: inserted, error } = await supabase
-      .from("messages")
-      .insert({
-        conversation_id: activeId,
-        sender_id: myProfile.id,
-        content,
-        message_type: "text",
-      })
-      .select()
-      .single();
-
-    if (error || !inserted) {
-      // Insert failed — remove the fake "sent" bubble and give the text back
-      // to the user instead of silently losing it.
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      setInput(content);
-      alert("Message bhej nahi paya: " + (error?.message ?? "unknown error"));
-      setSending(false);
-      return;
-    }
-
-    // Replace the optimistic bubble with the real DB row (covers the case
-    // where our own realtime INSERT event is delayed or missed entirely).
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === (inserted as Message).id)) {
-        return prev.filter((m) => m.id !== tempId);
-      }
-      return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
+    await supabase.from("messages").insert({
+      conversation_id: activeId,
+      sender_id: myProfile.id,
+      content,
+      message_type: "text",
     });
-
     loadConversations();
     setSending(false);
   }
@@ -839,9 +814,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function sendMediaMessage(opts: { type: "image" | "voice"; url: string; duration?: number }) {
     if (!activeId) return;
 
-    const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = {
-      id: tempId,
+      id: `temp-${Date.now()}`,
       conversation_id: activeId,
       sender_id: myProfile.id,
       content: "",
@@ -853,32 +827,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
     setMessages((prev) => [...prev, optimisticMsg]);
 
-    const { data: inserted, error } = await supabase
-      .from("messages")
-      .insert({
-        conversation_id: activeId,
-        sender_id: myProfile.id,
-        content: "",
-        message_type: opts.type,
-        media_url: opts.url,
-        media_duration: opts.duration ?? null,
-      })
-      .select()
-      .single();
-
-    if (error || !inserted) {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      alert("Media message bhej nahi paya: " + (error?.message ?? "unknown error"));
-      return;
-    }
-
-    setMessages((prev) => {
-      if (prev.some((m) => m.id === (inserted as Message).id)) {
-        return prev.filter((m) => m.id !== tempId);
-      }
-      return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
+    await supabase.from("messages").insert({
+      conversation_id: activeId,
+      sender_id: myProfile.id,
+      content: "",
+      message_type: opts.type,
+      media_url: opts.url,
+      media_duration: opts.duration ?? null,
     });
-
     loadConversations();
   }
 
