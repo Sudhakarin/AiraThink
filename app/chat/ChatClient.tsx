@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { createClient } from "@/lib/supabase/client";
+import { subscribeToPush } from "@/lib/push";
 
 type Profile = {
   id: string;
@@ -88,6 +89,22 @@ const HOME_FEATURES = [
   { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
   { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
 ];
+
+// Fire-and-forget helper to trigger a push notification via our API route.
+// Failures are swallowed so chat functionality never breaks because of push.
+function sendPushNotification(opts: { userId?: string | null; title: string; body: string; url?: string }) {
+  if (!opts.userId) return;
+  fetch("/api/send-push", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: opts.userId,
+      title: opts.title,
+      body: opts.body,
+      url: opts.url || "/",
+    }),
+  }).catch(() => {});
+}
 
 function initials(name: string) {
   return name
@@ -478,6 +495,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     });
   }, [supabase]);
 
+  // Register for push notifications once we know who the current user is.
+  useEffect(() => {
+    subscribeToPush(myProfile.id);
+  }, [myProfile.id]);
+
   const loadConversations = useCallback(async () => {
     setLoadingConvos(true);
 
@@ -722,6 +744,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         user_id: myProfile.id,
         emoji,
       });
+
+      // Notify the message's original sender that someone reacted (skip self-reacts).
+      const targetMsg = messages.find((m) => m.id === messageId);
+      if (targetMsg && targetMsg.sender_id !== myProfile.id) {
+        sendPushNotification({
+          userId: targetMsg.sender_id,
+          title: myProfile.display_name,
+          body: `${emoji} reacted to your message`,
+          url: "/",
+        });
+      }
     }
     loadReactionsFor(messages.map((m) => m.id));
   }
@@ -1021,6 +1054,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
     });
 
+    // Push notify the other participant (1:1 chats only for now).
+    sendPushNotification({
+      userId: active?.otherProfile?.id,
+      title: myProfile.display_name,
+      body: content,
+      url: "/",
+    });
+
     loadConversations();
     setSending(false);
   }
@@ -1072,6 +1113,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         return prev.filter((m) => m.id !== tempId);
       }
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
+    });
+
+    // Push notify the other participant about the new media message.
+    sendPushNotification({
+      userId: active?.otherProfile?.id,
+      title: myProfile.display_name,
+      body: opts.type === "image" ? "📷 Photo" : "🎤 Voice message",
+      url: "/",
     });
 
     loadConversations();
@@ -1442,6 +1491,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     setCallPeer(peer);
     setCallStatus("outgoing");
+
+    // Let the other person know they have an incoming call, even if the
+    // realtime broadcast doesn't reach them (e.g. app closed / backgrounded).
+    sendPushNotification({
+      userId: peer.id,
+      title: myProfile.display_name,
+      body: "Incoming call…",
+      url: "/",
+    });
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
