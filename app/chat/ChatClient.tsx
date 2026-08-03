@@ -329,6 +329,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Actual mimeType the browser recorded with (iOS Safari can't do audio/webm,
+  // it needs audio/mp4) — captured at record-start time and used again when
+  // building the Blob / picking the upload extension, so the label always
+  // matches the real audio data.
+  const recordingMimeTypeRef = useRef<string>("audio/webm");
 
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
@@ -815,9 +820,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (error || !inserted) {
       // Insert failed — remove the fake "sent" bubble and give the text back
       // to the user instead of silently losing it.
+      console.error("sendMessage insert failed:", error);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content);
-      alert("Message bhej nahi paya: " + (error?.message ?? "unknown error"));
+      alert("Message bhej nahi paya:\n" + (error?.message ?? "unknown error"));
       setSending(false);
       return;
     }
@@ -867,8 +873,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .single();
 
     if (error || !inserted) {
+      console.error("sendMediaMessage insert failed:", error);
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      alert("Media message bhej nahi paya: " + (error?.message ?? "unknown error"));
+      alert("Media message bhej nahi paya:\n" + (error?.message ?? "unknown error"));
       return;
     }
 
@@ -919,7 +926,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       recordingStreamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream);
+      // Pick a mimeType the browser actually supports.
+      // iOS Safari doesn't support "audio/webm" — it needs audio/mp4.
+      const candidates = [
+        "audio/mp4",
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/aac",
+        "audio/ogg",
+      ];
+      const supportedType =
+        candidates.find(
+          (t) => typeof MediaRecorder.isTypeSupported === "function" && MediaRecorder.isTypeSupported(t)
+        ) || "";
+
+      const recorder = supportedType
+        ? new MediaRecorder(stream, { mimeType: supportedType })
+        : new MediaRecorder(stream);
+
+      recordingMimeTypeRef.current = recorder.mimeType || supportedType || "audio/webm";
+
       audioChunksRef.current = [];
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);
@@ -956,10 +982,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (!recorder || recorder.state === "inactive") return;
 
     const finalDuration = recordingSeconds;
+    const mimeType = recordingMimeTypeRef.current || "audio/webm";
 
     const blob: Blob = await new Promise((resolve) => {
       recorder.onstop = () => {
-        resolve(new Blob(audioChunksRef.current, { type: "audio/webm" }));
+        resolve(new Blob(audioChunksRef.current, { type: mimeType }));
       };
       recorder.stop();
     });
@@ -976,11 +1003,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (!activeId || finalDuration < 1) return; // ignore accidental taps
 
     setUploadingMedia(true);
-    const path = `${activeId}/${myProfile.id}-${Date.now()}.webm`;
+
+    // Pick a file extension that matches the actual recorded format so the
+    // uploaded file's label and its real audio data always agree.
+    const ext = mimeType.includes("mp4")
+      ? "m4a"
+      : mimeType.includes("webm")
+      ? "webm"
+      : mimeType.includes("ogg")
+      ? "ogg"
+      : mimeType.includes("aac")
+      ? "aac"
+      : "webm";
+
+    const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, blob, {
       cacheControl: "3600",
-      contentType: "audio/webm",
+      contentType: mimeType,
     });
 
     if (uploadError) {
