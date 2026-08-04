@@ -1632,7 +1632,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div
-      className="relative flex w-full bg-ink-900 text-[color:var(--color-text)]"
+      className="relative flex w-full overflow-x-hidden bg-ink-900 text-[color:var(--color-text)]"
       style={{ height: "var(--app-height, 100dvh)" }}
     >
       <audio ref={remoteAudioRef} autoPlay />
@@ -2224,7 +2224,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       </aside>
 
-      <section className={`${activeId ? "flex" : "hidden md:flex"} relative flex-1 flex-col`}>
+      <section className={`${activeId ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}>
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
         {!active ? (
@@ -2304,7 +2304,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
               <button
                 onClick={() => setShowContactInfo(true)}
-                className="flex flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
               >
                 <Avatar
                   name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}
@@ -2312,13 +2312,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   online={otherIsOnline}
                   avatarUrl={active.otherProfile?.avatar_url}
                 />
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="flex items-center text-sm font-semibold">
-                    <span>{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
+                    <span className="truncate">{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
                     {isVerified(active.otherProfile?.username) && <VerifiedBadge />}
                   </p>
                   {!active.is_group && (
-                    <p className="text-xs text-mist">
+                    <p className="truncate text-xs text-mist">
                       {otherIsOnline ? (
                         <span className="text-teal">Active now</span>
                       ) : otherProfileFresh?.last_seen ? (
@@ -2335,7 +2335,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <button
                   onClick={startCall}
                   disabled={callStatus !== "idle"}
-                  className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40"
                   aria-label="Voice call"
                 >
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -2350,7 +2350,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               )}
             </header>
 
-            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-3 overflow-y-auto px-6 py-6">
+            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-6">
               {loadingMore && <p className="pb-2 text-center text-xs text-mist">Loading older messages…</p>}
               {messages.map((m) => {
                 const mine = m.sender_id === myProfile.id;
@@ -2383,7 +2383,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         transform: `translateX(${translateX}px)`,
                         transition: isSwiping ? "none" : "transform 0.15s ease-out",
                       }}
-                      className="max-w-md"
+                      className="max-w-[80%] md:max-w-md"
                       onDoubleClick={() => toggleReaction(m.id, "❤️")}
                       onContextMenu={(e) => {
                         e.preventDefault();
@@ -2440,7 +2440,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         ) : isVoice ? (
                           <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
                         ) : (
-                          <p>{m.content}</p>
+                          <p className="whitespace-pre-wrap break-words">{m.content}</p>
                         )}
                         <p
                           className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
@@ -2531,7 +2531,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     }}
                     placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"}
                     disabled={uploadingMedia}
-                    className="flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60"
+                    className="min-w-0 flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60"
                   />
                 </>
               )}
@@ -2551,7 +2551,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <button
                   type="submit"
                   disabled={sending}
-                  className="rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
+                  className="shrink-0 rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
                 >
                   Send
                 </button>
