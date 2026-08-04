@@ -232,7 +232,7 @@ function Ticks({ read }: { read: boolean }) {
 function TabIcon({ tab }: { tab: MobileTab }) {
   if (tab === "home") {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <path d="M4 11l8-7 8 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
@@ -240,7 +240,7 @@ function TabIcon({ tab }: { tab: MobileTab }) {
   }
   if (tab === "status") {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="3 3" />
         <circle cx="12" cy="12" r="3.5" fill="currentColor" />
       </svg>
@@ -248,7 +248,7 @@ function TabIcon({ tab }: { tab: MobileTab }) {
   }
   if (tab === "chats") {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <path
           d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"
           stroke="currentColor"
@@ -260,14 +260,14 @@ function TabIcon({ tab }: { tab: MobileTab }) {
   }
   if (tab === "search") {
     return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
         <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     );
   }
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
       <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
@@ -1837,7 +1837,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         } w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}
       >
         <div className="flex items-center justify-between px-5 py-5">
-          <span className="font-display text-lg font-bold">
+          <span className="font-display text-2xl font-bold">
             Aira<span className="text-gradient">Think</span>
           </span>
           <button
@@ -1954,7 +1954,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           name={myProfile.display_name}
                           color={myProfile.avatar_color}
                           avatarUrl={myProfile.avatar_url}
-                          size={56}
+                          size={64}
                         />
                       </StatusRing>
                     </button>
@@ -1963,7 +1963,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       name={myProfile.display_name}
                       color={myProfile.avatar_color}
                       avatarUrl={myProfile.avatar_url}
-                      size={56}
+                      size={64}
                     />
                   )}
                   <button
@@ -1981,8 +1981,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   onClick={() => (myStatuses.length > 0 ? openStatusViewer(myProfile.id) : setShowTextStatusComposer(true))}
                   className="flex-1 text-left"
                 >
-                  <p className="text-sm font-medium">My Status</p>
-                  <p className="text-xs text-mist">
+                  <p className="text-base font-semibold">My Status</p>
+                  <p className="text-sm text-mist">
                     {uploadingStatus ? "Uploading…" : myStatuses.length > 0 ? "Tap to view" : "Tap to add a status update"}
                   </p>
                 </button>
@@ -2015,15 +2015,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         name={p?.display_name ?? "Unknown"}
                         color={p?.avatar_color ?? "#7C5CFF"}
                         avatarUrl={p?.avatar_url}
-                        size={56}
+                        size={64}
                       />
                     </StatusRing>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-sm font-medium">
+                      <p className="flex items-center truncate text-base font-semibold">
                         <span className="truncate">{p?.display_name ?? "Unknown"}</span>
                         {isVerified(p?.username) && <VerifiedBadge />}
                       </p>
-                      <p className="text-xs text-mist">{formatLastSeen(latest.created_at)}</p>
+                      <p className="text-sm text-mist">{formatLastSeen(latest.created_at)}</p>
                     </div>
                   </button>
                 );
@@ -2052,22 +2052,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <button
                     key={c.id}
                     onClick={() => setActiveId(c.id)}
-                    className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                    className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
                       activeId === c.id ? "bg-violet/15" : "hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                   >
                     <StatusRing {...ring}>
-                      <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} />
+                      <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
                     </StatusRing>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-base font-semibold">
+                      <p className="flex items-center truncate text-lg font-semibold">
                         <span className="truncate">{name}</span>
-                        {isVerified(c.otherProfile?.username) && <VerifiedBadge />}
+                        {isVerified(c.otherProfile?.username) && <VerifiedBadge size={16} />}
                       </p>
-                      <p className="truncate text-xs text-mist">{c.lastMessage}</p>
+                      <p className="truncate text-sm text-mist">{c.lastMessage}</p>
                     </div>
                     {c.unreadCount > 0 && (
-                      <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1.5 text-[11px] font-bold text-[#0A0C12]">
+                      <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0C12]">
                         {c.unreadCount > 99 ? "99+" : c.unreadCount}
                       </span>
                     )}
@@ -2213,7 +2213,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <button
               key={tab}
               onClick={() => setMobileTab(tab)}
-              className={`flex flex-col items-center gap-1 py-3 text-[11px] font-medium capitalize transition ${
+              className={`flex flex-col items-center gap-1.5 py-3.5 text-sm font-medium capitalize transition ${
                 mobileTab === tab ? "text-violet-light" : "text-mist"
               }`}
             >
