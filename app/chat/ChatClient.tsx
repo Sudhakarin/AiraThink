@@ -142,12 +142,24 @@ function isVerified(username?: string) {
 
 function VerifiedBadge({ size = 14 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="ml-1 inline-block shrink-0 align-middle">
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      className="ml-1 inline-block shrink-0 align-middle"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <path
-        d="M12 2l2.4 1.5 2.8-.4 1.2 2.6 2.6 1.2-.4 2.8L22 12l-1.5 2.4.4 2.8-2.6 1.2-1.2 2.6-2.8-.4L12 22l-2.4-1.5-2.8.4-1.2-2.6-2.6-1.2.4-2.8L2 12l1.5-2.4-.4-2.8 2.6-1.2 1.2-2.6 2.8.4L12 2z"
-        fill="#3B9EFF"
+        d="M12 1.8l2.2 1.6 2.8-.4 1.1 2.6 2.6 1.1-.4 2.8L22.2 12l-1.9 2.3.4 2.8-2.6 1.1-1.1 2.6-2.8-.4L12 22.2l-2.2-1.8-2.8.4-1.1-2.6-2.6-1.1.4-2.8L1.8 12l1.9-2.3-.4-2.8 2.6-1.1 1.1-2.6 2.8.4L12 1.8Z"
+        fill="white"
       />
-      <path d="M8.5 12.3l2.2 2.2 4.8-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M8.2 12.3l2.3 2.3 5.2-5.2"
+        stroke="#111827"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
