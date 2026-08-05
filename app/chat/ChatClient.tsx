@@ -137,7 +137,7 @@ function formatDuration(totalSeconds: number) {
 }
 
 function isVerified(username?: string) {
-  return username?.toLowerCase() === "sudhakarin";
+  return ["sudhakarin", "tanushree2251"].includes(username?.toLowerCase() || "");
 }
 
 function VerifiedBadge({ size = 14 }: { size?: number }) {
