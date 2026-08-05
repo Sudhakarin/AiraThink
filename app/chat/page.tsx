@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import ChatClient from "./ChatClient";
 
 export default async function ChatPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   const {
     data: { user },
