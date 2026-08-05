@@ -154,12 +154,13 @@ function VerifiedBadge({ size = 14 }: { size?: number }) {
         fill="white"
       />
       <path
-        d="M8.2 12.3l2.3 2.3 5.2-5.2"
-        stroke="#111827"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
+  d="M7.6 12.1L10.4 14.9L16.6 8.7"
+  fill="none"
+  stroke="#111827"
+  strokeWidth="1.9"
+  strokeLinecap="round"
+  strokeLinejoin="round"
+/>
     </svg>
   );
 }
