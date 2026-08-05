@@ -1,94 +1,122 @@
-"use client";
+'use client'
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const router = useRouter();
-  const supabase = createClient();
+  const supabase = createClient()
+  const router = useRouter()
+  const [email, setEmail] = useState('')
+  const [otp, setOtp] = useState('')
+  const [step, setStep] = useState<'email' | 'otp'>('email')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Step 1: OTP bhejo
+  async function handleSendOtp(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: email,
+    })
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    setLoading(false);
-
-    if (error) {
-      setError(error.message);
-      return;
+    if (err) {
+      setError(err.message)
+    } else {
+      setStep('otp') // OTP form dikhao
     }
+    setLoading(false)
+  }
 
-    router.push("/chat");
-    router.refresh();
+  // Step 2: OTP verify karo
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const { error: err } = await supabase.auth.verifyOtp({
+      email: email,
+      token: otp,
+      type: 'email',
+    })
+
+    if (err) {
+      setError(err.message)
+    } else {
+      router.push('/') // Chat page pe bhejo
+    }
+    setLoading(false)
   }
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-900 px-6">
-      <div className="pointer-events-none absolute inset-0 bg-aurora" />
+    <div className="flex min-h-screen items-center justify-center bg-ink-900 px-4">
+      <div className="w-full max-w-sm rounded-2xl bg-ink-800/60 p-8 shadow-xl">
+        
+        <h1 className="mb-2 text-center font-display text-2xl font-bold text-white">
+          Aira<span className="text-gradient">Think</span>
+        </h1>
 
-      <div className="glass animate-fadeUp relative z-10 w-full max-w-md rounded-3xl p-8 shadow-2xl">
-        <Link href="/" className="font-display text-lg font-bold text-white">
-                    Aira<span className="text-gradient">Think!</span>
-        </Link>
-
-        <h1 className="mt-6 font-display text-2xl font-bold text-white">Welcome back</h1>
-        <p className="mt-1 text-sm text-mist">Log in to keep the conversation going.</p>
-
-        <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-mist-light">Email</label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-mist-light">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
-            />
-          </div>
-
-          {error && (
-            <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-2 rounded-xl bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
-          >
-            {loading ? "Logging in…" : "Log in"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-mist">
-          New here?{" "}
-          <Link href="/signup" className="font-medium text-violet-light hover:underline">
-            Create an account
-          </Link>
-        </p>
+        {step === 'email' ? (
+          <>
+            <p className="mb-6 text-center text-sm text-mist">
+              Email dalo, OTP aayega ✉️
+            </p>
+            <form onSubmit={handleSendOtp} className="space-y-4">
+              <input
+                type="email"
+                placeholder="Email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+              />
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50"
+              >
+                {loading ? 'Bhej raha hai...' : 'OTP Bhejo'}
+              </button>
+            </form>
+          </>
+        ) : (
+          <>
+            <p className="mb-6 text-center text-sm text-mist">
+              {email} pe OTP bheja! 📧
+            </p>
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <input
+                type="text"
+                placeholder="6-digit OTP"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                maxLength={6}
+                required
+                className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-center text-xl tracking-widest text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+              />
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg disabled:opacity-50"
+              >
+                {loading ? 'Verify ho raha...' : 'Login Karo'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setStep('email'); setError(''); setOtp(''); }}
+                className="w-full text-xs text-mist hover:text-white"
+              >
+                ← Email badlo
+              </button>
+            </form>
+          </>
+        )}
       </div>
-    </main>
-  );
+    </div>
+  )
 }
