@@ -1,32 +1,14 @@
-import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from '@/lib/supabase/server'
+import { NextResponse } from 'next/server'
 
-export function createClient() {
-  const cookieStore = cookies();
+export async function GET(request: Request) {
+  const requestUrl = new URL(request.url)
+  const code = requestUrl.searchParams.get('code')
 
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value, ...options });
-          } catch {
-            // called from a Server Component, middleware handles refresh
-          }
-        },
-        remove(name: string, options: CookieOptions) {
-          try {
-            cookieStore.set({ name, value: "", ...options });
-          } catch {
-            // called from a Server Component, middleware handles refresh
-          }
-        },
-      },
-    }
-  );
+  if (code) {
+    const supabase = createClient()  // ← await nahi!
+    await supabase.auth.exchangeCodeForSession(code)
+  }
+
+  return NextResponse.redirect(`${requestUrl.origin}/`)
 }
