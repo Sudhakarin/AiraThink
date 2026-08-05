@@ -21,12 +21,15 @@ export default function LoginPage() {
 
     const { error: err } = await supabase.auth.signInWithOtp({
       email: email,
+      options: {
+        emailRedirectTo: `https://thinkchat-omega.vercel.app/auth/callback`,
+      },
     })
 
     if (err) {
       setError(err.message)
     } else {
-      setStep('otp') // OTP form dikhao
+      setStep('otp')
     }
     setLoading(false)
   }
@@ -46,7 +49,7 @@ export default function LoginPage() {
     if (err) {
       setError(err.message)
     } else {
-      router.push('/') // Chat page pe bhejo
+      router.push('/')
     }
     setLoading(false)
   }
