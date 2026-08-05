@@ -6,9 +6,9 @@ export async function GET(request: Request) {
   const code = requestUrl.searchParams.get('code')
 
   if (code) {
-    const supabase = await createClient()
+    const supabase = createClient()
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  return NextResponse.redirect(`${requestUrl.origin}/`)
+  return NextResponse.redirect(`${requestUrl.origin}/chat`)
 }
