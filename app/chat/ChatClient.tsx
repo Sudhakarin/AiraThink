@@ -453,6 +453,12 @@ useEffect(() => {
   }, 4000);
   return () => clearInterval(interval);
 }, [loadNotifications]);
+useEffect(() => {
+  const interval = setInterval(() => {
+    loadConversations();
+  }, 5000);
+  return () => clearInterval(interval);
+}, [loadConversations]);
 
   useEffect(() => {
     const channel = supabase
