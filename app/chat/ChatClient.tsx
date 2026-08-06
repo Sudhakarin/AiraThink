@@ -490,7 +490,7 @@ useEffect(() => {
   async function acceptRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "accepted" }).eq("id", req.id);
 
-    const { data: convo } = await supabase.from("conversations").insert({ is_group: false, created_by: req.from_user_id }).select().single();
+    const { data: convo } = await supabase.from("conversations").insert({ is_group: false, created_by: myProfile.id }).select().single();
     if (convo) {
       await supabase.from("conversation_participants").insert([
         { conversation_id: convo.id, user_id: myProfile.id },
