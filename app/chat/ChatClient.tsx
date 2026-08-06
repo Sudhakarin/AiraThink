@@ -367,7 +367,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   // ── CONNECT POPUP ──────────────────────────────────────────────
   const [connectPopupTarget, setConnectPopupTarget] = useState<Profile | null>(null);
-  // "ask" = fresh request prompt | "pending" = already sent | "declined" = declined by them
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
   const [connectSending, setConnectSending] = useState(false);
   // ───────────────────────────────────────────────────────────────
@@ -421,6 +420,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // contact info block/mute state
+  const [contactMuted, setContactMuted] = useState(false);
+  const [contactBlocked, setContactBlocked] = useState(false);
+
   const active = conversations.find((c) => c.id === activeId);
 
   useEffect(() => {
@@ -467,7 +470,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // --- Notifications (connection requests) ---
   const loadNotifications = useCallback(async () => {
     const { data } = await supabase
       .from("connection_requests")
@@ -479,18 +481,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [myProfile.id, supabase]);
 
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
-useEffect(() => {
-  const interval = setInterval(() => {
-    loadNotifications();
-  }, 4000);
-  return () => clearInterval(interval);
-}, [loadNotifications]);
-useEffect(() => {
-  const interval = setInterval(() => {
-    loadConversations();
-  }, 5000);
-  return () => clearInterval(interval);
-}, [loadConversations]);
+  useEffect(() => {
+    const interval = setInterval(() => { loadNotifications(); }, 4000);
+    return () => clearInterval(interval);
+  }, [loadNotifications]);
+  useEffect(() => {
+    const interval = setInterval(() => { loadConversations(); }, 5000);
+    return () => clearInterval(interval);
+  }, [loadConversations]);
 
   useEffect(() => {
     const channel = supabase
@@ -502,67 +500,43 @@ useEffect(() => {
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadNotifications]);
 
-    useEffect(() => {
+  useEffect(() => {
     const channel = supabase
       .channel("my-new-conversation-participant")
       .on("postgres_changes", {
-          event: "INSERT",
-          schema: "public",
-          table: "conversation_participants",
-          filter: `user_id=eq.${myProfile.id}`,
-        },
-        () => {
-          loadConversations();
-        }
-      )
+        event: "INSERT",
+        schema: "public",
+        table: "conversation_participants",
+        filter: `user_id=eq.${myProfile.id}`,
+      }, () => { loadConversations(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadConversations]);
 
   async function acceptRequest(req: ConnectionRequest) {
-  await supabase.from("connection_requests")
-    .update({ status: "accepted" })
-    .eq("id", req.id);
-
-  const { data: existing } = await supabase
-    .from("conversation_participants")
-    .select("conversation_id")
-    .eq("user_id", myProfile.id);
-  
-  const myConvoIds = (existing ?? []).map((r: any) => r.conversation_id);
-  let convoId: string | null = null;
-
-  if (myConvoIds.length > 0) {
-    const { data: shared } = await supabase
-      .from("conversation_participants")
-      .select("conversation_id")
-      .eq("user_id", req.from_user_id)
-      .in("conversation_id", myConvoIds);
-    if (shared && shared.length > 0) convoId = shared[0].conversation_id;
+    await supabase.from("connection_requests").update({ status: "accepted" }).eq("id", req.id);
+    const { data: existing } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
+    const myConvoIds = (existing ?? []).map((r: any) => r.conversation_id);
+    let convoId: string | null = null;
+    if (myConvoIds.length > 0) {
+      const { data: shared } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", req.from_user_id).in("conversation_id", myConvoIds);
+      if (shared && shared.length > 0) convoId = shared[0].conversation_id;
+    }
+    if (!convoId) {
+      const { data: convo } = await supabase.from("conversations").insert({ is_group: false, created_by: myProfile.id }).select().single();
+      if (!convo) { loadNotifications(); setShowNotifications(false); return; }
+      convoId = convo.id;
+      await supabase.from("conversation_participants").insert([
+        { conversation_id: convoId, user_id: myProfile.id },
+        { conversation_id: convoId, user_id: req.from_user_id },
+      ]);
+    }
+    await loadConversations();
+    setActiveId(convoId);
+    setMobileTab("chats");
+    loadNotifications();
+    setShowNotifications(false);
   }
-
-  if (!convoId) {
-    const { data: convo } = await supabase
-      .from("conversations")
-      .insert({ is_group: false, created_by: myProfile.id })
-      .select()
-      .single();
-
-    if (!convo) { loadNotifications(); setShowNotifications(false); return; }
-    convoId = convo.id;
-
-    await supabase.from("conversation_participants").insert([
-      { conversation_id: convoId, user_id: myProfile.id },
-      { conversation_id: convoId, user_id: req.from_user_id },
-    ]);
-  }
-
-  await loadConversations();
-  setActiveId(convoId);
-  setMobileTab("chats");
-  loadNotifications();
-  setShowNotifications(false);
-}
 
   async function declineRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "declined" }).eq("id", req.id);
@@ -807,9 +781,7 @@ useEffect(() => {
     setSearchResults(data ?? []);
   }
 
-  // ── Open connect popup when user clicks a search result ──────────────────
   async function openConnectPopup(other: Profile) {
-    // Already have a conversation? Jump straight to it.
     const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
     const myIds = (mine ?? []).map((r) => r.conversation_id);
     if (myIds.length > 0) {
@@ -819,29 +791,18 @@ useEffect(() => {
         return;
       }
     }
-
-    // Check existing request
-    const { data: existing } = await supabase
-      .from("connection_requests")
-      .select("*")
-      .eq("from_user_id", myProfile.id)
-      .eq("to_user_id", other.id)
-      .maybeSingle();
-
+    const { data: existing } = await supabase.from("connection_requests").select("*").eq("from_user_id", myProfile.id).eq("to_user_id", other.id).maybeSingle();
     if (existing) {
       setConnectPopupTarget(other);
       if (existing.status === "pending") setConnectPopupMode("pending");
       else if (existing.status === "declined") setConnectPopupMode("declined");
-      else setConnectPopupMode("ask"); // accepted but no convo? show ask again
+      else setConnectPopupMode("ask");
       return;
     }
-
-    // Fresh — show "Wants to connect?" popup
     setConnectPopupTarget(other);
     setConnectPopupMode("ask");
   }
 
-  // ── Actually send the request after user taps Yes ────────────────────────
   async function confirmConnect() {
     if (!connectPopupTarget) return;
     setConnectSending(true);
@@ -859,14 +820,12 @@ useEffect(() => {
     setConnectPopupTarget(null);
     setConnectPopupMode(null);
   }
-  // ─────────────────────────────────────────────────────────────────────────
 
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setInput(value);
     const channel = activeChannelRef.current;
     if (!channel) return;
-
     if (value.trim().length === 0) {
       channel.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
       lastTypingSentRef.current = 0;
@@ -884,28 +843,22 @@ useEffect(() => {
     if (sending) return;
     const content = input.trim();
     if (!content || !activeId) return;
-
     setSending(true); setInput("");
     activeChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
     const replyTo = replyingTo; setReplyingTo(null);
-
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = { id: tempId, conversation_id: activeId, sender_id: myProfile.id, content, created_at: new Date().toISOString(), read_at: null, message_type: "text", reply_to_id: replyTo?.id ?? null };
     setMessages((prev) => [...prev, optimisticMsg]);
-
     const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content, message_type: "text", reply_to_id: replyTo?.id ?? null }).select().single();
-
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content); setReplyingTo(replyTo);
       setSending(false); return;
     }
-
     setMessages((prev) => {
       if (prev.some((m) => m.id === (inserted as Message).id)) return prev.filter((m) => m.id !== tempId);
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
     });
-
     sendPushNotification({ userId: active?.otherProfile?.id, title: myProfile.display_name, body: content, url: "/" });
     loadConversations();
     setSending(false);
@@ -914,23 +867,15 @@ useEffect(() => {
   async function sendMediaMessage(opts: { type: "image" | "voice"; url: string; duration?: number }) {
     if (!activeId) return;
     const replyTo = replyingTo; setReplyingTo(null);
-
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = { id: tempId, conversation_id: activeId, sender_id: myProfile.id, content: "", created_at: new Date().toISOString(), read_at: null, message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null };
     setMessages((prev) => [...prev, optimisticMsg]);
-
     const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content: "", message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null }).select().single();
-
-    if (error || !inserted) {
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      return;
-    }
-
+    if (error || !inserted) { setMessages((prev) => prev.filter((m) => m.id !== tempId)); return; }
     setMessages((prev) => {
       if (prev.some((m) => m.id === (inserted as Message).id)) return prev.filter((m) => m.id !== tempId);
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
     });
-
     sendPushNotification({ userId: active?.otherProfile?.id, title: myProfile.display_name, body: opts.type === "image" ? "📷 Photo" : "🎤 Voice message", url: "/" });
     loadConversations();
   }
@@ -1190,21 +1135,18 @@ useEffect(() => {
 
   return (
     <div className="relative flex w-full overflow-x-hidden bg-ink-900 text-[color:var(--color-text)]" style={{ height: "var(--app-height, 100dvh)" }}>
-      <style>{`@keyframes typingDot { 0%,80%,100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }`}</style>
+      <style>{`
+        @keyframes typingDot { 0%,80%,100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+        @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
       {/* ── CONNECT POPUP MODAL ───────────────────────────────────────────── */}
       {connectPopupTarget && connectPopupMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
           <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
-            {/* Avatar + Name */}
             <div className="flex flex-col items-center gap-3 pb-5">
-              <Avatar
-                name={connectPopupTarget.display_name}
-                color={connectPopupTarget.avatar_color}
-                size={72}
-                avatarUrl={connectPopupTarget.avatar_url}
-              />
+              <Avatar name={connectPopupTarget.display_name} color={connectPopupTarget.avatar_color} size={72} avatarUrl={connectPopupTarget.avatar_url} />
               <div className="text-center">
                 <p className="flex items-center justify-center font-display text-lg font-bold">
                   {connectPopupTarget.display_name}
@@ -1213,33 +1155,20 @@ useEffect(() => {
                 <p className="text-sm text-mist">@{connectPopupTarget.username}</p>
               </div>
             </div>
-
             <div className="mb-6 h-px w-full bg-white/10" />
-
-            {/* Message based on mode */}
             {connectPopupMode === "ask" && (
               <>
                 <p className="mb-6 text-center text-sm text-[color:var(--color-text)]/80">
                   Do you want to connect with <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>?
                 </p>
                 <div className="flex gap-3">
-                  <button
-                    onClick={closeConnectPopup}
-                    className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={confirmConnect}
-                    disabled={connectSending}
-                    className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
-                  >
+                  <button onClick={closeConnectPopup} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">Cancel</button>
+                  <button onClick={confirmConnect} disabled={connectSending} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50">
                     {connectSending ? "Sending…" : "Yes, Connect"}
                   </button>
                 </div>
               </>
             )}
-
             {connectPopupMode === "pending" && (
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
@@ -1248,15 +1177,9 @@ useEffect(() => {
                     You already sent a request to <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>. Waiting for them to accept.
                   </p>
                 </div>
-                <button
-                  onClick={closeConnectPopup}
-                  className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
-                >
-                  OK
-                </button>
+                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
               </>
             )}
-
             {connectPopupMode === "declined" && (
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
@@ -1265,18 +1188,12 @@ useEffect(() => {
                     <span className="font-semibold text-white">{connectPopupTarget.display_name}</span> has declined your request.
                   </p>
                 </div>
-                <button
-                  onClick={closeConnectPopup}
-                  className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
-                >
-                  OK
-                </button>
+                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
               </>
             )}
           </div>
         </div>
       )}
-      {/* ─────────────────────────────────────────────────────────────────── */}
 
       {callStatus !== "idle" && callPeer && (
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0C12]">
@@ -1375,14 +1292,8 @@ useEffect(() => {
       <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
         <div className="flex items-center justify-between px-5 py-5">
           <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">Think</span></span>
-
-          {/* Notification Bell */}
           <div className="relative">
-            <button
-              onClick={() => setShowNotifications((v) => !v)}
-              className="relative flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"
-              aria-label="Notifications"
-            >
+            <button onClick={() => setShowNotifications((v) => !v)} className="relative flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Notifications">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -1392,7 +1303,6 @@ useEffect(() => {
                 </span>
               )}
             </button>
-
             {showNotifications && (
               <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 bg-ink-800 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -1408,19 +1318,13 @@ useEffect(() => {
                         <div className="flex items-center gap-3">
                           <Avatar name={req.from_profile?.display_name ?? "User"} color={req.from_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={req.from_profile?.avatar_url} size={36} />
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-white">
-                              {req.from_profile?.display_name} wants to connect with you!
-                            </p>
+                            <p className="text-xs font-semibold text-white">{req.from_profile?.display_name} wants to connect with you!</p>
                             <p className="mt-0.5 text-[10px] text-mist">@{req.from_profile?.username}</p>
                           </div>
                         </div>
                         <div className="mt-2.5 flex gap-2">
-                          <button onClick={() => acceptRequest(req)} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-1.5 text-xs font-semibold text-white">
-                            Accept
-                          </button>
-                          <button onClick={() => declineRequest(req)} className="flex-1 rounded-full border border-white/10 py-1.5 text-xs font-semibold text-mist hover:text-white">
-                            Leave
-                          </button>
+                          <button onClick={() => acceptRequest(req)} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-1.5 text-xs font-semibold text-white">Accept</button>
+                          <button onClick={() => declineRequest(req)} className="flex-1 rounded-full border border-white/10 py-1.5 text-xs font-semibold text-mist hover:text-white">Leave</button>
                         </div>
                       </div>
                     ))}
@@ -1488,7 +1392,6 @@ useEffect(() => {
                 </button>
                 <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
               </div>
-
               {Object.keys(otherStatusesGrouped).length > 0 && (
                 <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Recent updates</p>
               )}
@@ -1551,26 +1454,13 @@ useEffect(() => {
 
           {mobileTab === "search" && (
             <div className="p-4">
-              <input
-                autoFocus
-                value={search}
-                onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Search by username…"
-                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none"
-              />
+              <input autoFocus value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search by username…" className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none" />
               <div className="mt-3">
                 {searchResults.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => openConnectPopup(r)}
-                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5"
-                  >
+                  <button key={r.id} onClick={() => openConnectPopup(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
                     <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center font-semibold">
-                        {r.display_name}
-                        {isVerified(r.username) && <VerifiedBadge />}
-                      </p>
+                      <p className="flex items-center font-semibold">{r.display_name}{isVerified(r.username) && <VerifiedBadge />}</p>
                       <p className="text-xs text-mist">@{r.username}</p>
                     </div>
                   </button>
@@ -1595,7 +1485,6 @@ useEffect(() => {
                 </button>
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
-
               <div className="glass mt-6 divide-y divide-black/5 dark:divide-white/5 overflow-hidden rounded-2xl">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <span className="text-xs font-medium text-mist">Full name</span>
@@ -1614,7 +1503,6 @@ useEffect(() => {
                   <span className="text-sm font-medium text-red-400">Log out</span>
                 </button>
               </div>
-
               <div className="glass mt-4 rounded-2xl px-4 py-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-mist">Bio</span>
@@ -1622,7 +1510,6 @@ useEffect(() => {
                 </div>
                 <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm placeholder:text-mist/50 outline-none" />
               </div>
-
               <button
                 onClick={() => { saveDisplayName(); saveBio(); }}
                 disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "")}
@@ -1655,30 +1542,122 @@ useEffect(() => {
             <p className="mt-1 max-w-xs text-sm text-mist">Or start a new one from Search — your messages sync in real time.</p>
           </div>
         ) : showContactInfo ? (
-          <div className="relative z-10 flex flex-1 flex-col">
-            <header className="glass flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4">
-              <button onClick={() => setShowContactInfo(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Back to chat">
+          /* ── REDESIGNED CONTACT INFO ─────────────────────────────────────── */
+          <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
+            {/* Glow */}
+            <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-30"
+              style={{ background: `radial-gradient(circle, ${otherDisplayProfile?.avatar_color ?? "#7C5CFF"}55 0%, transparent 70%)` }} />
+
+            {/* Header */}
+            <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4">
+              <button onClick={() => setShowContactInfo(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white" aria-label="Back to chat">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <p className="text-sm font-semibold">Contact info</p>
+              <p className="text-sm font-semibold text-white/80">Contact info</p>
             </header>
-            <div className="flex flex-1 flex-col items-center px-6 py-10 text-center">
-              <Avatar name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"} color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"} size={140} online={otherIsOnline} avatarUrl={otherDisplayProfile?.avatar_url} />
-              <p className="mt-5 flex items-center font-display text-xl font-bold">
+
+            {/* Avatar + name block */}
+            <div className="relative z-10 flex flex-col items-center px-6 pt-8 pb-6 text-center" style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}>
+              {/* Gradient ring around avatar */}
+              <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
+                <div className="rounded-full border-[3px] border-[#0A0C12]">
+                  <Avatar
+                    name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
+                    color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"}
+                    size={100}
+                    avatarUrl={otherDisplayProfile?.avatar_url}
+                  />
+                </div>
+              </div>
+
+              <h2 className="flex items-center font-display text-xl font-bold text-white">
                 {active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
                 {isVerified(otherDisplayProfile?.username) && <VerifiedBadge size={18} />}
-              </p>
+              </h2>
+
               {!active.is_group && (
-                <>
-                  <p className="mt-1 text-sm text-mist">@{otherDisplayProfile?.username}</p>
-                  <p className="mt-3 text-sm">
-                    {otherIsOnline ? <span className="text-teal">Active now</span> : otherDisplayProfile?.last_seen ? <span className="text-mist">Last seen {formatLastSeen(otherDisplayProfile.last_seen)}</span> : null}
-                  </p>
-                  {otherDisplayProfile?.bio && <p className="mt-5 max-w-xs whitespace-pre-wrap text-sm text-[color:var(--color-text)]/80">{otherDisplayProfile.bio}</p>}
-                </>
+                <p className="mt-1 text-sm text-white/45">@{otherDisplayProfile?.username}</p>
+              )}
+
+              {/* Online / last seen chip */}
+              {!active.is_group && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                  <span className={`h-2 w-2 rounded-full ${otherIsOnline ? "bg-teal" : "bg-white/25"}`} />
+                  <span className="text-xs text-white/60">
+                    {otherIsOnline ? "Active now" : otherDisplayProfile?.last_seen ? `Last seen ${formatLastSeen(otherDisplayProfile.last_seen)}` : "Offline"}
+                  </span>
+                </div>
+              )}
+
+              {/* Bio */}
+              {otherDisplayProfile?.bio && (
+                <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60">
+                  {otherDisplayProfile.bio}
+                </p>
               )}
             </div>
+
+            {/* Quick action buttons */}
+            {!active.is_group && (
+              <div className="relative z-10 flex gap-3 px-5 pb-5">
+                {/* Message */}
+                <button
+                  onClick={() => setShowContactInfo(false)}
+                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+                  <span className="text-[11px] font-semibold tracking-wide">Message</span>
+                </button>
+                {/* Call */}
+                <button
+                  onClick={() => { setShowContactInfo(false); startCall(); }}
+                  disabled={callStatus !== "idle"}
+                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8 disabled:opacity-40"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                  <span className="text-[11px] font-semibold tracking-wide">Call</span>
+                </button>
+                {/* Mute */}
+                <button
+                  onClick={() => setContactMuted((v) => !v)}
+                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8"
+                >
+                  {contactMuted ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  )}
+                  <span className="text-[11px] font-semibold tracking-wide">{contactMuted ? "Unmute" : "Mute"}</span>
+                </button>
+              </div>
+            )}
+
+            {/* Divider */}
+            <div className="relative z-10 mx-5 mb-4 h-px bg-white/6" />
+
+            {/* Danger zone */}
+            <div className="relative z-10 flex flex-col gap-2 px-5 pb-8">
+              <button
+                onClick={() => setContactBlocked((v) => !v)}
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition"
+                style={{
+                  background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(255,255,255,0.03)",
+                  borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.07)",
+                  color: "#F87171",
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                {contactBlocked ? "Unblock User" : "Block User"}
+              </button>
+              <button
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/7 bg-white/3 py-3.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/8"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                Delete Chat
+              </button>
+            </div>
           </div>
+          /* ─────────────────────────────────────────────────────────────────── */
         ) : (
           <>
             <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
@@ -1715,7 +1694,6 @@ useEffect(() => {
                 const quoted = messageById(m.reply_to_id);
                 const isSwiping = swipeState?.id === m.id;
                 const translateX = isSwiping ? swipeState!.dx : 0;
-
                 const prevMsg = messages[idx - 1];
                 const showDayDivider = !prevMsg || formatDayLabel(prevMsg.created_at) !== formatDayLabel(m.created_at);
                 const grouped = !!prevMsg && !showDayDivider && prevMsg.sender_id === m.sender_id
@@ -1768,9 +1746,7 @@ useEffect(() => {
                 );
               })}
               {peerTyping && !active.is_group && (
-                <div className="mt-2.5">
-                  <TypingBubble />
-                </div>
+                <div className="mt-2.5"><TypingBubble /></div>
               )}
               {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
             </div>
