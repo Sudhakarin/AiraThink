@@ -532,6 +532,7 @@ useEffect(() => {
   setShowNotifications(false);
 }
 
+
   const { data: convo, error: convoError } = await supabase
     .from("conversations")
     .insert({ is_group: false, created_by: myProfile.id })
