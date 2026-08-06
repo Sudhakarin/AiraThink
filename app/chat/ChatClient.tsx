@@ -458,23 +458,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadNotifications]);
 
-  // ── Realtime: jab koi meri request accept kare, meri chat list bhi update ho ──
-  useEffect(() => {
+    useEffect(() => {
     const channel = supabase
-      .channel("my-sent-requests-accepted")
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
+      .channel("my-new-conversation-participant")
+      .on("postgres_changes", {
+          event: "INSERT",
           schema: "public",
-          table: "connection_requests",
-          filter: `from_user_id=eq.${myProfile.id}`,
+          table: "conversation_participants",
+          filter: `user_id=eq.${myProfile.id}`,
         },
-        (payload) => {
-          const updated = payload.new as ConnectionRequest;
-          if (updated.status === "accepted") {
-            loadConversations();
-          }
+        () => {
+          loadConversations();
         }
       )
       .subscribe();
