@@ -532,29 +532,6 @@ useEffect(() => {
   setShowNotifications(false);
 }
 
-
-  const { data: convo, error: convoError } = await supabase
-    .from("conversations")
-    .insert({ is_group: false, created_by: myProfile.id })
-    .select()
-    .single();
-  
-  if (convoError) { alert("Convo error: " + convoError.message); return; }
-  
-  if (convo) {
-    const { error: partError } = await supabase.from("conversation_participants").insert([
-      { conversation_id: convo.id, user_id: myProfile.id },
-      { conversation_id: convo.id, user_id: req.from_user_id },
-    ]);
-    if (partError) { alert("Participant error: " + partError.message); return; }
-    await loadConversations();
-    setActiveId(convo.id);
-    setMobileTab("chats");
-  }
-  loadNotifications();
-  setShowNotifications(false);
-}
-
   async function declineRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "declined" }).eq("id", req.id);
     loadNotifications();
