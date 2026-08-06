@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToPush } from "@/lib/push";
@@ -88,6 +88,9 @@ const SWIPE_REPLY_MAX = 64;
 const MAX_BIO_LENGTH = 160;
 const STATUS_DURATION_MS = 5000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
+const TYPING_IDLE_MS = 3000;
+const TYPING_THROTTLE_MS = 2000;
+const GROUPED_GAP_MS = 2 * 60 * 1000;
 
 const HOME_FEATURES = [
   { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
@@ -132,6 +135,17 @@ function formatDuration(totalSeconds: number) {
   const m = Math.floor(s / 60).toString().padStart(2, "0");
   const sec = (s % 60).toString().padStart(2, "0");
   return `${m}:${sec}`;
+}
+
+function formatDayLabel(iso: string) {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOf = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOf(now) - startOf(d)) / 86400000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return d.toLocaleDateString([], { weekday: "long" });
+  return d.toLocaleDateString([], { day: "numeric", month: "short", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 }
 
 function isVerified(username?: string) {
@@ -307,6 +321,18 @@ function ReactionPills({ msgReactions, myId, onToggle }: { msgReactions: Reactio
   );
 }
 
+function TypingBubble() {
+  return (
+    <div className="flex justify-start">
+      <div className="glass flex items-center gap-1.5 rounded-2xl rounded-bl-sm px-4 py-3">
+        <span className="h-1.5 w-1.5 rounded-full bg-mist/70" style={{ animation: "typingDot 1.2s ease-in-out infinite", animationDelay: "0s" }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-mist/70" style={{ animation: "typingDot 1.2s ease-in-out infinite", animationDelay: "0.15s" }} />
+        <span className="h-1.5 w-1.5 rounded-full bg-mist/70" style={{ animation: "typingDot 1.2s ease-in-out infinite", animationDelay: "0.3s" }} />
+      </div>
+    </div>
+  );
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
@@ -352,6 +378,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
+
+  // typing indicator
+  const [peerTyping, setPeerTyping] = useState(false);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeChannelRef = useRef<any>(null);
+  const lastTypingSentRef = useRef<number>(0);
 
   // image + voice
   const [uploadingMedia, setUploadingMedia] = useState(false);
@@ -580,6 +612,7 @@ useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
     setMessages([]); setHasMore(true); setReplyingTo(null); setReactionsByMsg({});
+    setPeerTyping(false);
 
     (async () => {
       const { data } = await supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: false }).limit(PAGE_SIZE);
@@ -592,6 +625,8 @@ useEffect(() => {
 
     const channel = supabase.channel(`messages:${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
+        setPeerTyping(false);
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         setMessages((prev) => {
           const incoming = payload.new as Message;
           if (prev.some((m) => m.id === incoming.id)) return prev;
@@ -604,7 +639,16 @@ useEffect(() => {
         const updated = payload.new as Message;
         setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
       })
+      .on("broadcast", { event: "typing" }, ({ payload }: any) => {
+        if (!payload || payload.userId === myProfile.id) return;
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        if (payload.typing === false) { setPeerTyping(false); return; }
+        setPeerTyping(true);
+        typingTimeoutRef.current = setTimeout(() => setPeerTyping(false), TYPING_IDLE_MS);
+      })
       .subscribe();
+
+    activeChannelRef.current = channel;
 
     const reactionsChannel = supabase.channel(`reactions:${activeId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "message_reactions" }, (payload: any) => {
@@ -614,7 +658,13 @@ useEffect(() => {
       })
       .subscribe();
 
-    return () => { cancelled = true; supabase.removeChannel(channel); supabase.removeChannel(reactionsChannel); };
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+      supabase.removeChannel(reactionsChannel);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      activeChannelRef.current = null;
+    };
   }, [activeId, supabase, loadConversations]);
 
   async function loadReactionsFor(messageIds: string[]) {
@@ -811,6 +861,24 @@ useEffect(() => {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const value = e.target.value;
+    setInput(value);
+    const channel = activeChannelRef.current;
+    if (!channel) return;
+
+    if (value.trim().length === 0) {
+      channel.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
+      lastTypingSentRef.current = 0;
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTypingSentRef.current > TYPING_THROTTLE_MS) {
+      lastTypingSentRef.current = now;
+      channel.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: true } });
+    }
+  }
+
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
     if (sending) return;
@@ -818,6 +886,7 @@ useEffect(() => {
     if (!content || !activeId) return;
 
     setSending(true); setInput("");
+    activeChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
     const replyTo = replyingTo; setReplyingTo(null);
 
     const tempId = `temp-${Date.now()}`;
@@ -1121,6 +1190,7 @@ useEffect(() => {
 
   return (
     <div className="relative flex w-full overflow-x-hidden bg-ink-900 text-[color:var(--color-text)]" style={{ height: "var(--app-height, 100dvh)" }}>
+      <style>{`@keyframes typingDot { 0%,80%,100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }`}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
       {/* ── CONNECT POPUP MODAL ───────────────────────────────────────────── */}
@@ -1636,9 +1706,9 @@ useEffect(() => {
               )}
             </header>
 
-            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-6 py-6">
+            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-6 py-6">
               {loadingMore && <p className="pb-2 text-center text-xs text-mist">Loading older messages…</p>}
-              {messages.map((m) => {
+              {messages.map((m, idx) => {
                 const mine = m.sender_id === myProfile.id;
                 const isImage = m.message_type === "image" && !!m.media_url;
                 const isVoice = m.message_type === "voice" && !!m.media_url;
@@ -1646,44 +1716,63 @@ useEffect(() => {
                 const isSwiping = swipeState?.id === m.id;
                 const translateX = isSwiping ? swipeState!.dx : 0;
 
+                const prevMsg = messages[idx - 1];
+                const showDayDivider = !prevMsg || formatDayLabel(prevMsg.created_at) !== formatDayLabel(m.created_at);
+                const grouped = !!prevMsg && !showDayDivider && prevMsg.sender_id === m.sender_id
+                  && (new Date(m.created_at).getTime() - new Date(prevMsg.created_at).getTime()) < GROUPED_GAP_MS;
+
                 return (
-                  <div key={m.id} className={`relative flex ${mine ? "justify-end" : "justify-start"}`} onTouchStart={(e) => onBubbleTouchStart(e, m)} onTouchMove={(e) => onBubbleTouchMove(e, m)} onTouchEnd={() => onBubbleTouchEnd(m)}>
-                    {isSwiping && translateX > 12 && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 text-violet-light" style={{ opacity: Math.min(1, translateX / SWIPE_REPLY_THRESHOLD) }}>↩</span>
+                  <Fragment key={m.id}>
+                    {showDayDivider && (
+                      <div className="my-4 flex items-center justify-center">
+                        <span className="rounded-full border border-black/5 bg-black/5 px-3 py-1 text-[11px] text-mist dark:border-white/10 dark:bg-white/5">
+                          {formatDayLabel(m.created_at)}
+                        </span>
+                      </div>
                     )}
-                    <div style={{ transform: `translateX(${translateX}px)`, transition: isSwiping ? "none" : "transform 0.15s ease-out" }} className="max-w-[80%] md:max-w-md" onDoubleClick={() => toggleReaction(m.id, "❤️")} onContextMenu={(e) => { e.preventDefault(); setReactionPickerFor(reactionPickerFor === m.id ? null : m.id); }}>
-                      {reactionPickerFor === m.id && (
-                        <div className={`mb-1 flex gap-1 rounded-full bg-ink-800 px-2 py-1 shadow-lg ${mine ? "justify-end" : "justify-start"}`}>
-                          {QUICK_EMOJIS.map((emo) => (
-                            <button key={emo} onClick={() => toggleReaction(m.id, emo)} className="text-lg leading-none hover:scale-110 transition">{emo}</button>
-                          ))}
-                        </div>
+                    <div className={`relative flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2.5"}`} onTouchStart={(e) => onBubbleTouchStart(e, m)} onTouchMove={(e) => onBubbleTouchMove(e, m)} onTouchEnd={() => onBubbleTouchEnd(m)}>
+                      {isSwiping && translateX > 12 && (
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-violet-light" style={{ opacity: Math.min(1, translateX / SWIPE_REPLY_THRESHOLD) }}>↩</span>
                       )}
-                      <div className={`text-sm ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white` : `${isImage ? "" : "glass"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
-                        {quoted && (
-                          <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
-                            <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
-                            <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
+                      <div style={{ transform: `translateX(${translateX}px)`, transition: isSwiping ? "none" : "transform 0.15s ease-out" }} className="max-w-[80%] md:max-w-md" onDoubleClick={() => toggleReaction(m.id, "❤️")} onContextMenu={(e) => { e.preventDefault(); setReactionPickerFor(reactionPickerFor === m.id ? null : m.id); }}>
+                        {reactionPickerFor === m.id && (
+                          <div className={`mb-1 flex gap-1 rounded-full bg-ink-800 px-2 py-1 shadow-lg ${mine ? "justify-end" : "justify-start"}`}>
+                            {QUICK_EMOJIS.map((emo) => (
+                              <button key={emo} onClick={() => toggleReaction(m.id, emo)} className="text-lg leading-none hover:scale-110 transition">{emo}</button>
+                            ))}
                           </div>
                         )}
-                        {isImage ? (
-                          <img src={m.media_url!} alt="Shared photo" className="max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => window.open(m.media_url!, "_blank")} />
-                        ) : isVoice ? (
-                          <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
-                        ) : (
-                          <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                        )}
-                        <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-white/60" : "text-mist"} ${isImage ? "px-2 pb-1" : ""}`}>
-                          {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          {mine && <Ticks read={!!m.read_at} />}
-                        </p>
+                        <div className={`text-sm ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white shadow-md shadow-violet/20` : `${isImage ? "" : "glass"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
+                          {quoted && (
+                            <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
+                              <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
+                              <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
+                            </div>
+                          )}
+                          {isImage ? (
+                            <img src={m.media_url!} alt="Shared photo" className="max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => window.open(m.media_url!, "_blank")} />
+                          ) : isVoice ? (
+                            <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words">{m.content}</p>
+                          )}
+                          <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-white/60" : "text-mist"} ${isImage ? "px-2 pb-1" : ""}`}>
+                            {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                            {mine && <Ticks read={!!m.read_at} />}
+                          </p>
+                        </div>
+                        <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
                       </div>
-                      <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
                     </div>
-                  </div>
+                  </Fragment>
                 );
               })}
-              {messages.length === 0 && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
+              {peerTyping && !active.is_group && (
+                <div className="mt-2.5">
+                  <TypingBubble />
+                </div>
+              )}
+              {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
             </div>
 
             {replyingTo && (
@@ -1709,7 +1798,7 @@ useEffect(() => {
                   <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white disabled:opacity-40" aria-label="Send image">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>
                   </button>
-                  <input value={input} onChange={(e) => setInput(e.target.value)} onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }} placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"} disabled={uploadingMedia} className="min-w-0 flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60" />
+                  <input value={input} onChange={handleInputChange} onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }} placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"} disabled={uploadingMedia} className="min-w-0 flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60" />
                 </>
               )}
               {recording ? (
