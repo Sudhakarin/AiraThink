@@ -488,7 +488,49 @@ useEffect(() => {
   }, [myProfile.id, supabase, loadConversations]);
 
   async function acceptRequest(req: ConnectionRequest) {
-  await supabase.from("connection_requests").update({ status: "accepted" }).eq("id", req.id);
+  await supabase.from("connection_requests")
+    .update({ status: "accepted" })
+    .eq("id", req.id);
+
+  const { data: existing } = await supabase
+    .from("conversation_participants")
+    .select("conversation_id")
+    .eq("user_id", myProfile.id);
+  
+  const myConvoIds = (existing ?? []).map((r: any) => r.conversation_id);
+  let convoId: string | null = null;
+
+  if (myConvoIds.length > 0) {
+    const { data: shared } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", req.from_user_id)
+      .in("conversation_id", myConvoIds);
+    if (shared && shared.length > 0) convoId = shared[0].conversation_id;
+  }
+
+  if (!convoId) {
+    const { data: convo } = await supabase
+      .from("conversations")
+      .insert({ is_group: false, created_by: myProfile.id })
+      .select()
+      .single();
+
+    if (!convo) { loadNotifications(); setShowNotifications(false); return; }
+    convoId = convo.id;
+
+    await supabase.from("conversation_participants").insert([
+      { conversation_id: convoId, user_id: myProfile.id },
+      { conversation_id: convoId, user_id: req.from_user_id },
+    ]);
+  }
+
+  await loadConversations();
+  setActiveId(convoId);
+  setMobileTab("chats");
+  loadNotifications();
+  setShowNotifications(false);
+}
 
   const { data: convo, error: convoError } = await supabase
     .from("conversations")
