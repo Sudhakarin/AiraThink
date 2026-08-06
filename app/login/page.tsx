@@ -1,230 +1,237 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function LoginPage() {
-  const supabase = createClient()
-  const router = useRouter()
+  const router = useRouter();
+  const supabase = createClient();
 
-  const [mode, setMode] = useState<'password' | 'otp-email' | 'otp-verify'>('password')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [otp, setOtp] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [mode, setMode] = useState<"password" | "otp-email" | "otp-verify">("password");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Password login
   async function handlePasswordLogin(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
-    const { error: err } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { error: err } = await supabase.auth.signInWithPassword({ email, password });
 
     if (err) {
-      setError('Email ya password galat hai.')
+      setError("Incorrect email or password.");
     } else {
-      router.push('/chat')
-      router.refresh()
+      router.push("/chat");
+      router.refresh();
     }
-    setLoading(false)
+    setLoading(false);
   }
 
-  // OTP bhejo
+  // Send OTP
   async function handleSendOtp(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
     const { error: err } = await supabase.auth.signInWithOtp({
       email,
       options: { shouldCreateUser: true },
-    })
+    });
 
     if (err) {
-      setError(err.message)
+      setError(err.message);
     } else {
-      setMode('otp-verify')
+      setMode("otp-verify");
     }
-    setLoading(false)
+    setLoading(false);
   }
 
-  // OTP verify karo
+  // Verify OTP
   async function handleVerifyOtp(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
     const { error: err } = await supabase.auth.verifyOtp({
       email,
       token: otp,
-      type: 'email',
-    })
+      type: "email",
+    });
 
     if (err) {
-      setError('OTP galat hai ya expire ho gaya.')
+      setError("Invalid or expired code. Please try again.");
     } else {
-      router.push('/chat')
-      router.refresh()
+      router.push("/chat");
+      router.refresh();
     }
-    setLoading(false)
+    setLoading(false);
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ink-900 px-4">
-      <div className="w-full max-w-sm rounded-2xl bg-ink-800/60 p-8 shadow-xl">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-900 px-6">
+      <div className="pointer-events-none absolute inset-0 bg-aurora" />
 
-        {/* Logo */}
-        <p className="mb-1 font-display text-lg font-bold text-white">
+      <div className="glass animate-fadeUp relative z-10 w-full max-w-md rounded-3xl p-8 shadow-2xl">
+        <Link href="/" className="font-display text-lg font-bold text-white">
           Aira<span className="text-gradient">Think!</span>
-        </p>
+        </Link>
 
-        {mode === 'password' && (
+        {/* PASSWORD MODE */}
+        {mode === "password" && (
           <>
-            <h1 className="mb-1 text-2xl font-bold text-white">Welcome back</h1>
-            <p className="mb-6 text-sm text-mist">Login karke chat karo.</p>
+            <h1 className="mt-6 font-display text-2xl font-bold text-white">Welcome back</h1>
+            <p className="mt-1 text-sm text-mist">Log in to continue chatting.</p>
 
-            <form onSubmit={handlePasswordLogin} className="space-y-4">
+            <form onSubmit={handlePasswordLogin} className="mt-8 flex flex-col gap-4">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-mist">Email</label>
+                <label className="mb-1.5 block text-xs font-medium text-mist-light">Email</label>
                 <input
                   type="email"
-                  placeholder="you@example.com"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-mist">Password</label>
-                <input
-                  type="password"
-                  placeholder="Apna password daalo"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+                  placeholder="you@example.com"
+                  className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
                 />
               </div>
 
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-mist-light">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Your password"
+                  className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+                />
+              </div>
+
+              {error && (
+                <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
+              )}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+                className="mt-2 rounded-xl bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
               >
-                {loading ? 'Login ho raha hai...' : 'Log in'}
+                {loading ? "Logging in…" : "Log in"}
               </button>
             </form>
 
-            <div className="mt-4 flex items-center gap-3">
+            <div className="mt-5 flex items-center gap-3">
               <div className="h-px flex-1 bg-white/10" />
-              <span className="text-xs text-mist">ya</span>
+              <span className="text-xs text-mist">or</span>
               <div className="h-px flex-1 bg-white/10" />
             </div>
 
             <button
-              onClick={() => { setMode('otp-email'); setError('') }}
-              className="mt-4 w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-white transition hover:bg-white/5"
+              onClick={() => { setMode("otp-email"); setError(null); }}
+              className="mt-4 w-full rounded-xl border border-white/10 bg-ink-800 py-3 text-sm font-semibold text-white transition hover:bg-white/5"
             >
-              🔢 Login with OTP
+              Log in with OTP
             </button>
 
-            <p className="mt-6 text-center text-xs text-mist">
-              Account nahi hai?{' '}
-              <Link href="/signup" className="font-semibold text-violet-light hover:underline">
+            <p className="mt-6 text-center text-sm text-mist">
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="font-medium text-violet-light hover:underline">
                 Sign up
               </Link>
             </p>
           </>
         )}
 
-        {mode === 'otp-email' && (
+        {/* OTP EMAIL MODE */}
+        {mode === "otp-email" && (
           <>
-            <h1 className="mb-1 text-2xl font-bold text-white">OTP Login</h1>
-            <p className="mb-6 text-sm text-mist">Email pe 6-digit code aayega.</p>
+            <h1 className="mt-6 font-display text-2xl font-bold text-white">Log in with OTP</h1>
+            <p className="mt-1 text-sm text-mist">We&apos;ll send a 6-digit code to your email.</p>
 
-            <form onSubmit={handleSendOtp} className="space-y-4">
+            <form onSubmit={handleSendOtp} className="mt-8 flex flex-col gap-4">
               <div>
-                <label className="mb-1.5 block text-xs font-medium text-mist">Email</label>
+                <label className="mb-1.5 block text-xs font-medium text-mist-light">Email</label>
                 <input
                   type="email"
-                  placeholder="you@example.com"
+                  required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+                  placeholder="you@example.com"
+                  className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
                 />
               </div>
 
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && (
+                <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
+              )}
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+                className="mt-2 rounded-xl bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
               >
-                {loading ? 'Bhej raha hai...' : 'OTP Bhejo'}
+                {loading ? "Sending…" : "Send OTP"}
               </button>
             </form>
 
             <button
-              onClick={() => { setMode('password'); setError('') }}
-              className="mt-4 w-full text-xs text-mist hover:text-white"
+              onClick={() => { setMode("password"); setError(null); }}
+              className="mt-5 w-full text-center text-sm text-mist hover:text-white"
             >
-              ← Password se login karo
+              ← Back to password login
             </button>
           </>
         )}
 
-        {mode === 'otp-verify' && (
+        {/* OTP VERIFY MODE */}
+        {mode === "otp-verify" && (
           <>
-            <h1 className="mb-1 text-2xl font-bold text-white">Code daalo</h1>
-            <p className="mb-6 text-sm text-mist">
-              <span className="font-medium text-white">{email}</span> pe code bheja gaya hai.
+            <h1 className="mt-6 font-display text-2xl font-bold text-white">Enter your code</h1>
+            <p className="mt-1 text-sm text-mist">
+              A 6-digit code was sent to{" "}
+              <span className="font-medium text-white">{email}</span>.
             </p>
 
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
+            <form onSubmit={handleVerifyOtp} className="mt-8 flex flex-col gap-4">
               <input
                 type="text"
                 placeholder="000000"
                 value={otp}
-                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                 maxLength={6}
                 required
                 autoFocus
-                className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-4 text-center text-2xl tracking-[0.5em] text-white placeholder:text-mist/30 focus:border-violet focus:outline-none"
+                className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-4 text-center text-2xl tracking-[0.5em] text-white placeholder:text-mist/30 focus:border-violet focus:outline-none"
               />
 
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && (
+                <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
+              )}
 
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6}
-                className="w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+                className="mt-2 rounded-xl bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
               >
-                {loading ? 'Verify ho raha...' : 'Login Karo'}
+                {loading ? "Verifying…" : "Log in"}
               </button>
             </form>
 
             <button
-              onClick={() => { setMode('otp-email'); setOtp(''); setError('') }}
-              className="mt-4 w-full text-xs text-mist hover:text-white"
+              onClick={() => { setMode("otp-email"); setOtp(""); setError(null); }}
+              className="mt-5 w-full text-center text-sm text-mist hover:text-white"
             >
-              ← Email badlo
+              ← Change email
             </button>
           </>
         )}
-
       </div>
-    </div>
-  )
+    </main>
+  );
 }
