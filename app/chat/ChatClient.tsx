@@ -339,6 +339,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
+  // ── CONNECT POPUP ──────────────────────────────────────────────
+  const [connectPopupTarget, setConnectPopupTarget] = useState<Profile | null>(null);
+  // "ask" = fresh request prompt | "pending" = already sent | "declined" = declined by them
+  const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
+  const [connectSending, setConnectSending] = useState(false);
+  // ───────────────────────────────────────────────────────────────
+
   // reply + reactions
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
@@ -450,6 +457,29 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadNotifications]);
+
+  // ── Realtime: jab koi meri request accept kare, meri chat list bhi update ho ──
+  useEffect(() => {
+    const channel = supabase
+      .channel("my-sent-requests-accepted")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "connection_requests",
+          filter: `from_user_id=eq.${myProfile.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as ConnectionRequest;
+          if (updated.status === "accepted") {
+            loadConversations();
+          }
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [myProfile.id, supabase, loadConversations]);
 
   async function acceptRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "accepted" }).eq("id", req.id);
@@ -693,39 +723,59 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setSearchResults(data ?? []);
   }
 
-  async function startConversation(other: Profile) {
-    // Check if conversation already exists
+  // ── Open connect popup when user clicks a search result ──────────────────
+  async function openConnectPopup(other: Profile) {
+    // Already have a conversation? Jump straight to it.
     const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
     const myIds = (mine ?? []).map((r) => r.conversation_id);
-
     if (myIds.length > 0) {
       const { data: theirs } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", other.id).in("conversation_id", myIds);
       if (theirs && theirs.length > 0) {
-        setSearch(""); setMobileTab("chats"); setActiveId(theirs[0].conversation_id);
+        setSearch(""); setSearchResults([]); setMobileTab("chats"); setActiveId(theirs[0].conversation_id);
         return;
       }
     }
 
     // Check existing request
-    const { data: existing } = await supabase.from("connection_requests").select("*").eq("from_user_id", myProfile.id).eq("to_user_id", other.id).single();
+    const { data: existing } = await supabase
+      .from("connection_requests")
+      .select("*")
+      .eq("from_user_id", myProfile.id)
+      .eq("to_user_id", other.id)
+      .maybeSingle();
 
     if (existing) {
-      if (existing.status === "pending") {
-        alert(`Request already sent to ${other.display_name}. Waiting for them to accept.`);
-      } else if (existing.status === "declined") {
-        alert(`${other.display_name} has declined your request.`);
-      }
+      setConnectPopupTarget(other);
+      if (existing.status === "pending") setConnectPopupMode("pending");
+      else if (existing.status === "declined") setConnectPopupMode("declined");
+      else setConnectPopupMode("ask"); // accepted but no convo? show ask again
       return;
     }
 
-    // Send new connection request
-    const { error } = await supabase.from("connection_requests").insert({ from_user_id: myProfile.id, to_user_id: other.id });
-    if (error) { alert("Could not send request: " + error.message); return; }
-
-    sendPushNotification({ userId: other.id, title: myProfile.display_name, body: `${myProfile.display_name} wants to connect with you!`, url: "/" });
-    setSearch("");
-    alert(`Connection request sent to ${other.display_name}!`);
+    // Fresh — show "Wants to connect?" popup
+    setConnectPopupTarget(other);
+    setConnectPopupMode("ask");
   }
+
+  // ── Actually send the request after user taps Yes ────────────────────────
+  async function confirmConnect() {
+    if (!connectPopupTarget) return;
+    setConnectSending(true);
+    const { error } = await supabase.from("connection_requests").insert({ from_user_id: myProfile.id, to_user_id: connectPopupTarget.id });
+    setConnectSending(false);
+    if (error) { setConnectPopupMode(null); setConnectPopupTarget(null); return; }
+    sendPushNotification({ userId: connectPopupTarget.id, title: myProfile.display_name, body: `${myProfile.display_name} wants to connect with you!`, url: "/" });
+    setConnectPopupMode(null);
+    setConnectPopupTarget(null);
+    setSearch("");
+    setSearchResults([]);
+  }
+
+  function closeConnectPopup() {
+    setConnectPopupTarget(null);
+    setConnectPopupMode(null);
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault();
@@ -745,7 +795,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content); setReplyingTo(replyTo);
-      alert("Message send failed:\n" + (error?.message ?? "unknown error"));
       setSending(false); return;
     }
 
@@ -771,7 +820,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      alert("Media send failed:\n" + (error?.message ?? "unknown error")); return;
+      return;
     }
 
     setMessages((prev) => {
@@ -786,12 +835,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleMediaFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file || !activeId) return;
-    if (file.size > MAX_IMAGE_BYTES) { alert("Image is too large — please pick one under 8MB."); return; }
+    if (file.size > MAX_IMAGE_BYTES) { return; }
     setUploadingMedia(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
-    if (uploadError) { alert("Image upload failed: " + uploadError.message); setUploadingMedia(false); return; }
+    if (uploadError) { setUploadingMedia(false); return; }
     const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
     await sendMediaMessage({ type: "image", url: publicUrlData.publicUrl });
     setUploadingMedia(false);
@@ -812,7 +861,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       mediaRecorderRef.current = recorder;
       setRecording(true); setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-    } catch (err: any) { alert("Could not access microphone: " + (err?.message ?? "permission denied")); }
+    } catch (err: any) { /* mic denied */ }
   }
 
   function cancelRecording() {
@@ -839,7 +888,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("webm") ? "webm" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("aac") ? "aac" : "webm";
     const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, blob, { cacheControl: "3600", contentType: mimeType });
-    if (uploadError) { alert("Voice note upload failed: " + uploadError.message); setUploadingMedia(false); return; }
+    if (uploadError) { setUploadingMedia(false); return; }
     const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
     await sendMediaMessage({ type: "voice", url: publicUrlData.publicUrl, duration: finalDuration });
     setUploadingMedia(false);
@@ -856,11 +905,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${myProfile.id}/avatar-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { cacheControl: "3600", upsert: true });
-    if (uploadError) { alert("Upload failed: " + uploadError.message); setUploading(false); return; }
+    if (uploadError) { setUploading(false); return; }
     const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(path);
     const avatarUrl = publicUrlData.publicUrl;
     const { error: updateError } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", myProfile.id);
-    if (updateError) { alert("Saving avatar failed: " + updateError.message); setUploading(false); return; }
+    if (updateError) { setUploading(false); return; }
     setMyProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
     setUploading(false);
   }
@@ -869,7 +918,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === myProfile.display_name) return;
     const { error } = await supabase.from("profiles").update({ display_name: trimmed }).eq("id", myProfile.id);
-    if (error) { alert("Could not save name: " + error.message); return; }
+    if (error) { return; }
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
@@ -877,7 +926,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const trimmed = bioDraft.trim();
     if (trimmed === (myProfile.bio ?? "")) return;
     const { error } = await supabase.from("profiles").update({ bio: trimmed }).eq("id", myProfile.id);
-    if (error) { alert("Could not save bio: " + error.message); return; }
+    if (error) { return; }
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
@@ -918,22 +967,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleStatusFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) { alert("Image is too large — please pick one under 8MB."); return; }
+    if (file.size > MAX_IMAGE_BYTES) { return; }
     setUploadingStatus(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${myProfile.id}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type || undefined });
-    if (uploadError) { alert("Status upload failed: " + uploadError.message); setUploadingStatus(false); return; }
+    if (uploadError) { setUploadingStatus(false); return; }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
-    if (error) alert("Could not post status: " + error.message);
+    if (error) { /* noop */ }
     setUploadingStatus(false); loadStatuses();
   }
 
   async function postTextStatus() {
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor });
-    if (error) { alert("Could not post status: " + error.message); return; }
+    if (error) { return; }
     setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses();
   }
 
@@ -982,7 +1031,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await sendToUser(peer.id, "offer", { from: myProfile.id, fromName: myProfile.display_name, fromUsername: myProfile.username, fromColor: myProfile.avatar_color, fromAvatar: myProfile.avatar_url, offer });
-    } catch (err: any) { alert("Could not start call: " + (err?.message ?? "permission denied")); endCall(false); }
+    } catch (err: any) { endCall(false); }
   }
 
   async function acceptCall() {
@@ -1002,7 +1051,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       await pc.setLocalDescription(answer);
       await sendToUser(callPeer.id, "answer", { answer });
       setCallStatus("connected");
-    } catch (err: any) { alert("Could not join call: " + (err?.message ?? "permission denied")); declineCall(); }
+    } catch (err: any) { declineCall(); }
   }
 
   function declineCall() { endCall(true); }
@@ -1039,6 +1088,91 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   return (
     <div className="relative flex w-full overflow-x-hidden bg-ink-900 text-[color:var(--color-text)]" style={{ height: "var(--app-height, 100dvh)" }}>
       <audio ref={remoteAudioRef} autoPlay />
+
+      {/* ── CONNECT POPUP MODAL ───────────────────────────────────────────── */}
+      {connectPopupTarget && connectPopupMode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
+            {/* Avatar + Name */}
+            <div className="flex flex-col items-center gap-3 pb-5">
+              <Avatar
+                name={connectPopupTarget.display_name}
+                color={connectPopupTarget.avatar_color}
+                size={72}
+                avatarUrl={connectPopupTarget.avatar_url}
+              />
+              <div className="text-center">
+                <p className="flex items-center justify-center font-display text-lg font-bold">
+                  {connectPopupTarget.display_name}
+                  {isVerified(connectPopupTarget.username) && <VerifiedBadge size={16} />}
+                </p>
+                <p className="text-sm text-mist">@{connectPopupTarget.username}</p>
+              </div>
+            </div>
+
+            <div className="mb-6 h-px w-full bg-white/10" />
+
+            {/* Message based on mode */}
+            {connectPopupMode === "ask" && (
+              <>
+                <p className="mb-6 text-center text-sm text-[color:var(--color-text)]/80">
+                  Do you want to connect with <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>?
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={closeConnectPopup}
+                    className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmConnect}
+                    disabled={connectSending}
+                    className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50"
+                  >
+                    {connectSending ? "Sending…" : "Yes, Connect"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {connectPopupMode === "pending" && (
+              <>
+                <div className="mb-6 flex flex-col items-center gap-2">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet/15 text-2xl">⏳</span>
+                  <p className="text-center text-sm text-[color:var(--color-text)]/80">
+                    You already sent a request to <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>. Waiting for them to accept.
+                  </p>
+                </div>
+                <button
+                  onClick={closeConnectPopup}
+                  className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
+                >
+                  OK
+                </button>
+              </>
+            )}
+
+            {connectPopupMode === "declined" && (
+              <>
+                <div className="mb-6 flex flex-col items-center gap-2">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-2xl">😔</span>
+                  <p className="text-center text-sm text-[color:var(--color-text)]/80">
+                    <span className="font-semibold text-white">{connectPopupTarget.display_name}</span> has declined your request.
+                  </p>
+                </div>
+                <button
+                  onClick={closeConnectPopup}
+                  className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
+                >
+                  OK
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {/* ─────────────────────────────────────────────────────────────────── */}
 
       {callStatus !== "idle" && callPeer && (
         <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0C12]">
@@ -1313,16 +1447,28 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
           {mobileTab === "search" && (
             <div className="p-4">
-              <input autoFocus value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search by username…" className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none" />
+              <input
+                autoFocus
+                value={search}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search by username…"
+                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none"
+              />
               <div className="mt-3">
                 {searchResults.map((r) => (
-                  <button key={r.id} onClick={() => startConversation(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
-                    <Avatar name={r.display_name} color={r.avatar_color} size={32} avatarUrl={r.avatar_url} />
-                    <span className="inline-flex items-center">
-                      {r.display_name}
-                      {isVerified(r.username) && <VerifiedBadge />}
-                      <span className="ml-1 text-mist">@{r.username}</span>
-                    </span>
+                  <button
+                    key={r.id}
+                    onClick={() => openConnectPopup(r)}
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center font-semibold">
+                        {r.display_name}
+                        {isVerified(r.username) && <VerifiedBadge />}
+                      </p>
+                      <p className="text-xs text-mist">@{r.username}</p>
+                    </div>
                   </button>
                 ))}
                 {search.trim().length >= 2 && searchResults.length === 0 && (
