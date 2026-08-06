@@ -13,7 +13,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // Step 1: OTP bhejo
   async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -22,7 +21,7 @@ export default function LoginPage() {
     const { error: err } = await supabase.auth.signInWithOtp({
       email: email,
       options: {
-        emailRedirectTo: `https://thinkchat-omega.vercel.app/auth/callback`,
+        shouldCreateUser: true,
       },
     })
 
@@ -34,7 +33,6 @@ export default function LoginPage() {
     setLoading(false)
   }
 
-  // Step 2: OTP verify karo
   async function handleVerifyOtp(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -47,9 +45,10 @@ export default function LoginPage() {
     })
 
     if (err) {
-      setError(err.message)
+      setError('OTP galat hai ya expire ho gaya. Dobara try karo.')
     } else {
-      router.push('/')
+      router.push('/chat')
+      router.refresh()
     }
     setLoading(false)
   }
@@ -57,7 +56,7 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-ink-900 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-ink-800/60 p-8 shadow-xl">
-        
+
         <h1 className="mb-2 text-center font-display text-2xl font-bold text-white">
           Aira<span className="text-gradient">Think</span>
         </h1>
@@ -99,6 +98,7 @@ export default function LoginPage() {
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 maxLength={6}
                 required
+                autoFocus
                 className="w-full rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-center text-xl tracking-widest text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
               {error && <p className="text-xs text-red-400">{error}</p>}
@@ -119,6 +119,7 @@ export default function LoginPage() {
             </form>
           </>
         )}
+
       </div>
     </div>
   )
