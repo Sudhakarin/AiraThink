@@ -1799,33 +1799,88 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 flex items-center gap-3 border-t border-black/5 dark:border-white/5 px-6 py-4">
+            {/* ── REDESIGNED MESSAGE INPUT BAR ── */}
+            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              {recording ? (
-                <div className="flex flex-1 items-center gap-3 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3">
-                  <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-400" />
-                  <span className="flex-1 text-sm text-[color:var(--color-text)]/80">Recording… {formatDuration(recordingSeconds)}</span>
-                  <button type="button" onClick={cancelRecording} className="text-xs font-medium text-mist hover:text-black dark:hover:text-white">Cancel</button>
-                </div>
-              ) : (
-                <>
-                  <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white disabled:opacity-40" aria-label="Send image">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>
-                  </button>
-                  <input value={input} onChange={handleInputChange} onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }} placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"} disabled={uploadingMedia} className="min-w-0 flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60" />
-                </>
-              )}
-              {recording ? (
-                <button type="button" onClick={stopAndSendRecording} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30" aria-label="Send voice note">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              
+              {/* Glass wrapper for the entire input row */}
+              <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20">
+                
+                {/* Image picker button */}
+                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
+                    <circle cx="8" cy="10" r="2" fill="currentColor"/>
+                    <path d="M22 16l-5-5-5 5M17 11l-3 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </button>
-              ) : input.trim() ? (
-                <button type="submit" disabled={sending} className="shrink-0 rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50">Send</button>
-              ) : (
-                <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-[color:var(--color-text)] transition hover:bg-black/10 dark:hover:bg-white/15 disabled:opacity-40" aria-label="Record voice note">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                </button>
-              )}
+
+                {recording ? (
+                  /* ── Recording state ── */
+                  <>
+                    <div className="flex flex-1 items-center gap-3 px-3">
+                      <span className="relative flex h-3 w-3 shrink-0">
+                        <span className="absolute inset-0 animate-ping rounded-full bg-red-400 opacity-75" />
+                        <span className="relative h-3 w-3 rounded-full bg-red-500" />
+                      </span>
+                      <span className="flex-1 text-sm font-medium tracking-wide text-red-400">
+                        Recording {formatDuration(recordingSeconds)}
+                      </span>
+                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mist transition hover:bg-white/10 hover:text-white">
+                        Cancel
+                      </button>
+                    </div>
+                    <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95" aria-label="Send voice note">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                  </>
+                ) : (
+                  /* ── Normal typing state ── */
+                  <>
+                    {/* Text input */}
+                    <input
+                      value={input}
+                      onChange={handleInputChange}
+                      onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }}
+                      placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Message"}
+                      disabled={uploadingMedia}
+                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 outline-none disabled:opacity-40"
+                    />
+
+                    {input.trim() ? (
+                      /* ── Send button (when text exists) ── */
+                      <button
+                        type="submit"
+                        disabled={sending}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
+                        aria-label="Send message"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    ) : (
+                      /* ── Mic button (when empty) ── */
+                      <button
+                        type="button"
+                        onClick={startRecording}
+                        disabled={uploadingMedia}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30"
+                        aria-label="Record voice note"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8"/>
+                          <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+                        </svg>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </form>
           </>
         )}
