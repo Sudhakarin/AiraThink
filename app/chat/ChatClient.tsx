@@ -485,10 +485,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const interval = setInterval(() => { loadNotifications(); }, 4000);
     return () => clearInterval(interval);
   }, [loadNotifications]);
-  useEffect(() => {
-    const interval = setInterval(() => { loadConversations(); }, 5000);
-    return () => clearInterval(interval);
-  }, [loadConversations]);
 
   useEffect(() => {
     const channel = supabase
