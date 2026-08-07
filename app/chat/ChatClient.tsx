@@ -91,6 +91,7 @@ const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#
 const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
+// Polling interval as fallback for realtime
 const POLL_INTERVAL_MS = 3000;
 
 const HOME_FEATURES = [
@@ -106,7 +107,12 @@ function sendPushNotification(opts: { userId?: string | null; title: string; bod
   fetch("/api/send-push", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId: opts.userId, title: opts.title, body: opts.body, url: opts.url || "/" }),
+    body: JSON.stringify({
+      userId: opts.userId,
+      title: opts.title,
+      body: opts.body,
+      url: opts.url || "/",
+    }),
   }).catch(() => {});
 }
 
@@ -122,7 +128,8 @@ function formatLastSeen(iso?: string) {
   if (diffMin < 60) return `${diffMin}m ago`;
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `${diffHr}h ago`;
-  return `${Math.floor(diffHr / 24)}d ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay}d ago`;
 }
 
 function formatDuration(totalSeconds: number) {
@@ -277,15 +284,12 @@ function VoiceMessage({ url, duration, mine }: { url: string; duration: number; 
   );
 }
 
-// ── FIXED: Visual Viewport height + keyboard push-up ──────────────────────
 function useVisualViewportHeight() {
   useEffect(() => {
     function setHeight() {
       const vv = window.visualViewport;
       const height = vv ? vv.height : window.innerHeight;
-      const offsetTop = vv ? vv.offsetTop : 0;
       document.documentElement.style.setProperty("--app-height", `${height}px`);
-      document.documentElement.style.setProperty("--viewport-offset-top", `${offsetTop}px`);
     }
     setHeight();
     window.visualViewport?.addEventListener("resize", setHeight);
@@ -319,6 +323,7 @@ function ReactionPills({ msgReactions, myId, onToggle }: { msgReactions: Reactio
   );
 }
 
+// ── IMPROVED TYPING BUBBLE ──────────────────────────────────────────────────
 function TypingBubble() {
   return (
     <div className="flex justify-start items-end gap-2">
@@ -358,26 +363,33 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
+
+  // Track last known message id for polling
   const lastMessageIdRef = useRef<string | null>(null);
   const lastMessageCreatedAtRef = useRef<string | null>(null);
 
+  // notifications
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
   const [connectPopupTarget, setConnectPopupTarget] = useState<Profile | null>(null);
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
   const [connectSending, setConnectSending] = useState(false);
 
+  // reply + reactions
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
 
+  // typing indicator
   const [peerTyping, setPeerTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeChannelRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
 
+  // image + voice
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -388,12 +400,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingMimeTypeRef = useRef<string>("audio/webm");
 
-  const [composerExpanded, setComposerExpanded] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  // ── KEYBOARD OFFSET STATE ─────────────────────────────────────────────────
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
-
+  // status
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [myViewedStatusIds, setMyViewedStatusIds] = useState<Set<string>>(new Set());
   const [statusViewerUserId, setStatusViewerUserId] = useState<string | null>(null);
@@ -405,6 +412,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const statusFileInputRef = useRef<HTMLInputElement>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // calls
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
@@ -422,37 +430,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   const active = conversations.find((c) => c.id === activeId);
 
-  // ── KEYBOARD PUSH-UP: track visualViewport to lift composer ──────────────
-  useEffect(() => {
-    function handleViewportResize() {
-      const vv = window.visualViewport;
-      if (!vv) return;
-      const windowHeight = window.innerHeight;
-      const viewportHeight = vv.height;
-      const offset = Math.max(0, windowHeight - viewportHeight - vv.offsetTop);
-      setKeyboardOffset(offset);
-      // Also scroll messages to bottom when keyboard opens
-      if (offset > 0) {
-        setTimeout(() => {
-          scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-        }, 100);
-      }
-    }
-    window.visualViewport?.addEventListener("resize", handleViewportResize);
-    window.visualViewport?.addEventListener("scroll", handleViewportResize);
-    return () => {
-      window.visualViewport?.removeEventListener("resize", handleViewportResize);
-      window.visualViewport?.removeEventListener("scroll", handleViewportResize);
-    };
-  }, []);
-
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user?.email) setMyEmail(data.user.email);
     });
   }, [supabase]);
 
-  useEffect(() => { subscribeToPush(myProfile.id); }, [myProfile.id]);
+  useEffect(() => {
+    subscribeToPush(myProfile.id);
+  }, [myProfile.id]);
 
   const loadConversations = useCallback(async () => {
     const { data: participantRows } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
@@ -487,6 +473,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
+  // ── POLL CONVERSATIONS every 4s as fallback ──────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => { loadConversations(); }, 4000);
     return () => clearInterval(interval);
@@ -511,7 +498,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   useEffect(() => {
     const channel = supabase
       .channel("connection-requests-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "connection_requests", filter: `to_user_id=eq.${myProfile.id}` }, () => { loadNotifications(); })
+      .on("postgres_changes", { event: "*", schema: "public", table: "connection_requests", filter: `to_user_id=eq.${myProfile.id}` }, () => {
+        loadNotifications();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadNotifications]);
@@ -519,7 +508,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   useEffect(() => {
     const channel = supabase
       .channel("my-new-conversation-participant")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "conversation_participants", filter: `user_id=eq.${myProfile.id}` }, () => { loadConversations(); })
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "conversation_participants",
+        filter: `user_id=eq.${myProfile.id}`,
+      }, () => { loadConversations(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadConversations]);
@@ -593,6 +587,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { cancelled = true; };
   }, [active?.otherProfile?.id, supabase]);
 
+  // ── LOAD MESSAGES + REALTIME + POLLING FALLBACK ──────────────────────────
   useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
@@ -614,6 +609,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       loadReactionsFor(ordered.map((m) => m.id));
     })();
 
+    // ── Realtime channel ──
     const channel = supabase.channel(`messages:${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
         setPeerTyping(false);
@@ -660,28 +656,46 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [activeId, supabase, loadConversations]);
 
+  // ── POLLING FALLBACK: poll every 3s for new messages in active chat ───────
   useEffect(() => {
     if (!activeId) return;
+
     const poll = async () => {
       const since = lastMessageCreatedAtRef.current;
-      if (!since) return;
-      let query = supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true }).gt("created_at", since);
+      let query = supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", activeId)
+        .order("created_at", { ascending: true });
+
+      if (since) {
+        query = query.gt("created_at", since);
+      } else {
+        return; // initial load not done yet
+      }
+
       const { data } = await query;
       if (!data || data.length === 0) return;
+
+      // Filter out temp messages and duplicates
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => m.id));
         const newMsgs = data.filter((m: Message) => !existingIds.has(m.id));
         if (newMsgs.length === 0) return prev;
         const withoutTemps = prev.filter((m) => {
           if (!m.id.startsWith("temp-")) return true;
-          return !newMsgs.some((nm: Message) => nm.sender_id === m.sender_id && (nm.content === m.content || (nm.media_url && nm.media_url === m.media_url)));
+          return !newMsgs.some(
+            (nm: Message) => nm.sender_id === m.sender_id && (nm.content === m.content || (nm.media_url && nm.media_url === m.media_url))
+          );
         });
         return [...withoutTemps, ...newMsgs];
       });
+
       const latest = data[data.length - 1];
       lastMessageCreatedAtRef.current = latest.created_at;
       lastMessageIdRef.current = latest.id;
     };
+
     const interval = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [activeId, supabase]);
@@ -709,20 +723,29 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadReactionsFor(messages.map((m) => m.id));
   }
 
+  // ── AUTO SCROLL on new messages ──────────────────────────────────────────
   useEffect(() => {
     if (isPrependingRef.current) { isPrependingRef.current = false; return; }
     const el = scrollRef.current;
     if (!el) return;
+    // Only auto-scroll if user is near bottom (within 150px)
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-    if (isNearBottom) { el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }
+    if (isNearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
 
+  // ── AUTO SCROLL on typing bubble ─────────────────────────────────────────
   useEffect(() => {
     if (!peerTyping) return;
     const el = scrollRef.current;
     if (!el) return;
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
-    if (isNearBottom) { setTimeout(() => { el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }); }, 50); }
+    if (isNearBottom) {
+      setTimeout(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }, 50);
+    }
   }, [peerTyping]);
 
   async function loadMoreMessages() {
@@ -757,7 +780,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [messages, activeId, myProfile.id, supabase, loadConversations]);
 
   useEffect(() => { setShowContactInfo(false); }, [activeId]);
-  useEffect(() => { if (recording) cancelRecording(); }, [activeId]);
+
+  useEffect(() => {
+    if (recording) cancelRecording();
+  }, [activeId]);
+
   useEffect(() => {
     return () => {
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
@@ -766,7 +793,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, []);
 
-  useEffect(() => { if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream; }, [remoteStream]);
+  useEffect(() => {
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = remoteStream;
+  }, [remoteStream]);
 
   useEffect(() => {
     if (callStatus === "connected") {
@@ -858,12 +887,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectSending(false);
     if (error) { setConnectPopupMode(null); setConnectPopupTarget(null); return; }
     sendPushNotification({ userId: connectPopupTarget.id, title: myProfile.display_name, body: `${myProfile.display_name} wants to connect with you!`, url: "/" });
-    setConnectPopupMode(null); setConnectPopupTarget(null); setSearch(""); setSearchResults([]);
+    setConnectPopupMode(null);
+    setConnectPopupTarget(null);
+    setSearch("");
+    setSearchResults([]);
   }
 
-  function closeConnectPopup() { setConnectPopupTarget(null); setConnectPopupMode(null); }
+  function closeConnectPopup() {
+    setConnectPopupTarget(null);
+    setConnectPopupMode(null);
+  }
 
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  // ── IMPROVED handleInputChange with typing broadcast ──────────────────────
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setInput(value);
     const channel = activeChannelRef.current;
@@ -929,7 +965,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleMediaFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file || !activeId) return;
-    if (file.size > MAX_IMAGE_BYTES) return;
+    if (file.size > MAX_IMAGE_BYTES) { return; }
     setUploadingMedia(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
@@ -955,7 +991,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       mediaRecorderRef.current = recorder;
       setRecording(true); setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-    } catch {}
+    } catch (err: any) { }
   }
 
   function cancelRecording() {
@@ -988,7 +1024,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setUploadingMedia(false);
   }
 
-  async function handleLogout() { await supabase.auth.signOut(); router.push("/login"); router.refresh(); }
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login"); router.refresh();
+  }
 
   async function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1009,14 +1048,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === myProfile.display_name) return;
     const { error } = await supabase.from("profiles").update({ display_name: trimmed }).eq("id", myProfile.id);
-    if (!error) setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
+    if (error) { return; }
+    setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
   async function saveBio() {
     const trimmed = bioDraft.trim();
     if (trimmed === (myProfile.bio ?? "")) return;
     const { error } = await supabase.from("profiles").update({ bio: trimmed }).eq("id", myProfile.id);
-    if (!error) setMyProfile((prev) => ({ ...prev, bio: trimmed }));
+    if (error) { return; }
+    setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
   const loadStatuses = useCallback(async () => {
@@ -1025,6 +1066,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [supabase]);
 
   useEffect(() => { loadStatuses(); }, [loadStatuses]);
+
   useEffect(() => {
     const channel = supabase.channel("statuses-realtime").on("postgres_changes", { event: "*", schema: "public", table: "statuses" }, () => loadStatuses()).subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -1042,7 +1084,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   function statusRingPropsFor(userId: string) {
     const list = userId === myProfile.id ? myStatuses : otherStatusesGrouped[userId] ?? [];
     if (list.length === 0) return { hasStatus: false, viewed: true };
-    return { hasStatus: true, viewed: list.every((s) => myViewedStatusIds.has(s.id)) };
+    const allViewed = list.every((s) => myViewedStatusIds.has(s.id));
+    return { hasStatus: true, viewed: allViewed };
   }
 
   async function markStatusViewed(statusId: string) {
@@ -1053,21 +1096,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function handleStatusFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
-    if (!file || file.size > MAX_IMAGE_BYTES) return;
+    if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) { return; }
     setUploadingStatus(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${myProfile.id}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type || undefined });
     if (uploadError) { setUploadingStatus(false); return; }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-    await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
+    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
+    if (error) { }
     setUploadingStatus(false); loadStatuses();
   }
 
   async function postTextStatus() {
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor });
-    if (!error) { setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses(); }
+    if (error) { return; }
+    setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses();
   }
 
   async function deleteStatus(id: string) {
@@ -1114,7 +1160,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await sendToUser(peer.id, "offer", { from: myProfile.id, fromName: myProfile.display_name, fromUsername: myProfile.username, fromColor: myProfile.avatar_color, fromAvatar: myProfile.avatar_url, offer });
-    } catch { endCall(false); }
+    } catch (err: any) { endCall(false); }
   }
 
   async function acceptCall() {
@@ -1134,7 +1180,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       await pc.setLocalDescription(answer);
       await sendToUser(callPeer.id, "answer", { answer });
       setCallStatus("connected");
-    } catch { declineCall(); }
+    } catch (err: any) { declineCall(); }
   }
 
   function declineCall() { endCall(true); }
@@ -1153,7 +1199,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const dx = e.touches[0].clientX - start.x;
     const dy = e.touches[0].clientY - start.y;
     if (Math.abs(dy) > Math.abs(dx)) return;
-    setSwipeState({ id: m.id, dx: Math.max(0, Math.min(dx, SWIPE_REPLY_MAX)) });
+    const clamped = Math.max(0, Math.min(dx, SWIPE_REPLY_MAX));
+    setSwipeState({ id: m.id, dx: clamped });
   }
   function onBubbleTouchEnd(m: Message) {
     const state = swipeState;
@@ -1566,16 +1613,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       </aside>
 
-      {/* ── CHAT SECTION: keyboard-aware wrapper ───────────────────────────── */}
-      <section
-        className={`${activeId ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}
-        style={{
-          // Lift the entire chat section above the keyboard
-          transform: `translateY(-${keyboardOffset}px)`,
-          transition: "transform 0.2s ease",
-          marginBottom: keyboardOffset > 0 ? `${keyboardOffset}px` : undefined,
-        }}
-      >
+      <section className={`${activeId ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}>
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
         {!active ? (
@@ -1599,7 +1637,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div className="relative z-10 flex flex-col items-center px-6 pt-8 pb-6 text-center" style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}>
               <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
                 <div className="rounded-full border-[3px] border-[#0A0C12]">
-                  <Avatar name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"} color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"} size={100} avatarUrl={otherDisplayProfile?.avatar_url} />
+                  <Avatar
+                    name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
+                    color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"}
+                    size={100}
+                    avatarUrl={otherDisplayProfile?.avatar_url}
+                  />
                 </div>
               </div>
               <h2 className="flex items-center font-display text-xl font-bold text-white">
@@ -1739,7 +1782,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 );
               })}
               {peerTyping && !active.is_group && (
-                <div className="mt-2.5"><TypingBubble /></div>
+                <div className="mt-2.5">
+                  <TypingBubble />
+                </div>
               )}
               {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
             </div>
@@ -1754,77 +1799,32 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            {/* ── COMPOSER: no blue outline, keyboard-aware ─────────────────── */}
-            <form onSubmit={sendMessage} className="relative z-10 border-t border-black/5 dark:border-white/5 px-4 py-3 md:px-6">
+            <form onSubmit={sendMessage} className="relative z-10 flex items-center gap-3 border-t border-black/5 dark:border-white/5 px-6 py-4">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-
               {recording ? (
-                <div className="flex items-center gap-3 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3">
+                <div className="flex flex-1 items-center gap-3 rounded-full border border-red-400/30 bg-red-500/10 px-5 py-3">
                   <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-red-400" />
                   <span className="flex-1 text-sm text-[color:var(--color-text)]/80">Recording… {formatDuration(recordingSeconds)}</span>
                   <button type="button" onClick={cancelRecording} className="text-xs font-medium text-mist hover:text-black dark:hover:text-white">Cancel</button>
-                  <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50" aria-label="Send voice note">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
-                    </svg>
-                  </button>
                 </div>
               ) : (
-                // ── FIXED: removed focus-within:border-violet (blue outline gone) ──
-                <div className="flex items-end gap-1 rounded-3xl border border-white/10 bg-ink-800 px-2 py-2">
-                  <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40" aria-label="Send image">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
+                <>
+                  <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white disabled:opacity-40" aria-label="Send image">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="1.6" /></svg>
                   </button>
-
-                  {composerExpanded ? (
-                    <textarea
-                      ref={textareaRef}
-                      value={input}
-                      onChange={handleInputChange}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(e as unknown as React.FormEvent); }
-                      }}
-                      placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"}
-                      disabled={uploadingMedia}
-                      rows={3}
-                      className="min-w-0 flex-1 resize-none bg-transparent px-1 py-2 text-sm placeholder:text-mist/50 outline-none disabled:opacity-60"
-                    />
-                  ) : (
-                    <input
-                      value={input}
-                      onChange={handleInputChange}
-                      placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"}
-                      disabled={uploadingMedia}
-                      className="min-w-0 flex-1 bg-transparent px-1 py-2.5 text-sm placeholder:text-mist/50 outline-none disabled:opacity-60"
-                    />
-                  )}
-
-                  <button type="button" onClick={() => setComposerExpanded((v) => !v)}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white" aria-label={composerExpanded ? "Collapse" : "Expand"}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                      style={{ transform: composerExpanded ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}>
-                      <polyline points="18 15 12 9 6 15" />
-                    </svg>
-                  </button>
-
-                  <button type="button" onClick={startRecording} disabled={uploadingMedia}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white disabled:opacity-40" aria-label="Record voice note">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                      <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" />
-                      <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                    </svg>
-                  </button>
-
-                  <button type="submit" disabled={sending || uploadingMedia || !input.trim()}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40 disabled:shadow-none" aria-label="Send message">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" />
-                    </svg>
-                  </button>
-                </div>
+                  <input value={input} onChange={handleInputChange} onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }} placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Type a message…"} disabled={uploadingMedia} className="min-w-0 flex-1 rounded-full border border-black/10 dark:border-white/10 bg-ink-800 px-5 py-3 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none disabled:opacity-60" />
+                </>
+              )}
+              {recording ? (
+                <button type="button" onClick={stopAndSendRecording} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30" aria-label="Send voice note">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="white" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
+              ) : input.trim() ? (
+                <button type="submit" disabled={sending} className="shrink-0 rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50">Send</button>
+              ) : (
+                <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-[color:var(--color-text)] transition hover:bg-black/10 dark:hover:bg-white/15 disabled:opacity-40" aria-label="Record voice note">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                </button>
               )}
             </form>
           </>
