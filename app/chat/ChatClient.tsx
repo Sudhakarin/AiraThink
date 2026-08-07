@@ -91,6 +91,8 @@ const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#
 const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
+// Polling interval as fallback for realtime
+const POLL_INTERVAL_MS = 3000;
 
 const HOME_FEATURES = [
   { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
@@ -321,13 +323,14 @@ function ReactionPills({ msgReactions, myId, onToggle }: { msgReactions: Reactio
   );
 }
 
+// ── IMPROVED TYPING BUBBLE ──────────────────────────────────────────────────
 function TypingBubble() {
   return (
-    <div className="flex justify-start">
-      <div className="glass flex items-center gap-1.5 rounded-2xl rounded-bl-sm px-4 py-3">
-        <span className="h-1.5 w-1.5 rounded-full bg-mist/70" style={{ animation: "typingDot 1.2s ease-in-out infinite", animationDelay: "0s" }} />
-        <span className="h-1.5 w-1.5 rounded-full bg-mist/70" style={{ animation: "typingDot 1.2s ease-in-out infinite", animationDelay: "0.15s" }} />
-        <span className="h-1.5 w-1.5 rounded-full bg-mist/70" style={{ animation: "typingDot 1.2s ease-in-out infinite", animationDelay: "0.3s" }} />
+    <div className="flex justify-start items-end gap-2">
+      <div className="glass flex items-center gap-1.5 rounded-2xl rounded-bl-sm px-4 py-3.5 shadow-sm">
+        <span className="h-2 w-2 rounded-full bg-mist/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0s" }} />
+        <span className="h-2 w-2 rounded-full bg-mist/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0.2s" }} />
+        <span className="h-2 w-2 rounded-full bg-mist/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0.4s" }} />
       </div>
     </div>
   );
@@ -361,15 +364,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
 
+  // Track last known message id for polling
+  const lastMessageIdRef = useRef<string | null>(null);
+  const lastMessageCreatedAtRef = useRef<string | null>(null);
+
   // notifications
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // ── CONNECT POPUP ──────────────────────────────────────────────
   const [connectPopupTarget, setConnectPopupTarget] = useState<Profile | null>(null);
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
   const [connectSending, setConnectSending] = useState(false);
-  // ───────────────────────────────────────────────────────────────
 
   // reply + reactions
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -420,7 +425,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // contact info block/mute state
   const [contactMuted, setContactMuted] = useState(false);
   const [contactBlocked, setContactBlocked] = useState(false);
 
@@ -437,7 +441,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [myProfile.id]);
 
   const loadConversations = useCallback(async () => {
-    setLoadingConvos(true);
     const { data: participantRows } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
     const convoIds = (participantRows ?? []).map((r) => r.conversation_id);
     if (convoIds.length === 0) { setConversations([]); setLoadingConvos(false); return; }
@@ -469,6 +472,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [myProfile.id, supabase]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  // ── POLL CONVERSATIONS every 4s as fallback ──────────────────────────────
+  useEffect(() => {
+    const interval = setInterval(() => { loadConversations(); }, 4000);
+    return () => clearInterval(interval);
+  }, [loadConversations]);
 
   const loadNotifications = useCallback(async () => {
     const { data } = await supabase
@@ -578,11 +587,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { cancelled = true; };
   }, [active?.otherProfile?.id, supabase]);
 
+  // ── LOAD MESSAGES + REALTIME + POLLING FALLBACK ──────────────────────────
   useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
     setMessages([]); setHasMore(true); setReplyingTo(null); setReactionsByMsg({});
     setPeerTyping(false);
+    lastMessageCreatedAtRef.current = null;
+    lastMessageIdRef.current = null;
 
     (async () => {
       const { data } = await supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: false }).limit(PAGE_SIZE);
@@ -590,15 +602,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const ordered = (data ?? []).slice().reverse();
       setMessages(ordered);
       setHasMore((data ?? []).length === PAGE_SIZE);
+      if (ordered.length > 0) {
+        lastMessageCreatedAtRef.current = ordered[ordered.length - 1].created_at;
+        lastMessageIdRef.current = ordered[ordered.length - 1].id;
+      }
       loadReactionsFor(ordered.map((m) => m.id));
     })();
 
+    // ── Realtime channel ──
     const channel = supabase.channel(`messages:${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
         setPeerTyping(false);
         if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+        const incoming = payload.new as Message;
+        lastMessageCreatedAtRef.current = incoming.created_at;
+        lastMessageIdRef.current = incoming.id;
         setMessages((prev) => {
-          const incoming = payload.new as Message;
           if (prev.some((m) => m.id === incoming.id)) return prev;
           const withoutTemp = prev.filter((m) => !(m.id.startsWith("temp-") && m.sender_id === incoming.sender_id && (m.content === incoming.content || (m.media_url && m.media_url === incoming.media_url))));
           return [...withoutTemp, incoming];
@@ -637,6 +656,50 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [activeId, supabase, loadConversations]);
 
+  // ── POLLING FALLBACK: poll every 3s for new messages in active chat ───────
+  useEffect(() => {
+    if (!activeId) return;
+
+    const poll = async () => {
+      const since = lastMessageCreatedAtRef.current;
+      let query = supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", activeId)
+        .order("created_at", { ascending: true });
+
+      if (since) {
+        query = query.gt("created_at", since);
+      } else {
+        return; // initial load not done yet
+      }
+
+      const { data } = await query;
+      if (!data || data.length === 0) return;
+
+      // Filter out temp messages and duplicates
+      setMessages((prev) => {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const newMsgs = data.filter((m: Message) => !existingIds.has(m.id));
+        if (newMsgs.length === 0) return prev;
+        const withoutTemps = prev.filter((m) => {
+          if (!m.id.startsWith("temp-")) return true;
+          return !newMsgs.some(
+            (nm: Message) => nm.sender_id === m.sender_id && (nm.content === m.content || (nm.media_url && nm.media_url === m.media_url))
+          );
+        });
+        return [...withoutTemps, ...newMsgs];
+      });
+
+      const latest = data[data.length - 1];
+      lastMessageCreatedAtRef.current = latest.created_at;
+      lastMessageIdRef.current = latest.id;
+    };
+
+    const interval = setInterval(poll, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [activeId, supabase]);
+
   async function loadReactionsFor(messageIds: string[]) {
     if (messageIds.length === 0) return;
     const { data } = await supabase.from("message_reactions").select("*").in("message_id", messageIds);
@@ -660,10 +723,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadReactionsFor(messages.map((m) => m.id));
   }
 
+  // ── AUTO SCROLL on new messages ──────────────────────────────────────────
   useEffect(() => {
     if (isPrependingRef.current) { isPrependingRef.current = false; return; }
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Only auto-scroll if user is near bottom (within 150px)
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+    if (isNearBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
+
+  // ── AUTO SCROLL on typing bubble ─────────────────────────────────────────
+  useEffect(() => {
+    if (!peerTyping) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (isNearBottom) {
+      setTimeout(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      }, 50);
+    }
+  }, [peerTyping]);
 
   async function loadMoreMessages() {
     if (!activeId || loadingMore || !hasMore || messages.length === 0) return;
@@ -700,7 +783,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => {
     if (recording) cancelRecording();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
   useEffect(() => {
@@ -767,7 +849,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .on("broadcast", { event: "hangup" }, () => { endCall(false); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myProfile.id, supabase]);
 
   async function handleSearch(q: string) {
@@ -817,6 +898,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectPopupMode(null);
   }
 
+  // ── IMPROVED handleInputChange with typing broadcast ──────────────────────
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setInput(value);
@@ -851,6 +933,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setInput(content); setReplyingTo(replyTo);
       setSending(false); return;
     }
+    lastMessageCreatedAtRef.current = (inserted as Message).created_at;
+    lastMessageIdRef.current = (inserted as Message).id;
     setMessages((prev) => {
       if (prev.some((m) => m.id === (inserted as Message).id)) return prev.filter((m) => m.id !== tempId);
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
@@ -868,6 +952,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMessages((prev) => [...prev, optimisticMsg]);
     const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content: "", message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null }).select().single();
     if (error || !inserted) { setMessages((prev) => prev.filter((m) => m.id !== tempId)); return; }
+    lastMessageCreatedAtRef.current = (inserted as Message).created_at;
+    lastMessageIdRef.current = (inserted as Message).id;
     setMessages((prev) => {
       if (prev.some((m) => m.id === (inserted as Message).id)) return prev.filter((m) => m.id !== tempId);
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
@@ -905,7 +991,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       mediaRecorderRef.current = recorder;
       setRecording(true); setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-    } catch (err: any) { /* mic denied */ }
+    } catch (err: any) { }
   }
 
   function cancelRecording() {
@@ -1019,7 +1105,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (uploadError) { setUploadingStatus(false); return; }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
-    if (error) { /* noop */ }
+    if (error) { }
     setUploadingStatus(false); loadStatuses();
   }
 
@@ -1056,7 +1142,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     statusTimerRef.current = setTimeout(() => { advanceStatus(1); }, STATUS_DURATION_MS);
     return () => { if (statusTimerRef.current) clearTimeout(statusTimerRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusViewerUserId, statusViewerIndex, statuses]);
 
   async function startCall() {
@@ -1132,12 +1217,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   return (
     <div className="relative flex w-full overflow-x-hidden bg-ink-900 text-[color:var(--color-text)]" style={{ height: "var(--app-height, 100dvh)" }}>
       <style>{`
-        @keyframes typingDot { 0%,80%,100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+        @keyframes typingDot {
+          0%, 60%, 100% { opacity: 0.25; transform: translateY(0px); }
+          30% { opacity: 1; transform: translateY(-5px); }
+        }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
-      {/* ── CONNECT POPUP MODAL ───────────────────────────────────────────── */}
       {connectPopupTarget && connectPopupMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
           <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
@@ -1426,7 +1513,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
                 const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
                 return (
-                  <button key={c.id} onClick={() => setActiveId(c.id)} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${activeId === c.id ? "bg-violet/15" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
+                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${activeId === c.id ? "bg-violet/15" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
                     <StatusRing {...ring}>
                       <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
                     </StatusRing>
@@ -1538,23 +1625,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <p className="mt-1 max-w-xs text-sm text-mist">Or start a new one from Search — your messages sync in real time.</p>
           </div>
         ) : showContactInfo ? (
-          /* ── REDESIGNED CONTACT INFO ─────────────────────────────────────── */
           <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
-            {/* Glow */}
             <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-30"
               style={{ background: `radial-gradient(circle, ${otherDisplayProfile?.avatar_color ?? "#7C5CFF"}55 0%, transparent 70%)` }} />
-
-            {/* Header */}
             <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4">
               <button onClick={() => setShowContactInfo(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white" aria-label="Back to chat">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
               <p className="text-sm font-semibold text-white/80">Contact info</p>
             </header>
-
-            {/* Avatar + name block */}
             <div className="relative z-10 flex flex-col items-center px-6 pt-8 pb-6 text-center" style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}>
-              {/* Gradient ring around avatar */}
               <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
                 <div className="rounded-full border-[3px] border-[#0A0C12]">
                   <Avatar
@@ -1565,17 +1645,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   />
                 </div>
               </div>
-
               <h2 className="flex items-center font-display text-xl font-bold text-white">
                 {active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
                 {isVerified(otherDisplayProfile?.username) && <VerifiedBadge size={18} />}
               </h2>
-
-              {!active.is_group && (
-                <p className="mt-1 text-sm text-white/45">@{otherDisplayProfile?.username}</p>
-              )}
-
-              {/* Online / last seen chip */}
+              {!active.is_group && <p className="mt-1 text-sm text-white/45">@{otherDisplayProfile?.username}</p>}
               {!active.is_group && (
                 <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
                   <span className={`h-2 w-2 rounded-full ${otherIsOnline ? "bg-teal" : "bg-white/25"}`} />
@@ -1584,40 +1658,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </span>
                 </div>
               )}
-
-              {/* Bio */}
               {otherDisplayProfile?.bio && (
-                <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60">
-                  {otherDisplayProfile.bio}
-                </p>
+                <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60">{otherDisplayProfile.bio}</p>
               )}
             </div>
-
-            {/* Quick action buttons */}
             {!active.is_group && (
               <div className="relative z-10 flex gap-3 px-5 pb-5">
-                {/* Message */}
-                <button
-                  onClick={() => setShowContactInfo(false)}
-                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8"
-                >
+                <button onClick={() => setShowContactInfo(false)} className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
                   <span className="text-[11px] font-semibold tracking-wide">Message</span>
                 </button>
-                {/* Call */}
-                <button
-                  onClick={() => { setShowContactInfo(false); startCall(); }}
-                  disabled={callStatus !== "idle"}
-                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8 disabled:opacity-40"
-                >
+                <button onClick={() => { setShowContactInfo(false); startCall(); }} disabled={callStatus !== "idle"} className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8 disabled:opacity-40">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
                   <span className="text-[11px] font-semibold tracking-wide">Call</span>
                 </button>
-                {/* Mute */}
-                <button
-                  onClick={() => setContactMuted((v) => !v)}
-                  className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8"
-                >
+                <button onClick={() => setContactMuted((v) => !v)} className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 transition hover:bg-white/8">
                   {contactMuted ? (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   ) : (
@@ -1627,33 +1682,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </button>
               </div>
             )}
-
-            {/* Divider */}
             <div className="relative z-10 mx-5 mb-4 h-px bg-white/6" />
-
-            {/* Danger zone */}
             <div className="relative z-10 flex flex-col gap-2 px-5 pb-8">
-              <button
-                onClick={() => setContactBlocked((v) => !v)}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition"
-                style={{
-                  background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(255,255,255,0.03)",
-                  borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.07)",
-                  color: "#F87171",
-                }}
-              >
+              <button onClick={() => setContactBlocked((v) => !v)} className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition" style={{ background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(255,255,255,0.03)", borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.07)", color: "#F87171" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 {contactBlocked ? "Unblock User" : "Block User"}
               </button>
-              <button
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/7 bg-white/3 py-3.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/8"
-              >
+              <button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/7 bg-white/3 py-3.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/8">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 Delete Chat
               </button>
             </div>
           </div>
-          /* ─────────────────────────────────────────────────────────────────── */
         ) : (
           <>
             <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
@@ -1669,7 +1709,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </p>
                   {!active.is_group && (
                     <p className="truncate text-xs text-mist">
-                      {otherIsOnline ? <span className="text-teal">Active now</span> : otherProfileFresh?.last_seen ? `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}` : `@${active.otherProfile?.username}`}
+                      {peerTyping ? <span className="text-teal animate-pulse">typing…</span> : otherIsOnline ? <span className="text-teal">Active now</span> : otherProfileFresh?.last_seen ? `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}` : `@${active.otherProfile?.username}`}
                     </p>
                   )}
                 </div>
@@ -1742,7 +1782,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 );
               })}
               {peerTyping && !active.is_group && (
-                <div className="mt-2.5"><TypingBubble /></div>
+                <div className="mt-2.5">
+                  <TypingBubble />
+                </div>
               )}
               {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
             </div>
