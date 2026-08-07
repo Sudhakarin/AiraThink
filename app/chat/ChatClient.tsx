@@ -91,7 +91,6 @@ const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#
 const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
-// Polling interval as fallback for realtime
 const POLL_INTERVAL_MS = 3000;
 
 const HOME_FEATURES = [
@@ -323,7 +322,6 @@ function ReactionPills({ msgReactions, myId, onToggle }: { msgReactions: Reactio
   );
 }
 
-// ── IMPROVED TYPING BUBBLE ──────────────────────────────────────────────────
 function TypingBubble() {
   return (
     <div className="flex justify-start items-end gap-2">
@@ -364,11 +362,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
 
-  // Track last known message id for polling
   const lastMessageIdRef = useRef<string | null>(null);
   const lastMessageCreatedAtRef = useRef<string | null>(null);
 
-  // notifications
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -376,20 +372,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
   const [connectSending, setConnectSending] = useState(false);
 
-  // reply + reactions
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
 
-  // typing indicator
   const [peerTyping, setPeerTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeChannelRef = useRef<any>(null);
   const lastTypingSentRef = useRef<number>(0);
 
-  // image + voice
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -400,7 +393,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingMimeTypeRef = useRef<string>("audio/webm");
 
-  // status
   const [statuses, setStatuses] = useState<Status[]>([]);
   const [myViewedStatusIds, setMyViewedStatusIds] = useState<Set<string>>(new Set());
   const [statusViewerUserId, setStatusViewerUserId] = useState<string | null>(null);
@@ -412,7 +404,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const statusFileInputRef = useRef<HTMLInputElement>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // calls
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
   const [incomingOffer, setIncomingOffer] = useState<RTCSessionDescriptionInit | null>(null);
@@ -473,7 +464,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // ── POLL CONVERSATIONS every 4s as fallback ──────────────────────────────
   useEffect(() => {
     const interval = setInterval(() => { loadConversations(); }, 4000);
     return () => clearInterval(interval);
@@ -587,7 +577,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { cancelled = true; };
   }, [active?.otherProfile?.id, supabase]);
 
-  // ── LOAD MESSAGES + REALTIME + POLLING FALLBACK ──────────────────────────
   useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
@@ -609,7 +598,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       loadReactionsFor(ordered.map((m) => m.id));
     })();
 
-    // ── Realtime channel ──
     const channel = supabase.channel(`messages:${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
         setPeerTyping(false);
@@ -656,28 +644,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [activeId, supabase, loadConversations]);
 
-  // ── POLLING FALLBACK: poll every 3s for new messages in active chat ───────
   useEffect(() => {
     if (!activeId) return;
-
     const poll = async () => {
       const since = lastMessageCreatedAtRef.current;
-      let query = supabase
-        .from("messages")
-        .select("*")
-        .eq("conversation_id", activeId)
-        .order("created_at", { ascending: true });
-
+      let query = supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true });
       if (since) {
         query = query.gt("created_at", since);
       } else {
-        return; // initial load not done yet
+        return;
       }
-
       const { data } = await query;
       if (!data || data.length === 0) return;
-
-      // Filter out temp messages and duplicates
       setMessages((prev) => {
         const existingIds = new Set(prev.map((m) => m.id));
         const newMsgs = data.filter((m: Message) => !existingIds.has(m.id));
@@ -690,12 +668,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         });
         return [...withoutTemps, ...newMsgs];
       });
-
       const latest = data[data.length - 1];
       lastMessageCreatedAtRef.current = latest.created_at;
       lastMessageIdRef.current = latest.id;
     };
-
     const interval = setInterval(poll, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [activeId, supabase]);
@@ -723,19 +699,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadReactionsFor(messages.map((m) => m.id));
   }
 
-  // ── AUTO SCROLL on new messages ──────────────────────────────────────────
   useEffect(() => {
     if (isPrependingRef.current) { isPrependingRef.current = false; return; }
     const el = scrollRef.current;
     if (!el) return;
-    // Only auto-scroll if user is near bottom (within 150px)
     const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
     if (isNearBottom) {
       el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
     }
   }, [messages]);
 
-  // ── AUTO SCROLL on typing bubble ─────────────────────────────────────────
   useEffect(() => {
     if (!peerTyping) return;
     const el = scrollRef.current;
@@ -898,7 +871,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectPopupMode(null);
   }
 
-  // ── IMPROVED handleInputChange with typing broadcast ──────────────────────
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const value = e.target.value;
     setInput(value);
@@ -1799,11 +1771,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            {/* ── REDESIGNED MESSAGE INPUT BAR ── */}
+            {/* ── REDESIGNED MESSAGE INPUT BAR (no blue outline) ── */}
             <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
               
-              {/* Glass wrapper for the entire input row */}
               <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20">
                 
                 {/* Image picker button */}
@@ -1816,7 +1787,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </button>
 
                 {recording ? (
-                  /* ── Recording state ── */
                   <>
                     <div className="flex flex-1 items-center gap-3 px-3">
                       <span className="relative flex h-3 w-3 shrink-0">
@@ -1838,20 +1808,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     </button>
                   </>
                 ) : (
-                  /* ── Normal typing state ── */
                   <>
-                    {/* Text input */}
                     <input
                       value={input}
                       onChange={handleInputChange}
                       onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }}
                       placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Message"}
                       disabled={uploadingMedia}
-                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 outline-none disabled:opacity-40"
+                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
                     />
 
                     {input.trim() ? (
-                      /* ── Send button (when text exists) ── */
                       <button
                         type="submit"
                         disabled={sending}
@@ -1864,7 +1831,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         </svg>
                       </button>
                     ) : (
-                      /* ── Mic button (when empty) ── */
                       <button
                         type="button"
                         onClick={startRecording}
