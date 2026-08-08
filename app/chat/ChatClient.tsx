@@ -153,7 +153,6 @@ function isVerified(username?: string) {
   function isVerified(username?: string) {
   return ["sudhakarin", "tanushree2251"].includes(username?.toLowerCase() || "");
 }
-
 function VerifiedBadge({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className="ml-1 inline-block shrink-0 align-middle" xmlns="http://www.w3.org/2000/svg">
