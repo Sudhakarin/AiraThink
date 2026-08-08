@@ -372,6 +372,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
   const [connectSending, setConnectSending] = useState(false);
 
+  // ── NEW: full-screen profile view state ──
+  const [profileView, setProfileView] = useState<Profile | null>(null);
+  const [profileViewStatus, setProfileViewStatus] = useState<"loading" | "none" | "pending" | "declined" | "connected" | null>(null);
+  const [profileViewConvoId, setProfileViewConvoId] = useState<string | null>(null);
+
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
@@ -853,6 +858,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectPopupMode("ask");
   }
 
+  // ── NEW: opens the Instagram/TikTok-style full profile screen ──
+  async function openProfileView(other: Profile) {
+    setProfileView(other);
+    setProfileViewStatus("loading");
+    setProfileViewConvoId(null);
+    const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
+    const myIds = (mine ?? []).map((r) => r.conversation_id);
+    if (myIds.length > 0) {
+      const { data: theirs } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", other.id).in("conversation_id", myIds);
+      if (theirs && theirs.length > 0) {
+        setProfileViewStatus("connected");
+        setProfileViewConvoId(theirs[0].conversation_id);
+        return;
+      }
+    }
+    const { data: existing } = await supabase.from("connection_requests").select("*").eq("from_user_id", myProfile.id).eq("to_user_id", other.id).maybeSingle();
+    if (existing) {
+      if (existing.status === "pending") setProfileViewStatus("pending");
+      else if (existing.status === "declined") setProfileViewStatus("declined");
+      else setProfileViewStatus("none");
+      return;
+    }
+    setProfileViewStatus("none");
+  }
+
+  function closeProfileView() {
+    setProfileView(null);
+    setProfileViewStatus(null);
+    setProfileViewConvoId(null);
+  }
+
+  function goToProfileChat() {
+    if (!profileViewConvoId) return;
+    setSearch(""); setSearchResults([]);
+    setActiveId(profileViewConvoId);
+    setMobileTab("chats");
+    closeProfileView();
+  }
+
   async function confirmConnect() {
     if (!connectPopupTarget) return;
     setConnectSending(true);
@@ -860,6 +904,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectSending(false);
     if (error) { setConnectPopupMode(null); setConnectPopupTarget(null); return; }
     sendPushNotification({ userId: connectPopupTarget.id, title: myProfile.display_name, body: `${myProfile.display_name} wants to connect with you!`, url: "/" });
+    if (profileView?.id === connectPopupTarget.id) { setProfileViewStatus("pending"); }
     setConnectPopupMode(null);
     setConnectPopupTarget(null);
     setSearch("");
@@ -1197,6 +1242,64 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
+      {/* ── NEW: Instagram/TikTok-style full profile screen ── */}
+      {profileView && (
+        <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
+          <div className="pointer-events-none absolute inset-0 bg-aurora opacity-50" />
+          <header className="relative z-10 flex items-center gap-3 px-4 py-4">
+            <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="Back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+            <p className="text-sm font-semibold text-white/70">@{profileView.username}</p>
+          </header>
+
+          <div className="relative z-10 flex flex-col items-center px-6 pt-4 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
+            <div className="rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
+              <div className="rounded-full bg-ink-900 p-[3px]">
+                <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={96} />
+              </div>
+            </div>
+            <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white">
+              {profileView.display_name}
+              {isVerified(profileView.username) && <VerifiedBadge size={18} />}
+            </h2>
+            <p className="mt-1 text-sm text-white/45">@{profileView.username}</p>
+
+            {profileView.bio && (
+              <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60">{profileView.bio}</p>
+            )}
+          </div>
+
+          <div className="relative z-10 flex gap-3 px-6 pb-6">
+            {profileViewStatus === "loading" && (
+              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">
+                Checking…
+              </div>
+            )}
+            {profileViewStatus === "none" && (
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">
+                Connect
+              </button>
+            )}
+            {profileViewStatus === "pending" && (
+              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">
+                Request Sent
+              </button>
+            )}
+            {profileViewStatus === "declined" && (
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">
+                Request Declined
+              </button>
+            )}
+            {profileViewStatus === "connected" && (
+              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">
+                Message
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {connectPopupTarget && connectPopupMode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
           <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
@@ -1512,7 +1615,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <input autoFocus value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search by username…" className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none" />
               <div className="mt-3">
                 {searchResults.map((r) => (
-                  <button key={r.id} onClick={() => openConnectPopup(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
+                  <button key={r.id} onClick={() => openProfileView(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
                     <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center font-semibold">{r.display_name}{isVerified(r.username) && <VerifiedBadge />}</p>
