@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, Fragment } from "react";
+import { useCallback, useEffect, useRef, useState, Fragment, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToPush } from "@/lib/push";
@@ -334,6 +334,19 @@ function TypingBubble() {
   );
 }
 
+// ── Simple toast for user-facing errors ──
+function ErrorToast({ msg, onDismiss }: { msg: string; onDismiss: () => void }) {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 3500);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+  return (
+    <div className="fixed bottom-24 left-1/2 z-[100] -translate-x-1/2 rounded-2xl bg-red-500/90 px-4 py-2.5 text-sm font-medium text-white shadow-xl backdrop-blur-sm">
+      {msg}
+    </div>
+  );
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   const supabase = createClient();
   const router = useRouter();
@@ -358,9 +371,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
+  // FIX: user-facing error toast state
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
+  // FIX: track realtime connection health to gate polling
+  const realtimeConnectedRef = useRef(false);
 
   const lastMessageIdRef = useRef<string | null>(null);
   const lastMessageCreatedAtRef = useRef<string | null>(null);
@@ -372,7 +389,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
   const [connectSending, setConnectSending] = useState(false);
 
-  // ── full-screen profile view state ──
   const [profileView, setProfileView] = useState<Profile | null>(null);
   const [profileViewStatus, setProfileViewStatus] = useState<"loading" | "none" | "pending" | "declined" | "connected" | null>(null);
   const [profileViewConvoId, setProfileViewConvoId] = useState<string | null>(null);
@@ -427,7 +443,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [contactMuted, setContactMuted] = useState(false);
   const [contactBlocked, setContactBlocked] = useState(false);
 
-  const active = conversations.find((c) => c.id === activeId);
+  // FIX: memoize active so it doesn't re-run find() on every render
+  const active = useMemo(
+    () => conversations.find((c) => c.id === activeId),
+    [conversations, activeId]
+  );
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -472,8 +492,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
+  // FIX: poll conversations only when realtime is not connected
   useEffect(() => {
-    const interval = setInterval(() => { loadConversations(); }, 4000);
+    const interval = setInterval(() => {
+      if (!realtimeConnectedRef.current) loadConversations();
+    }, 4000);
     return () => clearInterval(interval);
   }, [loadConversations]);
 
@@ -585,6 +608,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { cancelled = true; };
   }, [active?.otherProfile?.id, supabase]);
 
+  // FIX: cancelRecording via stable ref to avoid stale closure in useEffect
+  const cancelRecordingRef = useRef<() => void>(() => {});
+
+  function cancelRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") { recorder.onstop = null; recorder.stop(); }
+    recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+    recordingStreamRef.current = null; mediaRecorderRef.current = null; audioChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null; setRecording(false); setRecordingSeconds(0);
+  }
+
+  // Keep ref in sync with latest cancelRecording
+  useEffect(() => {
+    cancelRecordingRef.current = cancelRecording;
+  });
+
   useEffect(() => {
     if (!activeId) return;
     let cancelled = false;
@@ -606,6 +646,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       loadReactionsFor(ordered.map((m) => m.id));
     })();
 
+    // FIX: track realtime connection health
     const channel = supabase.channel(`messages:${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
         setPeerTyping(false);
@@ -631,7 +672,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         setPeerTyping(true);
         typingTimeoutRef.current = setTimeout(() => setPeerTyping(false), TYPING_IDLE_MS);
       })
-      .subscribe();
+      .subscribe((status) => {
+        realtimeConnectedRef.current = status === "SUBSCRIBED";
+      });
 
     activeChannelRef.current = channel;
 
@@ -645,6 +688,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     return () => {
       cancelled = true;
+      realtimeConnectedRef.current = false;
       supabase.removeChannel(channel);
       supabase.removeChannel(reactionsChannel);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -652,9 +696,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [activeId, supabase, loadConversations]);
 
+  // FIX: poll only when realtime is not connected (fallback)
   useEffect(() => {
     if (!activeId) return;
     const poll = async () => {
+      if (realtimeConnectedRef.current) return; // skip if realtime is healthy
       const since = lastMessageCreatedAtRef.current;
       let query = supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true });
       if (since) {
@@ -762,8 +808,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { setShowContactInfo(false); }, [activeId]);
 
+  // FIX: use stable ref to cancel recording on conversation switch
   useEffect(() => {
-    if (recording) cancelRecording();
+    if (recording) cancelRecordingRef.current();
   }, [activeId]);
 
   useEffect(() => {
@@ -789,7 +836,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { if (callTimerRef.current) clearInterval(callTimerRef.current); };
   }, [callStatus]);
 
-  // ── Connections count animation ──
   useEffect(() => {
     if (profileViewConnCount === null || profileViewConnCount === 0) { setProfileViewAnimCount(0); return; }
     let raf: number;
@@ -879,7 +925,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectPopupMode("ask");
   }
 
-  // ── fetch accepted connection ids for a given user ──
   async function fetchAcceptedConnectionIds(userId: string): Promise<string[]> {
     const { data } = await supabase
       .from("connection_requests")
@@ -889,7 +934,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return (data ?? []).map((r: any) => (r.from_user_id === userId ? r.to_user_id : r.from_user_id));
   }
 
-  // ── opens the profile screen ──
   async function openProfileView(other: Profile) {
     setProfileView(other);
     setProfileViewStatus("loading");
@@ -898,7 +942,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewAnimCount(0);
     setProfileViewMutuals({ profiles: [], count: 0 });
 
-    // connections count + mutuals (non-blocking)
     fetchAcceptedConnectionIds(other.id).then(async (theirIds) => {
       setProfileViewConnCount(theirIds.length);
       const myIds = await fetchAcceptedConnectionIds(myProfile.id);
@@ -996,6 +1039,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content); setReplyingTo(replyTo);
+      // FIX: show error to user
+      setErrorMsg("Failed to send message. Please try again.");
       setSending(false); return;
     }
     lastMessageCreatedAtRef.current = (inserted as Message).created_at;
@@ -1016,7 +1061,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const optimisticMsg: Message = { id: tempId, conversation_id: activeId, sender_id: myProfile.id, content: "", created_at: new Date().toISOString(), read_at: null, message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null };
     setMessages((prev) => [...prev, optimisticMsg]);
     const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content: "", message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null }).select().single();
-    if (error || !inserted) { setMessages((prev) => prev.filter((m) => m.id !== tempId)); return; }
+    if (error || !inserted) {
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+      // FIX: show error to user
+      setErrorMsg("Failed to send media. Please try again.");
+      return;
+    }
     lastMessageCreatedAtRef.current = (inserted as Message).created_at;
     lastMessageIdRef.current = (inserted as Message).id;
     setMessages((prev) => {
@@ -1030,12 +1080,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleMediaFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file || !activeId) return;
-    if (file.size > MAX_IMAGE_BYTES) { return; }
+    // FIX: show error to user instead of silent return
+    if (file.size > MAX_IMAGE_BYTES) {
+      setErrorMsg("Image is too large. Maximum size is 8 MB.");
+      return;
+    }
     setUploadingMedia(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
-    if (uploadError) { setUploadingMedia(false); return; }
+    if (uploadError) {
+      setUploadingMedia(false);
+      setErrorMsg("Upload failed. Please try again.");
+      return;
+    }
     const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
     await sendMediaMessage({ type: "image", url: publicUrlData.publicUrl });
     setUploadingMedia(false);
@@ -1056,16 +1114,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       mediaRecorderRef.current = recorder;
       setRecording(true); setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
-    } catch (err: any) { }
-  }
-
-  function cancelRecording() {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") { recorder.onstop = null; recorder.stop(); }
-    recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
-    recordingStreamRef.current = null; mediaRecorderRef.current = null; audioChunksRef.current = [];
-    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = null; setRecording(false); setRecordingSeconds(0);
+    } catch (err: any) {
+      // FIX: show microphone error to user
+      setErrorMsg("Microphone access denied. Please allow microphone permission.");
+    }
   }
 
   async function stopAndSendRecording() {
@@ -1083,7 +1135,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("webm") ? "webm" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("aac") ? "aac" : "webm";
     const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, blob, { cacheControl: "3600", contentType: mimeType });
-    if (uploadError) { setUploadingMedia(false); return; }
+    if (uploadError) {
+      setUploadingMedia(false);
+      setErrorMsg("Voice upload failed. Please try again.");
+      return;
+    }
     const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
     await sendMediaMessage({ type: "voice", url: publicUrlData.publicUrl, duration: finalDuration });
     setUploadingMedia(false);
@@ -1100,11 +1156,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${myProfile.id}/avatar-${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { cacheControl: "3600", upsert: true });
-    if (uploadError) { setUploading(false); return; }
+    if (uploadError) {
+      setUploading(false);
+      setErrorMsg("Avatar upload failed. Please try again.");
+      return;
+    }
     const { data: publicUrlData } = supabase.storage.from("avatars").getPublicUrl(path);
     const avatarUrl = publicUrlData.publicUrl;
     const { error: updateError } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", myProfile.id);
-    if (updateError) { setUploading(false); return; }
+    if (updateError) {
+      setUploading(false);
+      setErrorMsg("Failed to update avatar. Please try again.");
+      return;
+    }
     setMyProfile((prev) => ({ ...prev, avatar_url: avatarUrl }));
     setUploading(false);
   }
@@ -1113,7 +1177,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === myProfile.display_name) return;
     const { error } = await supabase.from("profiles").update({ display_name: trimmed }).eq("id", myProfile.id);
-    if (error) { return; }
+    if (error) { setErrorMsg("Failed to save name. Please try again."); return; }
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
@@ -1121,7 +1185,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const trimmed = bioDraft.trim();
     if (trimmed === (myProfile.bio ?? "")) return;
     const { error } = await supabase.from("profiles").update({ bio: trimmed }).eq("id", myProfile.id);
-    if (error) { return; }
+    if (error) { setErrorMsg("Failed to save bio. Please try again."); return; }
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
@@ -1162,22 +1226,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleStatusFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) { return; }
+    // FIX: show error to user instead of silent return
+    if (file.size > MAX_IMAGE_BYTES) {
+      setErrorMsg("Image is too large. Maximum size is 8 MB.");
+      return;
+    }
     setUploadingStatus(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${myProfile.id}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type || undefined });
-    if (uploadError) { setUploadingStatus(false); return; }
+    if (uploadError) {
+      setUploadingStatus(false);
+      setErrorMsg("Status upload failed. Please try again.");
+      return;
+    }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
-    if (error) { }
+    if (error) { setErrorMsg("Failed to post status. Please try again."); }
     setUploadingStatus(false); loadStatuses();
   }
 
   async function postTextStatus() {
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor });
-    if (error) { return; }
+    if (error) { setErrorMsg("Failed to post status. Please try again."); return; }
     setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses();
   }
 
@@ -1225,7 +1297,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       await sendToUser(peer.id, "offer", { from: myProfile.id, fromName: myProfile.display_name, fromUsername: myProfile.username, fromColor: myProfile.avatar_color, fromAvatar: myProfile.avatar_url, offer });
-    } catch (err: any) { endCall(false); }
+    } catch (err: any) {
+      endCall(false);
+      setErrorMsg("Could not access microphone to start call.");
+    }
   }
 
   async function acceptCall() {
@@ -1245,7 +1320,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       await pc.setLocalDescription(answer);
       await sendToUser(callPeer.id, "answer", { answer });
       setCallStatus("connected");
-    } catch (err: any) { declineCall(); }
+    } catch (err: any) {
+      declineCall();
+      setErrorMsg("Could not connect the call. Please try again.");
+    }
   }
 
   function declineCall() { endCall(true); }
@@ -1290,14 +1368,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
-      {/* ── Profile view: Instagram-style avatar + Twitter-style info card ── */}
+      {/* FIX: Global error toast */}
+      {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
+
       {profileView && (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
           <div
             className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
             style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
           />
-
           <header className="relative z-10 flex items-center justify-between px-4 py-4">
             <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="Back">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -1305,13 +1384,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <p className="text-sm font-semibold text-white/70">@{profileView.username}</p>
             <span className="h-9 w-9" />
           </header>
-
           <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
             <div className="relative">
-              <div
-                className="rounded-full p-[3px]"
-                style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}
-              >
+              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
                 <div className="rounded-full bg-ink-900 p-[3px]">
                   <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={104} />
                 </div>
@@ -1320,14 +1395,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />
               )}
             </div>
-
             <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white">
               {profileView.display_name}
               {isVerified(profileView.username) && <VerifiedBadge size={18} />}
             </h2>
             <p className="text-sm text-white/40">@{profileView.username}</p>
-
-            {/* Active now / last seen chip */}
             <div
               className="mt-3 flex items-center gap-1.5 rounded-full border px-3 py-1"
               style={{
@@ -1345,31 +1417,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 {onlineIds.has(profileView.id) ? "Active now" : profileView.last_seen ? `Last seen ${formatLastSeen(profileView.last_seen)}` : "Offline"}
               </span>
             </div>
-
-            {/* Stats row */}
             <div className="mt-5 flex items-center gap-8">
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tabular-nums">
-                  {profileViewConnCount === null ? "—" : profileViewAnimCount}
-                </span>
-                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40">
-                  Connection{profileViewConnCount === 1 ? "" : "s"}
-                </span>
+                <span className="text-[17px] font-bold text-white tabular-nums">{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40">Connection{profileViewConnCount === 1 ? "" : "s"}</span>
               </div>
               <div className="h-8 w-px bg-white/8" />
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tabular-nums">
-                  {statuses.filter((s) => s.user_id === profileView.id).length}
-                </span>
+                <span className="text-[17px] font-bold text-white tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
                 <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40">Updates</span>
               </div>
             </div>
-
             {profileView.bio && (
               <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60">{profileView.bio}</p>
             )}
-
-            {/* Mutual connections */}
             {profileViewMutuals.count > 0 && (
               <div className="mt-4 flex items-center gap-2">
                 <div className="flex -space-x-2">
@@ -1386,32 +1447,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
           </div>
-
           <div className="relative z-10 flex gap-3 px-6 pb-8">
             {profileViewStatus === "loading" && (
-              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">
-                Checking…
-              </div>
+              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
             )}
             {profileViewStatus === "none" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">
-                Connect
-              </button>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
             )}
             {profileViewStatus === "pending" && (
-              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">
-                Request Sent
-              </button>
+              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
             )}
             {profileViewStatus === "declined" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">
-                Request Declined
-              </button>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
             )}
             {profileViewStatus === "connected" && (
-              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">
-                Message
-              </button>
+              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Message</button>
             )}
           </div>
         </div>
@@ -1433,9 +1483,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div className="mb-6 h-px w-full bg-white/10" />
             {connectPopupMode === "ask" && (
               <>
-                <p className="mb-6 text-center text-sm text-[color:var(--color-text)]/80">
-                  Do you want to connect with <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>?
-                </p>
+                <p className="mb-6 text-center text-sm text-[color:var(--color-text)]/80">Do you want to connect with <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>?</p>
                 <div className="flex gap-3">
                   <button onClick={closeConnectPopup} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">Cancel</button>
                   <button onClick={confirmConnect} disabled={connectSending} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50">
@@ -1448,9 +1496,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet/15 text-2xl">⏳</span>
-                  <p className="text-center text-sm text-[color:var(--color-text)]/80">
-                    You already sent a request to <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>. Waiting for them to accept.
-                  </p>
+                  <p className="text-center text-sm text-[color:var(--color-text)]/80">You already sent a request to <span className="font-semibold text-white">{connectPopupTarget.display_name}</span>. Waiting for them to accept.</p>
                 </div>
                 <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
               </>
@@ -1459,9 +1505,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-2xl">😔</span>
-                  <p className="text-center text-sm text-[color:var(--color-text)]/80">
-                    <span className="font-semibold text-white">{connectPopupTarget.display_name}</span> has declined your request.
-                  </p>
+                  <p className="text-center text-sm text-[color:var(--color-text)]/80"><span className="font-semibold text-white">{connectPopupTarget.display_name}</span> has declined your request.</p>
                 </div>
                 <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
               </>
@@ -1993,9 +2037,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
             <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              
               <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20">
-                
                 <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
@@ -2003,7 +2045,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <path d="M22 16l-5-5-5 5M17 11l-3 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
-
                 {recording ? (
                   <>
                     <div className="flex flex-1 items-center gap-3 px-3">
@@ -2011,12 +2052,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         <span className="absolute inset-0 animate-ping rounded-full bg-red-400 opacity-75" />
                         <span className="relative h-3 w-3 rounded-full bg-red-500" />
                       </span>
-                      <span className="flex-1 text-sm font-medium tracking-wide text-red-400">
-                        Recording {formatDuration(recordingSeconds)}
-                      </span>
-                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mist transition hover:bg-white/10 hover:text-white">
-                        Cancel
-                      </button>
+                      <span className="flex-1 text-sm font-medium tracking-wide text-red-400">Recording {formatDuration(recordingSeconds)}</span>
+                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mist transition hover:bg-white/10 hover:text-white">Cancel</button>
                     </div>
                     <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95" aria-label="Send voice note">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -2035,27 +2072,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       disabled={uploadingMedia}
                       className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
                     />
-
                     {input.trim() ? (
-                      <button
-                        type="submit"
-                        disabled={sending}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
-                        aria-label="Send message"
-                      >
+                      <button type="submit" disabled={sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100" aria-label="Send message">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                           <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={startRecording}
-                        disabled={uploadingMedia}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30"
-                        aria-label="Record voice note"
-                      >
+                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Record voice note">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                           <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8"/>
                           <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
