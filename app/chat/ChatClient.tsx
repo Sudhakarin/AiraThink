@@ -150,9 +150,9 @@ function formatDayLabel(iso: string) {
 }
 
 function isVerified(username?: string) {
-  return ["sudhakarin", "tanushree2251", "shikhamishra", "instagram"].includes(
-  username?.toLowerCase() || ""
-);
+  function isVerified(username?: string) {
+  return ["sudhakarin", "tanushree2251"].includes(username?.toLowerCase() || "");
+}
 
 function VerifiedBadge({ size = 14 }: { size?: number }) {
   return (
