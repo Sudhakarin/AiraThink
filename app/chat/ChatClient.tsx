@@ -1441,6 +1441,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         .theme-light .bg-aurora { opacity: 0.15 !important; }
         .theme-light [class*="border-ink-900"] { border-color: #FFFFFF !important; }
         .theme-light [class*="border-ink-800"] { border-color: #FFFFFF !important; }
+        .theme-light [class*="from-ink-900"] { --tw-gradient-from: #F6F5FA var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+        .theme-light [class*="via-ink-900"] { --tw-gradient-to: rgb(246 245 250 / 0)  var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), #F6F5FA var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
 
         .theme-light .theme-scope .text-white { color: #14121F !important; }
         .theme-light .theme-scope [class*="text-white/"] { color: rgba(20,18,31,0.62) !important; }
@@ -1836,7 +1838,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
                 const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
                 return (
-                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${activeId === c.id ? "bg-violet/15" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
+                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
                     <StatusRing {...ring}>
                       <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
                     </StatusRing>
