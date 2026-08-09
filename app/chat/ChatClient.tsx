@@ -70,7 +70,6 @@ type ConnectionRequest = {
 
 type MobileTab = "home" | "status" | "chats" | "search" | "profile";
 type CallStatus = "idle" | "outgoing" | "incoming" | "connected";
-type ThemeMode = "dark" | "light";
 
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
@@ -93,7 +92,7 @@ const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
-const THEME_STORAGE_KEY = "airathink-theme";
+const ACTIVE_STATUS_STORAGE_KEY = "airathink-active-status";
 
 const HOME_FEATURES = [
   { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
@@ -349,41 +348,29 @@ function ErrorToast({ msg, onDismiss }: { msg: string; onDismiss: () => void }) 
   );
 }
 
-// FIX: Light/Dark theme toggle switch (used in Profile → Appearance)
-function ThemeToggleSwitch({ isLight, onChange }: { isLight: boolean; onChange: () => void }) {
+// Active-status on/off switch (used in Profile → Active status)
+function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => void }) {
   return (
     <button
       type="button"
       onClick={onChange}
-      aria-label="Toggle light or dark mode"
+      aria-label="Toggle active status"
       className="relative flex h-8 w-[58px] shrink-0 items-center rounded-full transition-colors duration-300"
       style={{
-        background: isLight ? "linear-gradient(90deg, #FDE68A, #FBBF24)" : "linear-gradient(90deg, #2A2540, #14121F)",
-        boxShadow: isLight
-          ? "inset 0 0 0 1px rgba(0,0,0,0.06)"
-          : "inset 0 0 0 1px rgba(255,255,255,0.08), 0 0 14px rgba(124,92,255,0.35)",
+        background: on ? "linear-gradient(90deg, #22D3B8, #16A98C)" : "linear-gradient(90deg, #3A3550, #2A2540)",
+        boxShadow: on
+          ? "inset 0 0 0 1px rgba(0,0,0,0.06), 0 0 14px rgba(34,211,184,0.35)"
+          : "inset 0 0 0 1px rgba(255,255,255,0.08)",
       }}
     >
       <span
-        className="absolute flex h-[22px] w-[22px] items-center justify-center rounded-full transition-all duration-300 ease-out"
+        className="absolute flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white transition-all duration-300 ease-out"
         style={{
           top: 4,
-          left: isLight ? 32 : 4,
-          background: isLight ? "#FFFFFF" : "linear-gradient(135deg, #7C5CFF, #9C82FF)",
-          boxShadow: isLight ? "0 2px 5px rgba(0,0,0,0.2)" : "0 2px 8px rgba(124,92,255,0.6)",
+          left: on ? 32 : 4,
+          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
         }}
-      >
-        {isLight ? (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <circle cx="12" cy="12" r="4.5" stroke="#F59E0B" strokeWidth="2" />
-            <path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" stroke="#F59E0B" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-        ) : (
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="white">
-            <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
-          </svg>
-        )}
-      </span>
+      />
     </button>
   );
 }
@@ -484,24 +471,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [contactMuted, setContactMuted] = useState(false);
   const [contactBlocked, setContactBlocked] = useState(false);
 
-  // FIX: theme (dark / light) state, persisted to localStorage
-  const [theme, setTheme] = useState<ThemeMode>("dark");
+  // Active status (online visibility) on/off, persisted to localStorage
+  const [activeStatusOn, setActiveStatusOn] = useState(true);
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
-      if (stored === "light" || stored === "dark") setTheme(stored);
+      const stored = window.localStorage.getItem(ACTIVE_STATUS_STORAGE_KEY);
+      if (stored === "off") setActiveStatusOn(false);
     } catch {}
   }, []);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+      window.localStorage.setItem(ACTIVE_STATUS_STORAGE_KEY, activeStatusOn ? "on" : "off");
     } catch {}
-  }, [theme]);
+  }, [activeStatusOn]);
 
-  function toggleTheme() {
-    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  function toggleActiveStatus() {
+    setActiveStatusOn((v) => !v);
   }
 
   // FIX: memoize active so it doesn't re-run find() on every render
@@ -646,10 +633,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const state = channel.presenceState();
       setOnlineIds(new Set(Object.keys(state)));
     }).subscribe(async (status) => {
-      if (status === "SUBSCRIBED") await channel.track({ online_at: new Date().toISOString() });
+      if (status === "SUBSCRIBED" && activeStatusOn) await channel.track({ online_at: new Date().toISOString() });
     });
     return () => { supabase.removeChannel(channel); };
-  }, [myProfile.id, supabase]);
+  }, [myProfile.id, supabase, activeStatusOn]);
 
   useEffect(() => {
     const update = () => { supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", myProfile.id).then(() => {}); };
@@ -1420,7 +1407,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div
-      className={`relative flex w-full overflow-x-hidden text-[color:var(--color-text)] ${theme === "light" ? "theme-light bg-[#F6F5FA]" : "bg-ink-900"}`}
+      className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
       style={{ height: "var(--app-height, 100dvh)" }}
     >
       <style>{`
@@ -1429,31 +1416,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           30% { opacity: 1; transform: translateY(-5px); }
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* ── FIX: Light mode overrides ──
-           .theme-scope is applied only to chrome elements (sidebar, headers,
-           modals, compose bar) — never to message bubbles, so "mine" (violet)
-           and full-screen Call / Status overlays stay visually unchanged. */
-        .theme-light { --color-text: #14121F; }
-        .theme-light .bg-ink-900 { background-color: #F6F5FA !important; }
-        .theme-light [class*="bg-ink-800"] { background-color: #FFFFFF !important; }
-        .theme-light .glass { background: rgba(255,255,255,0.82) !important; border-color: rgba(17,24,39,0.08) !important; }
-        .theme-light .bg-aurora { opacity: 0.15 !important; }
-        .theme-light [class*="border-ink-900"] { border-color: #FFFFFF !important; }
-        .theme-light [class*="border-ink-800"] { border-color: #FFFFFF !important; }
-        .theme-light [class*="from-ink-900"] { --tw-gradient-from: #F6F5FA var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
-        .theme-light [class*="via-ink-900"] { --tw-gradient-to: rgb(246 245 250 / 0)  var(--tw-gradient-to-position) !important; --tw-gradient-stops: var(--tw-gradient-from), #F6F5FA var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
-
-        .theme-light .theme-scope .text-white { color: #14121F !important; }
-        .theme-light .theme-scope [class*="text-white/"] { color: rgba(20,18,31,0.62) !important; }
-        .theme-light .theme-scope [class*="placeholder:text-white/"]::placeholder { color: rgba(20,18,31,0.35) !important; }
-        .theme-light .theme-scope .text-mist { color: #6B7280 !important; }
-        .theme-light .theme-scope [class*="text-mist/"] { color: rgba(107,114,128,0.75) !important; }
-        .theme-light .theme-scope [class*="placeholder:text-mist/"]::placeholder { color: rgba(107,114,128,0.5) !important; }
-        .theme-light .theme-scope [class*="bg-white/"] { background-color: rgba(17,24,39,0.045) !important; }
-        .theme-light .theme-scope [class*="hover:bg-white/"]:hover { background-color: rgba(17,24,39,0.07) !important; }
-        .theme-light .theme-scope [class*="border-white/"] { border-color: rgba(17,24,39,0.08) !important; }
-        .theme-light .theme-scope [class*="divide-white/"] > :not([hidden]) ~ :not([hidden]) { border-color: rgba(17,24,39,0.06) !important; }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
@@ -1461,7 +1423,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
 
       {profileView && (
-        <div className="theme-scope fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
+        <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
           <div
             className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
             style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
@@ -1558,7 +1520,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {connectPopupTarget && connectPopupMode && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
-          <div className="theme-scope w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
             <div className="flex flex-col items-center gap-3 pb-5">
               <Avatar name={connectPopupTarget.display_name} color={connectPopupTarget.avatar_color} size={72} avatarUrl={connectPopupTarget.avatar_url} />
               <div className="text-center">
@@ -1697,7 +1659,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
-      <aside className={`theme-scope ${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
+      <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
         <div className="flex items-center justify-between px-5 py-5">
           <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">Think</span></span>
           <div className="relative">
@@ -1894,22 +1856,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-              {/* FIX: Appearance — Light / Dark mode toggle */}
+              {/* Active status — show/hide online presence to others */}
               <div className="glass mt-6 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet/15 text-violet-light">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-teal/15 text-teal">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
-                        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+                        <circle cx="12" cy="12" r="3.5" fill="currentColor" />
                       </svg>
                     </span>
                     <div>
-                      <p className="text-sm font-semibold">{theme === "light" ? "Light mode" : "Dark mode"}</p>
-                      <p className="text-[11px] text-mist">{theme === "light" ? "Bright & clean" : "Easy on the eyes"}</p>
+                      <p className="text-sm font-semibold">Active status</p>
+                      <p className="text-[11px] text-mist">{activeStatusOn ? "Others can see when you're online" : "You appear offline to others"}</p>
                     </div>
                   </div>
-                  <ThemeToggleSwitch isLight={theme === "light"} onChange={toggleTheme} />
+                  <ActiveStatusSwitch on={activeStatusOn} onChange={toggleActiveStatus} />
                 </div>
               </div>
 
@@ -1962,7 +1924,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
 
         {!active ? (
-          <div className="theme-scope relative z-10 flex flex-1 flex-col items-center justify-center text-center">
+          <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
             <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="#9C82FF" strokeWidth="1.6" strokeLinejoin="round" /></svg>
             </div>
@@ -1970,7 +1932,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <p className="mt-1 max-w-xs text-sm text-mist">Or start a new one from Search — your messages sync in real time.</p>
           </div>
         ) : showContactInfo ? (
-          <div className="theme-scope relative z-10 flex flex-1 flex-col overflow-y-auto">
+          <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
             <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-30"
               style={{ background: `radial-gradient(circle, ${otherDisplayProfile?.avatar_color ?? "#7C5CFF"}55 0%, transparent 70%)` }} />
             <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4">
@@ -2041,7 +2003,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="theme-scope glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
+            <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
               <button onClick={() => setActiveId(null)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white md:hidden" aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
@@ -2135,7 +2097,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
 
             {replyingTo && (
-              <div className="theme-scope relative z-10 flex items-center justify-between border-t border-black/5 dark:border-white/5 bg-ink-800/60 px-6 py-2">
+              <div className="relative z-10 flex items-center justify-between border-t border-black/5 dark:border-white/5 bg-ink-800/60 px-6 py-2">
                 <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2">
                   <p className="text-xs font-medium text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
                   <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
@@ -2144,7 +2106,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="theme-scope relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
+            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
               <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20">
                 <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
