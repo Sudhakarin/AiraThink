@@ -68,28 +68,6 @@ type ConnectionRequest = {
   from_profile?: Profile;
 };
 
-// ── Feed types ──
-type Post = {
-  id: string;
-  user_id: string;
-  image_url: string | null;
-  caption: string | null;
-  created_at: string;
-  profile?: Profile;
-  like_count: number;
-  liked_by_me: boolean;
-  comment_count: number;
-};
-
-type PostComment = {
-  id: string;
-  post_id: string;
-  user_id: string;
-  content: string;
-  created_at: string;
-  profile?: Profile;
-};
-
 type MobileTab = "home" | "status" | "chats" | "search" | "profile";
 type CallStatus = "idle" | "outgoing" | "incoming" | "connected";
 
@@ -103,7 +81,6 @@ const ICE_SERVERS: RTCConfiguration = {
 const PAGE_SIZE = 30;
 const CHAT_MEDIA_BUCKET = "chat-media";
 const STATUS_MEDIA_BUCKET = "status-media";
-const POST_MEDIA_BUCKET = "post-media";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
@@ -116,6 +93,14 @@ const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airathink-active-status";
+
+const HOME_FEATURES = [
+  { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
+  { icon: "⚡", title: "Realtime chat", desc: "Messages arrive instantly, no delay." },
+  { icon: "⏳", title: "24 hours disappearing", desc: "Status updates vanish after a day." },
+  { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
+  { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
+];
 
 function sendPushNotification(opts: { userId?: string | null; title: string; body: string; url?: string }) {
   if (!opts.userId) return;
@@ -145,17 +130,6 @@ function formatLastSeen(iso?: string) {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDay = Math.floor(diffHr / 24);
   return `${diffDay}d ago`;
-}
-
-function timeAgoShort(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diffMs / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
 }
 
 function formatDuration(totalSeconds: number) {
@@ -499,20 +473,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   // Active status (online visibility) on/off, persisted to localStorage
   const [activeStatusOn, setActiveStatusOn] = useState(true);
-
-  // ── Feed state ──
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [loadingPosts, setLoadingPosts] = useState(true);
-  const [showPostComposer, setShowPostComposer] = useState(false);
-  const [postCaptionDraft, setPostCaptionDraft] = useState("");
-  const [postImageFile, setPostImageFile] = useState<File | null>(null);
-  const [postImagePreview, setPostImagePreview] = useState<string | null>(null);
-  const [posting, setPosting] = useState(false);
-  const postImageInputRef = useRef<HTMLInputElement>(null);
-  const [openCommentsForPost, setOpenCommentsForPost] = useState<string | null>(null);
-  const [postComments, setPostComments] = useState<PostComment[]>([]);
-  const [postCommentDraft, setPostCommentDraft] = useState("");
-  const [loadingPostComments, setLoadingPostComments] = useState(false);
 
   useEffect(() => {
     try {
@@ -1369,124 +1329,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { if (statusTimerRef.current) clearTimeout(statusTimerRef.current); };
   }, [statusViewerUserId, statusViewerIndex, statuses]);
 
-  // ── Feed: load posts (connections only, via RLS) ──
-  const loadPosts = useCallback(async () => {
-    setLoadingPosts(true);
-    const { data, error } = await supabase
-      .from("posts")
-      .select("*, profile:profiles(*), post_likes(user_id), post_comments(id)")
-      .order("created_at", { ascending: false })
-      .limit(50);
-    if (error) {
-      setErrorMsg("Failed to load feed.");
-      setLoadingPosts(false);
-      return;
-    }
-    const mapped: Post[] = (data ?? []).map((p: any) => ({
-      id: p.id,
-      user_id: p.user_id,
-      image_url: p.image_url,
-      caption: p.caption,
-      created_at: p.created_at,
-      profile: p.profile,
-      like_count: (p.post_likes ?? []).length,
-      liked_by_me: (p.post_likes ?? []).some((l: any) => l.user_id === myProfile.id),
-      comment_count: (p.post_comments ?? []).length,
-    }));
-    setPosts(mapped);
-    setLoadingPosts(false);
-  }, [supabase, myProfile.id]);
-
-  useEffect(() => { loadPosts(); }, [loadPosts]);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel("posts-realtime")
-      .on("postgres_changes", { event: "*", schema: "public", table: "posts" }, () => loadPosts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_likes" }, () => loadPosts())
-      .on("postgres_changes", { event: "*", schema: "public", table: "post_comments" }, () => loadPosts())
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [supabase, loadPosts]);
-
-  function pickPostImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) { setErrorMsg("Image is too large. Maximum size is 8 MB."); return; }
-    setPostImageFile(file);
-    setPostImagePreview(URL.createObjectURL(file));
-    setShowPostComposer(true);
-  }
-
-  async function submitPost() {
-    if (!postCaptionDraft.trim() && !postImageFile) return;
-    setPosting(true);
-    let imageUrl: string | null = null;
-    if (postImageFile) {
-      const ext = postImageFile.name.split(".").pop() ?? "jpg";
-      const path = `${myProfile.id}/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from(POST_MEDIA_BUCKET).upload(path, postImageFile, { contentType: postImageFile.type || undefined });
-      if (upErr) { setPosting(false); setErrorMsg("Image upload failed. Please try again."); return; }
-      imageUrl = supabase.storage.from(POST_MEDIA_BUCKET).getPublicUrl(path).data.publicUrl;
-    }
-    const { error } = await supabase.from("posts").insert({ user_id: myProfile.id, image_url: imageUrl, caption: postCaptionDraft.trim() || null });
-    setPosting(false);
-    if (error) { setErrorMsg("Failed to post. Please try again."); return; }
-    setPostCaptionDraft(""); setPostImageFile(null); setPostImagePreview(null); setShowPostComposer(false);
-    loadPosts();
-  }
-
-  function cancelPostComposer() {
-    setShowPostComposer(false); setPostCaptionDraft(""); setPostImageFile(null); setPostImagePreview(null);
-  }
-
-  async function togglePostLike(post: Post) {
-    // optimistic update
-    setPosts((prev) => prev.map((p) => p.id === post.id
-      ? { ...p, liked_by_me: !p.liked_by_me, like_count: p.like_count + (p.liked_by_me ? -1 : 1) }
-      : p));
-    if (post.liked_by_me) {
-      await supabase.from("post_likes").delete().eq("post_id", post.id).eq("user_id", myProfile.id);
-    } else {
-      await supabase.from("post_likes").insert({ post_id: post.id, user_id: myProfile.id });
-      if (post.user_id !== myProfile.id) {
-        sendPushNotification({ userId: post.user_id, title: myProfile.display_name, body: "❤️ liked your post", url: "/" });
-      }
-    }
-  }
-
-  async function openPostComments(postId: string) {
-    setOpenCommentsForPost(postId);
-    setLoadingPostComments(true);
-    const { data } = await supabase.from("post_comments").select("*, profile:profiles(*)").eq("post_id", postId).order("created_at", { ascending: true });
-    setPostComments((data ?? []) as any);
-    setLoadingPostComments(false);
-  }
-
-  function closePostComments() {
-    setOpenCommentsForPost(null); setPostComments([]); setPostCommentDraft("");
-  }
-
-  async function submitPostComment() {
-    const content = postCommentDraft.trim();
-    if (!content || !openCommentsForPost) return;
-    setPostCommentDraft("");
-    const { data, error } = await supabase.from("post_comments").insert({ post_id: openCommentsForPost, user_id: myProfile.id, content }).select("*, profile:profiles(*)").single();
-    if (error) { setErrorMsg("Failed to comment. Please try again."); return; }
-    setPostComments((prev) => [...prev, data as any]);
-    const targetPost = posts.find((p) => p.id === openCommentsForPost);
-    if (targetPost && targetPost.user_id !== myProfile.id) {
-      sendPushNotification({ userId: targetPost.user_id, title: myProfile.display_name, body: `commented: ${content}`, url: "/" });
-    }
-    loadPosts();
-  }
-
-  async function deletePost(postId: string) {
-    await supabase.from("posts").delete().eq("id", postId);
-    loadPosts();
-  }
-
   async function startCall() {
     if (!active?.otherProfile || callStatus !== "idle") return;
     const peer = active.otherProfile;
@@ -1579,76 +1421,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {/* FIX: Global error toast */}
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
-
-      {/* ── Post composer modal ── */}
-      {showPostComposer && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center">
-          <div className="w-full max-w-md rounded-t-3xl bg-ink-800 p-5 md:rounded-3xl">
-            <div className="mb-3 flex items-center justify-between">
-              <button onClick={cancelPostComposer} className="text-sm text-mist">Cancel</button>
-              <p className="text-sm font-semibold">New Post</p>
-              <button onClick={submitPost} disabled={posting || (!postCaptionDraft.trim() && !postImageFile)} className="text-sm font-semibold text-violet-light disabled:opacity-40">
-                {posting ? "Posting…" : "Post"}
-              </button>
-            </div>
-            {postImagePreview && (
-              <div className="relative mb-3 overflow-hidden rounded-2xl">
-                <img src={postImagePreview} alt="Preview" className="max-h-80 w-full object-cover" />
-                <button onClick={() => { setPostImageFile(null); setPostImagePreview(null); }} className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white" aria-label="Remove image">✕</button>
-              </div>
-            )}
-            {!postImagePreview && (
-              <button onClick={() => postImageInputRef.current?.click()} className="mb-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 py-6 text-sm text-mist">
-                Add a photo
-              </button>
-            )}
-            <textarea
-              value={postCaptionDraft}
-              onChange={(e) => setPostCaptionDraft(e.target.value.slice(0, 500))}
-              placeholder="Write a caption…"
-              rows={3}
-              className="w-full resize-none rounded-xl bg-white/5 px-3 py-2 text-sm outline-none placeholder:text-mist/50"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ── Post comments drawer ── */}
-      {openCommentsForPost && (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/60 backdrop-blur-sm md:items-center">
-          <div className="flex h-[70vh] w-full max-w-md flex-col rounded-t-3xl bg-ink-800 md:rounded-3xl">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-              <p className="text-sm font-semibold">Comments</p>
-              <button onClick={closePostComments} className="text-mist hover:text-white">✕</button>
-            </div>
-            <div className="flex-1 overflow-y-auto px-5 py-3">
-              {loadingPostComments && <p className="text-center text-xs text-mist">Loading…</p>}
-              {!loadingPostComments && postComments.length === 0 && (
-                <p className="py-6 text-center text-xs text-mist">No comments yet.</p>
-              )}
-              {postComments.map((c) => (
-                <div key={c.id} className="flex items-start gap-2.5 py-2">
-                  <Avatar name={c.profile?.display_name ?? "User"} color={c.profile?.avatar_color ?? "#7C5CFF"} avatarUrl={c.profile?.avatar_url} size={28} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs"><span className="font-semibold">{c.profile?.display_name}</span> <span className="text-mist">{timeAgoShort(c.created_at)} ago</span></p>
-                    <p className="text-sm">{c.content}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 border-t border-white/10 px-4 py-3">
-              <input
-                value={postCommentDraft}
-                onChange={(e) => setPostCommentDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") submitPostComment(); }}
-                placeholder="Add a comment…"
-                className="flex-1 rounded-full bg-white/5 px-4 py-2 text-sm outline-none placeholder:text-mist/50"
-              />
-              <button onClick={submitPostComment} disabled={!postCommentDraft.trim()} className="text-sm font-semibold text-violet-light disabled:opacity-40">Post</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {profileView && (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
@@ -1935,64 +1707,31 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
         <div className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
-            <div className="pb-4">
-              <input ref={postImageInputRef} type="file" accept="image/*" className="hidden" onChange={pickPostImage} />
-
-              {/* composer trigger */}
-              <div className="flex items-center gap-3 px-4 py-3">
-                <Avatar name={myProfile.display_name} color={myProfile.avatar_color} avatarUrl={myProfile.avatar_url} />
-                <button onClick={() => setShowPostComposer(true)} className="flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-left text-sm text-mist">
-                  Share a moment…
+            <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 text-center">
+              <style>{`@keyframes fadeUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+              <div className="flex flex-col items-center pt-10">
+                <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                    <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="url(#homeGrad)" strokeWidth="1.6" strokeLinejoin="round" />
+                    <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#9C82FF" /><stop offset="1" stopColor="#22D3B8" /></linearGradient></defs>
+                  </svg>
+                </div>
+                <h2 className="font-display text-2xl font-bold">Welcome to <span className="text-gradient">AiraThink</span>!</h2>
+                <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
+                <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30">
+                  Start a conversation
                 </button>
-                <button onClick={() => postImageInputRef.current?.click()} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist" aria-label="Add photo">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6" /><circle cx="8" cy="10" r="2" fill="currentColor" /><path d="M22 16l-5-5-5 5" stroke="currentColor" strokeWidth="1.6" /></svg>
-                </button>
+                {conversations.length > 0 && (
+                  <button onClick={() => setMobileTab("chats")} className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white">
+                    Or go to your chats →
+                  </button>
+                )}
               </div>
-
-              {loadingPosts && <p className="px-4 py-6 text-center text-sm text-mist">Loading feed…</p>}
-              {!loadingPosts && posts.length === 0 && (
-                <p className="px-4 py-10 text-center text-sm text-mist">No posts yet. Connections&apos; posts will show up here.</p>
-              )}
-
-              <div className="flex flex-col">
-                {posts.map((post) => (
-                  <div key={post.id} className="border-b border-white/5 pb-4">
-                    <div className="flex items-center gap-3 px-4 py-2.5">
-                      <Avatar name={post.profile?.display_name ?? "User"} color={post.profile?.avatar_color ?? "#7C5CFF"} avatarUrl={post.profile?.avatar_url} />
-                      <div className="min-w-0 flex-1">
-                        <p className="flex items-center truncate text-sm font-semibold">
-                          <span className="truncate">{post.profile?.display_name ?? "Unknown"}</span>
-                          {isVerified(post.profile?.username) && <VerifiedBadge />}
-                        </p>
-                        <p className="text-[11px] text-mist">{timeAgoShort(post.created_at)} ago</p>
-                      </div>
-                      {post.user_id === myProfile.id && (
-                        <button onClick={() => deletePost(post.id)} className="text-xs text-mist hover:text-red-400">Delete</button>
-                      )}
-                    </div>
-
-                    {post.image_url && (
-                      <img src={post.image_url} alt="Post" className="max-h-[420px] w-full object-cover" />
-                    )}
-
-                    {post.caption && (
-                      <p className="whitespace-pre-wrap break-words px-4 pt-2.5 text-sm">
-                        <span className="mr-1.5 font-semibold">{post.profile?.display_name}</span>{post.caption}
-                      </p>
-                    )}
-
-                    <div className="flex items-center gap-4 px-4 pt-2.5">
-                      <button onClick={() => togglePostLike(post)} className="flex items-center gap-1.5 text-sm" aria-label="Like">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill={post.liked_by_me ? "#EF4444" : "none"}>
-                          <path d="M12 21s-7-4.35-9.5-8.5C.5 8.5 3 5 6.5 5c2 0 3.5 1 5.5 3.5C14 6 15.5 5 17.5 5 21 5 23.5 8.5 21.5 12.5 19 16.65 12 21 12 21Z" stroke={post.liked_by_me ? "#EF4444" : "currentColor"} strokeWidth="1.6" strokeLinejoin="round" />
-                        </svg>
-                        <span className={post.liked_by_me ? "text-red-400" : "text-mist"}>{post.like_count}</span>
-                      </button>
-                      <button onClick={() => openPostComments(post.id)} className="flex items-center gap-1.5 text-sm text-mist" aria-label="Comments">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
-                        <span>{post.comment_count}</span>
-                      </button>
-                    </div>
+              <div className="mt-10 flex flex-col gap-3 text-left">
+                {HOME_FEATURES.map((f, i) => (
+                  <div key={f.title} className="glass flex items-center gap-3 rounded-2xl px-4 py-3.5 opacity-0" style={{ animation: `fadeUp 0.6s ease-out ${0.15 + i * 0.12}s forwards` }}>
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet/15 text-lg">{f.icon}</span>
+                    <div><p className="text-sm font-semibold">{f.title}</p><p className="text-xs text-mist">{f.desc}</p></div>
                   </div>
                 ))}
               </div>
