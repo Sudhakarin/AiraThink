@@ -1429,8 +1429,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   return (
     <div
       data-theme={theme}
-      className={`relative flex w-full overflow-x-hidden ${theme === "light" ? "bg-white text-[#101114]" : "bg-ink-900 text-white"}`}
-      style={{ height: "var(--app-height, 100dvh)" }}
+      className={`relative flex w-full overflow-x-hidden ${theme === "light" ? "bg-[#F2F2F7] text-[#1C1C1E]" : "bg-ink-900 text-white"}`}
+      style={{
+        height: "var(--app-height, 100dvh)",
+        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
+        WebkitFontSmoothing: "antialiased",
+      }}
     >
       <style>{`
         @keyframes typingDot {
@@ -1439,42 +1443,46 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Light mode theme ── */
+        /* ── Light mode theme (iOS Messages-style) ── */
         [data-theme="dark"] { --color-text: #ffffff; }
-        [data-theme="light"] { --color-text: #101114; }
+        [data-theme="light"] { --color-text: #1C1C1E; }
 
         .tx1 { color: #ffffff; }
-        [data-theme="light"] .tx1 { color: #101114 !important; }
+        [data-theme="light"] .tx1 { color: #1C1C1E !important; }
         .tx2 { color: rgba(255,255,255,0.62); }
-        [data-theme="light"] .tx2 { color: rgba(16,17,20,0.6) !important; }
+        [data-theme="light"] .tx2 { color: rgba(60,60,67,0.6) !important; }
 
         .msg-input-tx { color: #ffffff; }
         .msg-input-tx::placeholder { color: rgba(255,255,255,0.25); }
-        [data-theme="light"] .msg-input-tx { color: #101114 !important; }
-        [data-theme="light"] .msg-input-tx::placeholder { color: rgba(16,17,20,0.35) !important; }
+        [data-theme="light"] .msg-input-tx { color: #1C1C1E !important; }
+        [data-theme="light"] .msg-input-tx::placeholder { color: rgba(60,60,67,0.35) !important; }
 
-        [data-theme="light"] .bg-ink-900 { background-color: #ffffff !important; }
-        [data-theme="light"] .bg-ink-800 { background-color: #f0f1f5 !important; }
-        [data-theme="light"] .bg-ink-800\/60 { background-color: rgba(16,17,20,0.04) !important; }
-        [data-theme="light"] .bg-ink-800\/80 { background-color: rgba(255,255,255,0.92) !important; }
-        [data-theme="light"] .border-ink-900 { border-color: #ffffff !important; }
-        [data-theme="light"] .border-ink-800 { border-color: #f0f1f5 !important; }
-        [data-theme="light"] .from-ink-900 { --tw-gradient-from: #ffffff var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
-        [data-theme="light"] .via-ink-900\/95 { --tw-gradient-stops: var(--tw-gradient-from), rgba(255,255,255,0.95) var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
+        /* App background = iOS systemGroupedBackground, cards = systemBackground (white) */
+        [data-theme="light"] .bg-ink-900 { background-color: #F2F2F7 !important; }
+        [data-theme="light"] .bg-ink-800 { background-color: #FFFFFF !important; }
+        [data-theme="light"] .bg-ink-800\/60 { background-color: rgba(255,255,255,0.94) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+        [data-theme="light"] .bg-ink-800\/80 { background-color: rgba(255,255,255,0.88) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+        [data-theme="light"] .border-ink-900 { border-color: #F2F2F7 !important; }
+        [data-theme="light"] .border-ink-800 { border-color: #FFFFFF !important; }
+        [data-theme="light"] .from-ink-900 { --tw-gradient-from: #F2F2F7 var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+        [data-theme="light"] .via-ink-900\/95 { --tw-gradient-stops: var(--tw-gradient-from), rgba(242,242,247,0.95) var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
 
-        [data-theme="light"] .bg-white\/5 { background-color: rgba(16,17,20,0.045) !important; }
-        [data-theme="light"] .bg-white\/4 { background-color: rgba(16,17,20,0.035) !important; }
-        [data-theme="light"] .bg-white\/6 { background-color: rgba(16,17,20,0.05) !important; }
-        [data-theme="light"] .bg-white\/8 { background-color: rgba(16,17,20,0.06) !important; }
-        [data-theme="light"] .border-white\/10 { border-color: rgba(16,17,20,0.10) !important; }
-        [data-theme="light"] .border-white\/8 { border-color: rgba(16,17,20,0.08) !important; }
-        [data-theme="light"] .border-white\/7 { border-color: rgba(16,17,20,0.07) !important; }
-        [data-theme="light"] .border-white\/5 { border-color: rgba(16,17,20,0.06) !important; }
-        [data-theme="light"] .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(16,17,20,0.06) !important; }
+        [data-theme="light"] .bg-white\/5 { background-color: rgba(60,60,67,0.06) !important; }
+        [data-theme="light"] .bg-white\/4 { background-color: rgba(60,60,67,0.045) !important; }
+        [data-theme="light"] .bg-white\/6 { background-color: rgba(60,60,67,0.07) !important; }
+        [data-theme="light"] .bg-white\/8 { background-color: rgba(60,60,67,0.08) !important; }
+        [data-theme="light"] .border-white\/10 { border-color: rgba(60,60,67,0.13) !important; }
+        [data-theme="light"] .border-white\/8 { border-color: rgba(60,60,67,0.11) !important; }
+        [data-theme="light"] .border-white\/7 { border-color: rgba(60,60,67,0.10) !important; }
+        [data-theme="light"] .border-white\/5 { border-color: rgba(60,60,67,0.08) !important; }
+        [data-theme="light"] .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(60,60,67,0.08) !important; }
 
-        [data-theme="light"] .glass { background: rgba(255,255,255,0.75) !important; border-color: rgba(16,17,20,0.06) !important; }
+        [data-theme="light"] .glass { background: rgba(255,255,255,0.86) !important; border-color: rgba(60,60,67,0.08) !important; box-shadow: 0 1px 2px rgba(16,17,20,0.04), 0 8px 24px rgba(16,17,20,0.05) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
         [data-theme="light"] .bubble-received { background: #E9E9EB !important; border-color: transparent !important; backdrop-filter: none !important; }
-        [data-theme="light"] ::placeholder { color: rgba(16,17,20,0.4); }
+        [data-theme="light"] ::placeholder { color: rgba(60,60,67,0.4); }
+
+        /* Rounder, iOS-style tap feedback */
+        [data-theme="light"] button, [data-theme="light"] .glass { -webkit-tap-highlight-color: transparent; }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
@@ -1767,7 +1775,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         <div className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
             <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 text-center">
-              <style>{`@keyframes fadeUp { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }`}</style>
+              <style>{`
+                @keyframes bubbleInLeft { 0% { opacity: 0; transform: translateX(-26px) scale(0.9); } 55% { opacity: 1; transform: translateX(5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
+                @keyframes bubbleInRight { 0% { opacity: 0; transform: translateX(26px) scale(0.9); } 55% { opacity: 1; transform: translateX(-5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
+                @keyframes iconPop { 0% { transform: scale(0.4) rotate(-8deg); opacity: 0; } 70% { transform: scale(1.15) rotate(2deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+              `}</style>
               <div className="flex flex-col items-center pt-10">
                 <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
@@ -1786,13 +1798,33 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </button>
                 )}
               </div>
-              <div className="mt-10 flex flex-col gap-3 text-left">
-                {HOME_FEATURES.map((f, i) => (
-                  <div key={f.title} className="glass flex items-center gap-3 rounded-2xl px-4 py-3.5 opacity-0" style={{ animation: `fadeUp 0.6s ease-out ${0.15 + i * 0.12}s forwards` }}>
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet/15 text-lg">{f.icon}</span>
-                    <div><p className="text-sm font-semibold">{f.title}</p><p className="text-xs text-mist">{f.desc}</p></div>
-                  </div>
-                ))}
+              <div className="mt-10 flex flex-col gap-2.5">
+                {HOME_FEATURES.map((f, i) => {
+                  const mine = i % 2 === 1;
+                  return (
+                    <div key={f.title} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
+                      <div
+                        className={`flex max-w-[88%] items-center gap-3 px-4 py-3.5 text-left opacity-0 shadow-sm ${
+                          mine
+                            ? "rounded-2xl rounded-br-sm bg-gradient-to-br from-violet to-violet-dark text-white shadow-violet/20"
+                            : "glass bubble-received rounded-2xl rounded-bl-sm"
+                        }`}
+                        style={{ animation: `${mine ? "bubbleInRight" : "bubbleInLeft"} 0.5s cubic-bezier(0.34,1.56,0.64,1) ${0.15 + i * 0.16}s forwards` }}
+                      >
+                        <span
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg opacity-0 ${mine ? "bg-white/20" : "bg-violet/15"}`}
+                          style={{ animation: `iconPop 0.45s cubic-bezier(0.34,1.56,0.64,1) ${0.32 + i * 0.16}s forwards` }}
+                        >
+                          {f.icon}
+                        </span>
+                        <div>
+                          <p className={`text-sm font-semibold ${mine ? "text-white" : ""}`}>{f.title}</p>
+                          <p className={`text-xs ${mine ? "text-white/70" : "text-mist"}`}>{f.desc}</p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
