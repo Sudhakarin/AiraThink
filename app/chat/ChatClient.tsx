@@ -192,14 +192,14 @@ function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewe
   );
 }
 
-function Ticks({ read }: { read: boolean }) {
+function Ticks({ read, className = "text-white" }: { read: boolean; className?: string }) {
   return read ? (
-    <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className="inline-block align-middle text-white">
+    <svg width="16" height="10" viewBox="0 0 16 10" fill="none" className={`inline-block align-middle ${className}`}>
       <path d="M1 5l3 3 5-7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M6 5l3 3 6-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ) : (
-    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className="inline-block align-middle text-white/40">
+    <svg width="12" height="10" viewBox="0 0 12 10" fill="none" className={`inline-block align-middle ${className}`}>
       <path d="M1 5l3 3 6-8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -1473,6 +1473,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         [data-theme="light"] .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(16,17,20,0.06) !important; }
 
         [data-theme="light"] .glass { background: rgba(255,255,255,0.75) !important; border-color: rgba(16,17,20,0.06) !important; }
+        [data-theme="light"] .bubble-received { background: #E9E9EB !important; border-color: transparent !important; backdrop-filter: none !important; }
         [data-theme="light"] ::placeholder { color: rgba(16,17,20,0.4); }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
@@ -1985,7 +1986,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       </aside>
 
       <section className={`${activeId ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}>
-        <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
+        <div className={`pointer-events-none absolute inset-0 bg-aurora ${theme === "light" ? "opacity-0" : "opacity-40"}`} />
 
         {!active ? (
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
@@ -2110,7 +2111,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <Fragment key={m.id}>
                     {showDayDivider && (
                       <div className="my-4 flex items-center justify-center">
-                        <span className="rounded-full border border-black/5 bg-black/5 px-3 py-1 text-[11px] text-mist dark:border-white/10 dark:bg-white/5">
+                        <span className="text-[13px] font-medium text-mist">
                           {formatDayLabel(m.created_at)}
                         </span>
                       </div>
@@ -2127,7 +2128,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             ))}
                           </div>
                         )}
-                        <div className={`text-sm ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white shadow-md shadow-violet/20` : `${isImage ? "" : "glass"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
+                        <div className={`text-[16px] leading-snug ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white shadow-md shadow-violet/20` : `${isImage ? "" : "glass bubble-received"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
                           {quoted && (
                             <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
                               <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
@@ -2141,11 +2142,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           ) : (
                             <p className="whitespace-pre-wrap break-words">{m.content}</p>
                           )}
-                          <p className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${mine ? "text-white/60" : "text-mist"} ${isImage ? "px-2 pb-1" : ""}`}>
-                            {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            {mine && <Ticks read={!!m.read_at} />}
-                          </p>
+                          {isImage && (
+                            <p className="mt-1 flex items-center justify-end gap-1 px-2 pb-1 text-[10px] text-white/60">
+                              {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                              {mine && <Ticks read={!!m.read_at} />}
+                            </p>
+                          )}
                         </div>
+                        {!isImage && (
+                          <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] text-mist ${mine ? "justify-end" : "justify-start"}`}>
+                            <span>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                            {mine && <Ticks read={!!m.read_at} className={m.read_at ? "text-sky-500" : "text-mist"} />}
+                          </p>
+                        )}
                         <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
                       </div>
                     </div>
