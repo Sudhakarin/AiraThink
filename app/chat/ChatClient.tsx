@@ -177,7 +177,7 @@ function Avatar({ name, color, size = 40, online = false, avatarUrl }: {
         </div>
       )}
       {online && (
-        <span className="absolute bottom-0 right-0 rounded-full border-2 border-ink-900 bg-teal" style={{ width: size * 0.3, height: size * 0.3 }} />
+        <span className="absolute bottom-0 right-0 rounded-full border-2 border-[#F2F2F7] dark:border-ink-900 bg-teal" style={{ width: size * 0.3, height: size * 0.3 }} />
       )}
     </div>
   );
@@ -186,8 +186,8 @@ function Avatar({ name, color, size = 40, online = false, avatarUrl }: {
 function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewed: boolean; children: React.ReactNode }) {
   if (!hasStatus) return <>{children}</>;
   return (
-    <div className="rounded-full p-[2px]" style={{ background: viewed ? "#4B5563" : "linear-gradient(45deg, #7C5CFF, #22D3B8)" }}>
-      <div className="rounded-full bg-ink-900 p-[2px]">{children}</div>
+    <div className="rounded-full p-[2px]" style={{ background: viewed ? "#E5E7EB" : "linear-gradient(45deg, #7C5CFF, #22D3B8)" }}>
+      <div className="rounded-full bg-[#F2F2F7] dark:bg-ink-900 p-[2px]">{children}</div>
     </div>
   );
 }
@@ -336,7 +336,6 @@ function TypingBubble() {
   );
 }
 
-// ── Simple toast for user-facing errors ──
 function ErrorToast({ msg, onDismiss }: { msg: string; onDismiss: () => void }) {
   useEffect(() => {
     const t = setTimeout(onDismiss, 3500);
@@ -349,7 +348,6 @@ function ErrorToast({ msg, onDismiss }: { msg: string; onDismiss: () => void }) 
   );
 }
 
-// Active-status on/off switch (used in Profile → Active status)
 function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => void }) {
   return (
     <button
@@ -358,10 +356,10 @@ function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => voi
       aria-label="Toggle"
       className="relative flex h-8 w-[58px] shrink-0 items-center rounded-full transition-colors duration-300"
       style={{
-        background: on ? "linear-gradient(90deg, #22D3B8, #16A98C)" : "linear-gradient(90deg, #3A3550, #2A2540)",
+        background: on ? "linear-gradient(90deg, #22D3B8, #16A98C)" : "linear-gradient(90deg, #E5E7EB, #D1D5DB)",
         boxShadow: on
           ? "inset 0 0 0 1px rgba(0,0,0,0.06), 0 0 14px rgba(34,211,184,0.35)"
-          : "inset 0 0 0 1px rgba(255,255,255,0.08)",
+          : "inset 0 0 0 1px rgba(0,0,0,0.06)",
       }}
     >
       <span
@@ -369,7 +367,7 @@ function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => voi
         style={{
           top: 4,
           left: on ? 32 : 4,
-          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+          boxShadow: "0 2px 5px rgba(0,0,0,0.15)",
         }}
       />
     </button>
@@ -400,12 +398,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
-  // FIX: user-facing error toast state
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
-  // FIX: track realtime connection health to gate polling
   const realtimeConnectedRef = useRef(false);
 
   const lastMessageIdRef = useRef<string | null>(null);
@@ -472,7 +468,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [contactMuted, setContactMuted] = useState(false);
   const [contactBlocked, setContactBlocked] = useState(false);
 
-  // Active status (online visibility) on/off, persisted to localStorage
   const [activeStatusOn, setActiveStatusOn] = useState(true);
 
   useEffect(() => {
@@ -492,7 +487,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setActiveStatusOn((v) => !v);
   }
 
-  // Theme (dark / light mode), persisted to localStorage — old dark mode stays default
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
@@ -512,7 +506,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setTheme((v) => (v === "dark" ? "light" : "dark"));
   }
 
-  // FIX: memoize active so it doesn't re-run find() on every render
   const active = useMemo(
     () => conversations.find((c) => c.id === activeId),
     [conversations, activeId]
@@ -561,7 +554,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
 
-  // FIX: poll conversations only when realtime is not connected
   useEffect(() => {
     const interval = setInterval(() => {
       if (!realtimeConnectedRef.current) loadConversations();
@@ -677,7 +669,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { cancelled = true; };
   }, [active?.otherProfile?.id, supabase]);
 
-  // FIX: cancelRecording via stable ref to avoid stale closure in useEffect
   const cancelRecordingRef = useRef<() => void>(() => {});
 
   function cancelRecording() {
@@ -689,7 +680,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     recordingTimerRef.current = null; setRecording(false); setRecordingSeconds(0);
   }
 
-  // Keep ref in sync with latest cancelRecording
   useEffect(() => {
     cancelRecordingRef.current = cancelRecording;
   });
@@ -715,7 +705,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       loadReactionsFor(ordered.map((m) => m.id));
     })();
 
-    // FIX: track realtime connection health
     const channel = supabase.channel(`messages:${activeId}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
         setPeerTyping(false);
@@ -765,11 +754,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
   }, [activeId, supabase, loadConversations]);
 
-  // FIX: poll only when realtime is not connected (fallback)
   useEffect(() => {
     if (!activeId) return;
     const poll = async () => {
-      if (realtimeConnectedRef.current) return; // skip if realtime is healthy
+      if (realtimeConnectedRef.current) return;
       const since = lastMessageCreatedAtRef.current;
       let query = supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: true });
       if (since) {
@@ -877,7 +865,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => { setShowContactInfo(false); }, [activeId]);
 
-  // FIX: use stable ref to cancel recording on conversation switch
   useEffect(() => {
     if (recording) cancelRecordingRef.current();
   }, [activeId]);
@@ -1108,7 +1095,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content); setReplyingTo(replyTo);
-      // FIX: show error to user
       setErrorMsg("Failed to send message. Please try again.");
       setSending(false); return;
     }
@@ -1132,7 +1118,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content: "", message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null }).select().single();
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
-      // FIX: show error to user
       setErrorMsg("Failed to send media. Please try again.");
       return;
     }
@@ -1149,7 +1134,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleMediaFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file || !activeId) return;
-    // FIX: show error to user instead of silent return
     if (file.size > MAX_IMAGE_BYTES) {
       setErrorMsg("Image is too large. Maximum size is 8 MB.");
       return;
@@ -1184,7 +1168,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setRecording(true); setRecordingSeconds(0);
       recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
     } catch (err: any) {
-      // FIX: show microphone error to user
       setErrorMsg("Microphone access denied. Please allow microphone permission.");
     }
   }
@@ -1295,7 +1278,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleStatusFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
-    // FIX: show error to user instead of silent return
     if (file.size > MAX_IMAGE_BYTES) {
       setErrorMsg("Image is too large. Maximum size is 8 MB.");
       return;
@@ -1429,7 +1411,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   return (
     <div
       data-theme={theme}
-      className={`relative flex w-full overflow-x-hidden ${theme === "light" ? "bg-[#F2F2F7] text-[#1C1C1E]" : "bg-ink-900 text-white"}`}
+      className={`relative flex w-full overflow-x-hidden ${
+        theme === "light" 
+          ? "bg-[#F8F9FC] text-[#1C1C1E]" 
+          : "bg-ink-900 text-white"
+      }`}
       style={{
         height: "var(--app-height, 100dvh)",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
@@ -1443,9 +1429,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Light mode theme (iOS Messages-style) ── */
-        [data-theme="dark"] { --color-text: #ffffff; }
-        [data-theme="light"] { --color-text: #1C1C1E; }
+        /* ── Dark Mode ── */
+        [data-theme="dark"] { 
+          --color-text: #ffffff;
+          --bubble-received: rgba(255,255,255,0.06);
+          --input-bg: rgba(255,255,255,0.05);
+          --border-color: rgba(255,255,255,0.08);
+          --shadow-color: rgba(0,0,0,0.3);
+        }
+        
+        /* ── Light Mode (iOS Messages-style) ── */
+        [data-theme="light"] { 
+          --color-text: #1C1C1E;
+          --bubble-received: #E9E9EB;
+          --input-bg: rgba(0,0,0,0.04);
+          --border-color: rgba(0,0,0,0.08);
+          --shadow-color: rgba(0,0,0,0.08);
+        }
 
         .tx1 { color: #ffffff; }
         [data-theme="light"] .tx1 { color: #1C1C1E !important; }
@@ -1457,109 +1457,140 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         [data-theme="light"] .msg-input-tx { color: #1C1C1E !important; }
         [data-theme="light"] .msg-input-tx::placeholder { color: rgba(60,60,67,0.35) !important; }
 
-        /* App background = iOS systemGroupedBackground, cards = systemBackground (white) */
-        [data-theme="light"] .bg-ink-900 { background-color: #F2F2F7 !important; }
+        [data-theme="light"] .bg-ink-900 { background-color: #F8F9FC !important; }
         [data-theme="light"] .bg-ink-800 { background-color: #FFFFFF !important; }
-        [data-theme="light"] .bg-ink-800\/60 { background-color: rgba(255,255,255,0.94) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
-        [data-theme="light"] .bg-ink-800\/80 { background-color: rgba(255,255,255,0.88) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
-        [data-theme="light"] .border-ink-900 { border-color: #F2F2F7 !important; }
+        [data-theme="light"] .bg-ink-800\\/60 { background-color: rgba(255,255,255,0.92) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+        [data-theme="light"] .bg-ink-800\\/80 { background-color: rgba(255,255,255,0.88) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+        [data-theme="light"] .border-ink-900 { border-color: #F8F9FC !important; }
         [data-theme="light"] .border-ink-800 { border-color: #FFFFFF !important; }
-        [data-theme="light"] .from-ink-900 { --tw-gradient-from: #F2F2F7 var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
-        [data-theme="light"] .via-ink-900\/95 { --tw-gradient-stops: var(--tw-gradient-from), rgba(242,242,247,0.95) var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
+        [data-theme="light"] .from-ink-900 { --tw-gradient-from: #F8F9FC var(--tw-gradient-from-position) !important; --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important; }
+        [data-theme="light"] .via-ink-900\\/95 { --tw-gradient-stops: var(--tw-gradient-from), rgba(248,249,252,0.95) var(--tw-gradient-via-position), var(--tw-gradient-to) !important; }
 
-        [data-theme="light"] .bg-white\/5 { background-color: rgba(60,60,67,0.06) !important; }
-        [data-theme="light"] .bg-white\/4 { background-color: rgba(60,60,67,0.045) !important; }
-        [data-theme="light"] .bg-white\/6 { background-color: rgba(60,60,67,0.07) !important; }
-        [data-theme="light"] .bg-white\/8 { background-color: rgba(60,60,67,0.08) !important; }
-        [data-theme="light"] .border-white\/10 { border-color: rgba(60,60,67,0.13) !important; }
-        [data-theme="light"] .border-white\/8 { border-color: rgba(60,60,67,0.11) !important; }
-        [data-theme="light"] .border-white\/7 { border-color: rgba(60,60,67,0.10) !important; }
-        [data-theme="light"] .border-white\/5 { border-color: rgba(60,60,67,0.08) !important; }
-        [data-theme="light"] .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(60,60,67,0.08) !important; }
+        [data-theme="light"] .bg-white\\/5 { background-color: rgba(0,0,0,0.04) !important; }
+        [data-theme="light"] .bg-white\\/4 { background-color: rgba(0,0,0,0.03) !important; }
+        [data-theme="light"] .bg-white\\/6 { background-color: rgba(0,0,0,0.05) !important; }
+        [data-theme="light"] .bg-white\\/8 { background-color: rgba(0,0,0,0.07) !important; }
+        [data-theme="light"] .bg-white\\/10 { background-color: rgba(0,0,0,0.08) !important; }
+        [data-theme="light"] .border-white\\/5 { border-color: rgba(0,0,0,0.06) !important; }
+        [data-theme="light"] .border-white\\/10 { border-color: rgba(0,0,0,0.10) !important; }
+        [data-theme="light"] .border-white\\/8 { border-color: rgba(0,0,0,0.08) !important; }
+        [data-theme="light"] .border-white\\/7 { border-color: rgba(0,0,0,0.07) !important; }
+        [data-theme="light"] .divide-white\\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(0,0,0,0.06) !important; }
 
-        [data-theme="light"] .glass { background: rgba(255,255,255,0.86) !important; border-color: rgba(60,60,67,0.08) !important; box-shadow: 0 1px 2px rgba(16,17,20,0.04), 0 8px 24px rgba(16,17,20,0.05) !important; -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
-        [data-theme="light"] .bubble-received { background: #E9E9EB !important; border-color: transparent !important; backdrop-filter: none !important; }
+        [data-theme="light"] .glass { 
+          background: rgba(255,255,255,0.92) !important; 
+          border: 1px solid rgba(0,0,0,0.06) !important;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06) !important; 
+          backdrop-filter: saturate(180%) blur(20px);
+          -webkit-backdrop-filter: saturate(180%) blur(20px);
+        }
+        
+        [data-theme="light"] .bubble-received { 
+          background: #E9E9EB !important; 
+          border-color: transparent !important; 
+          backdrop-filter: none !important; 
+        }
+        
         [data-theme="light"] ::placeholder { color: rgba(60,60,67,0.4); }
+        [data-theme="light"] .text-mist { color: rgba(60,60,67,0.6) !important; }
+        [data-theme="light"] .text-mist/70 { color: rgba(60,60,67,0.5) !important; }
+        [data-theme="light"] .text-mist/90 { color: rgba(60,60,67,0.8) !important; }
+        [data-theme="light"] .text-white/40 { color: rgba(60,60,67,0.4) !important; }
+        [data-theme="light"] .text-white/45 { color: rgba(60,60,67,0.45) !important; }
+        [data-theme="light"] .text-white/60 { color: rgba(60,60,67,0.6) !important; }
+        [data-theme="light"] .text-white/70 { color: rgba(60,60,67,0.7) !important; }
+        [data-theme="light"] .text-white/80 { color: rgba(60,60,67,0.8) !important; }
+        [data-theme="light"] .bg-black/5 { background-color: rgba(0,0,0,0.04) !important; }
+        [data-theme="light"] .hover\\:bg-black/5:hover { background-color: rgba(0,0,0,0.04) !important; }
+        [data-theme="light"] .hover\\:bg-white/10:hover { background-color: rgba(0,0,0,0.06) !important; }
+        [data-theme="light"] .hover\\:bg-white/8:hover { background-color: rgba(0,0,0,0.05) !important; }
+        [data-theme="light"] .hover\\:text-white:hover { color: #1C1C1E !important; }
 
-        /* Rounder, iOS-style tap feedback */
         [data-theme="light"] button, [data-theme="light"] .glass { -webkit-tap-highlight-color: transparent; }
+        
+        /* Text gradient for light mode */
+        [data-theme="light"] .text-gradient {
+          background: linear-gradient(135deg, #7C5CFF, #22D3B8);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
-      {/* FIX: Global error toast */}
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
 
       {profileView && (
-        <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
+        <div className={`fixed inset-0 z-[60] flex flex-col overflow-y-auto ${theme === "light" ? "bg-white" : "bg-ink-900"}`}>
           <div
             className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
             style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
           />
           <header className="relative z-10 flex items-center justify-between px-4 py-4">
-            <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="Back">
+            <button onClick={closeProfileView} className={`flex h-9 w-9 items-center justify-center rounded-full transition ${theme === "light" ? "bg-black/5 hover:bg-black/10 text-gray-600 hover:text-gray-900" : "bg-white/5 text-mist hover:bg-white/10 hover:text-white"}`} aria-label="Back">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
+            <p className={`text-sm font-semibold ${theme === "light" ? "text-gray-600" : "text-white/70"} tx2`}>@{profileView.username}</p>
             <span className="h-9 w-9" />
           </header>
           <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
             <div className="relative">
-              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
-                <div className="rounded-full bg-ink-900 p-[3px]">
+              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(0,0,0,0.08)" }}>
+                <div className={`rounded-full p-[3px] ${theme === "light" ? "bg-white" : "bg-ink-900"}`}>
                   <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={104} />
                 </div>
               </div>
               {onlineIds.has(profileView.id) && (
-                <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />
+                <span className={`absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] ${theme === "light" ? "border-white" : "border-ink-900"} bg-teal`} />
               )}
             </div>
-            <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white tx1">
+            <h2 className={`mt-4 flex items-center font-display text-xl font-bold ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>
               {profileView.display_name}
               {isVerified(profileView.username) && <VerifiedBadge size={18} />}
             </h2>
-            <p className="text-sm text-white/40 tx2">@{profileView.username}</p>
+            <p className={`text-sm ${theme === "light" ? "text-gray-500" : "text-white/40"} tx2`}>@{profileView.username}</p>
             <div
-              className="mt-3 flex items-center gap-1.5 rounded-full border px-3 py-1"
+              className={`mt-3 flex items-center gap-1.5 rounded-full border px-3 py-1 ${theme === "light" ? "border-gray-200 bg-gray-50" : ""}`}
               style={{
-                borderColor: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.28)" : "rgba(255,255,255,0.1)",
-                background: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.08)" : "rgba(255,255,255,0.04)",
+                borderColor: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.28)" : "rgba(0,0,0,0.08)",
+                background: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.08)" : "rgba(0,0,0,0.03)",
               }}
             >
               <span className="relative flex h-2 w-2">
                 {onlineIds.has(profileView.id) && (
                   <span className="absolute inset-0 animate-ping rounded-full bg-teal opacity-60" />
                 )}
-                <span className="relative h-2 w-2 rounded-full" style={{ background: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.3)" }} />
+                <span className="relative h-2 w-2 rounded-full" style={{ background: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(0,0,0,0.25)" }} />
               </span>
-              <span className="text-[11.5px] font-medium" style={{ color: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.45)" }}>
+              <span className="text-[11.5px] font-medium" style={{ color: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(0,0,0,0.45)" }}>
                 {onlineIds.has(profileView.id) ? "Active now" : profileView.last_seen ? `Last seen ${formatLastSeen(profileView.last_seen)}` : "Offline"}
               </span>
             </div>
             <div className="mt-5 flex items-center gap-8">
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
-                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Connection{profileViewConnCount === 1 ? "" : "s"}</span>
+                <span className={`text-[17px] font-bold tabular-nums ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
+                <span className={`mt-0.5 text-[11px] font-medium uppercase tracking-wide ${theme === "light" ? "text-gray-500" : "text-white/40"} tx2`}>Connection{profileViewConnCount === 1 ? "" : "s"}</span>
               </div>
-              <div className="h-8 w-px bg-white/8" />
+              <div className={`h-8 w-px ${theme === "light" ? "bg-gray-200" : "bg-white/8"}`} />
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
-                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Updates</span>
+                <span className={`text-[17px] font-bold tabular-nums ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>{statuses.filter((s) => s.user_id === profileView.id).length}</span>
+                <span className={`mt-0.5 text-[11px] font-medium uppercase tracking-wide ${theme === "light" ? "text-gray-500" : "text-white/40"} tx2`}>Updates</span>
               </div>
             </div>
             {profileView.bio && (
-              <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{profileView.bio}</p>
+              <p className={`mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed ${theme === "light" ? "text-gray-600" : "text-white/60"} tx2`}>{profileView.bio}</p>
             )}
             {profileViewMutuals.count > 0 && (
               <div className="mt-4 flex items-center gap-2">
                 <div className="flex -space-x-2">
                   {profileViewMutuals.profiles.map((p) => (
-                    <div key={p.id} className="rounded-full border-2 border-ink-900">
+                    <div key={p.id} className={`rounded-full border-2 ${theme === "light" ? "border-white" : "border-ink-900"}`}>
                       <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={24} />
                     </div>
                   ))}
                 </div>
-                <p className="text-[12px] text-white/40 tx2">
-                  Connected with <span className="text-white/70 tx2">{profileViewMutuals.profiles.map((p) => p.display_name).join(", ")}</span>
+                <p className={`text-[12px] ${theme === "light" ? "text-gray-500" : "text-white/40"} tx2`}>
+                  Connected with <span className={`${theme === "light" ? "text-gray-700" : "text-white/70"} tx2`}>{profileViewMutuals.profiles.map((p) => p.display_name).join(", ")}</span>
                   {profileViewMutuals.count > profileViewMutuals.profiles.length ? ` +${profileViewMutuals.count - profileViewMutuals.profiles.length}` : ""}
                 </p>
               </div>
@@ -1567,13 +1598,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
           <div className="relative z-10 flex gap-3 px-6 pb-8">
             {profileViewStatus === "loading" && (
-              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
+              <div className={`flex flex-1 items-center justify-center rounded-full border py-3 text-sm font-semibold ${theme === "light" ? "border-gray-200 bg-gray-50 text-gray-500" : "border-white/10 bg-white/5 text-mist"}`}>Checking…</div>
             )}
             {profileViewStatus === "none" && (
               <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
             )}
             {profileViewStatus === "pending" && (
-              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
+              <button disabled className={`flex-1 rounded-full border py-3 text-sm font-semibold ${theme === "light" ? "border-gray-200 bg-gray-50 text-gray-500" : "border-white/10 bg-white/5 text-mist"}`}>Request Sent</button>
             )}
             {profileViewStatus === "declined" && (
               <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
@@ -1587,23 +1618,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {connectPopupTarget && connectPopupMode && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
-          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
+          <div className={`w-full max-w-sm rounded-3xl border p-6 shadow-2xl ${theme === "light" ? "border-gray-200 bg-white" : "border-white/10 bg-ink-800"}`}>
             <div className="flex flex-col items-center gap-3 pb-5">
               <Avatar name={connectPopupTarget.display_name} color={connectPopupTarget.avatar_color} size={72} avatarUrl={connectPopupTarget.avatar_url} />
               <div className="text-center">
-                <p className="flex items-center justify-center font-display text-lg font-bold">
+                <p className={`flex items-center justify-center font-display text-lg font-bold ${theme === "light" ? "text-gray-900" : "text-white"}`}>
                   {connectPopupTarget.display_name}
                   {isVerified(connectPopupTarget.username) && <VerifiedBadge size={16} />}
                 </p>
-                <p className="text-sm text-mist">@{connectPopupTarget.username}</p>
+                <p className={`text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>@{connectPopupTarget.username}</p>
               </div>
             </div>
-            <div className="mb-6 h-px w-full bg-white/10" />
+            <div className={`mb-6 h-px w-full ${theme === "light" ? "bg-gray-200" : "bg-white/10"}`} />
             {connectPopupMode === "ask" && (
               <>
-                <p className="mb-6 text-center text-sm text-[color:var(--color-text)]/80">Do you want to connect with <span className="font-semibold text-white tx1">{connectPopupTarget.display_name}</span>?</p>
+                <p className={`mb-6 text-center text-sm ${theme === "light" ? "text-gray-600" : "text-[color:var(--color-text)]/80"}`}>Do you want to connect with <span className={`font-semibold ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>{connectPopupTarget.display_name}</span>?</p>
                 <div className="flex gap-3">
-                  <button onClick={closeConnectPopup} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">Cancel</button>
+                  <button onClick={closeConnectPopup} className={`flex-1 rounded-full border py-3 text-sm font-semibold transition ${theme === "light" ? "border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900" : "border-white/10 text-mist hover:border-white/30 hover:text-white"}`}>Cancel</button>
                   <button onClick={confirmConnect} disabled={connectSending} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50">
                     {connectSending ? "Sending…" : "Yes, Connect"}
                   </button>
@@ -1614,18 +1645,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet/15 text-2xl">⏳</span>
-                  <p className="text-center text-sm text-[color:var(--color-text)]/80">You already sent a request to <span className="font-semibold text-white tx1">{connectPopupTarget.display_name}</span>. Waiting for them to accept.</p>
+                  <p className={`text-center text-sm ${theme === "light" ? "text-gray-600" : "text-[color:var(--color-text)]/80"}`}>You already sent a request to <span className={`font-semibold ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>{connectPopupTarget.display_name}</span>. Waiting for them to accept.</p>
                 </div>
-                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
+                <button onClick={closeConnectPopup} className={`w-full rounded-full border py-3 text-sm font-semibold transition ${theme === "light" ? "border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900" : "border-white/10 text-mist hover:border-white/30 hover:text-white"}`}>OK</button>
               </>
             )}
             {connectPopupMode === "declined" && (
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-2xl">😔</span>
-                  <p className="text-center text-sm text-[color:var(--color-text)]/80"><span className="font-semibold text-white tx1">{connectPopupTarget.display_name}</span> has declined your request.</p>
+                  <p className={`text-center text-sm ${theme === "light" ? "text-gray-600" : "text-[color:var(--color-text)]/80"}`}><span className={`font-semibold ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>{connectPopupTarget.display_name}</span> has declined your request.</p>
                 </div>
-                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
+                <button onClick={closeConnectPopup} className={`w-full rounded-full border py-3 text-sm font-semibold transition ${theme === "light" ? "border-gray-200 text-gray-600 hover:border-gray-300 hover:text-gray-900" : "border-white/10 text-mist hover:border-white/30 hover:text-white"}`}>OK</button>
               </>
             )}
           </div>
@@ -1726,11 +1757,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
-      <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
-        <div className="flex items-center justify-between px-5 py-5">
+      <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r ${theme === "light" ? "border-gray-200 bg-white/80" : "border-black/5 dark:border-white/5 bg-ink-800/60"}`}>
+        <div className={`flex items-center justify-between px-5 py-5 ${theme === "light" ? "border-b border-gray-200" : ""}`}>
           <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">Think</span></span>
           <div className="relative">
-            <button onClick={() => setShowNotifications((v) => !v)} className="relative flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Notifications">
+            <button onClick={() => setShowNotifications((v) => !v)} className={`relative flex h-9 w-9 items-center justify-center rounded-full transition ${theme === "light" ? "text-gray-600 hover:bg-black/5 hover:text-gray-900" : "text-mist hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"}`} aria-label="Notifications">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -1741,27 +1772,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               )}
             </button>
             {showNotifications && (
-              <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 bg-ink-800 shadow-2xl">
-                <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-                  <p className="text-sm font-semibold">Notifications</p>
-                  <button onClick={() => setShowNotifications(false)} className="text-mist hover:text-white">✕</button>
+              <div className={`absolute right-0 top-11 z-50 w-80 rounded-2xl border shadow-2xl ${theme === "light" ? "border-gray-200 bg-white" : "border-white/10 bg-ink-800"}`}>
+                <div className={`flex items-center justify-between border-b px-4 py-3 ${theme === "light" ? "border-gray-200" : "border-white/10"}`}>
+                  <p className={`text-sm font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>Notifications</p>
+                  <button onClick={() => setShowNotifications(false)} className={`${theme === "light" ? "text-gray-500 hover:text-gray-700" : "text-mist hover:text-white"}`}>✕</button>
                 </div>
                 {notifications.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-xs text-mist">No new notifications</p>
+                  <p className={`px-4 py-6 text-center text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>No new notifications</p>
                 ) : (
                   <div className="max-h-96 overflow-y-auto">
                     {notifications.map((req) => (
-                      <div key={req.id} className="border-b border-white/5 px-4 py-3">
+                      <div key={req.id} className={`border-b px-4 py-3 ${theme === "light" ? "border-gray-100" : "border-white/5"}`}>
                         <div className="flex items-center gap-3">
                           <Avatar name={req.from_profile?.display_name ?? "User"} color={req.from_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={req.from_profile?.avatar_url} size={36} />
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-white tx1">{req.from_profile?.display_name} wants to connect with you!</p>
-                            <p className="mt-0.5 text-[10px] text-mist">@{req.from_profile?.username}</p>
+                            <p className={`text-xs font-semibold ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>{req.from_profile?.display_name} wants to connect with you!</p>
+                            <p className={`mt-0.5 text-[10px] ${theme === "light" ? "text-gray-500" : "text-mist"}`}>@{req.from_profile?.username}</p>
                           </div>
                         </div>
                         <div className="mt-2.5 flex gap-2">
                           <button onClick={() => acceptRequest(req)} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-1.5 text-xs font-semibold text-white">Accept</button>
-                          <button onClick={() => declineRequest(req)} className="flex-1 rounded-full border border-white/10 py-1.5 text-xs font-semibold text-mist hover:text-white">Leave</button>
+                          <button onClick={() => declineRequest(req)} className={`flex-1 rounded-full border py-1.5 text-xs font-semibold transition ${theme === "light" ? "border-gray-200 text-gray-600 hover:bg-gray-50" : "border-white/10 text-mist hover:text-white"}`}>Leave</button>
                         </div>
                       </div>
                     ))}
@@ -1774,11 +1805,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
         <div className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
-            <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 text-center">
+            <div className={`flex h-full flex-col overflow-y-auto px-8 pb-10 text-center ${theme === "light" ? "bg-white/40" : ""}`}>
               <style>{`
                 @keyframes bubbleInLeft { 0% { opacity: 0; transform: translateX(-26px) scale(0.9); } 55% { opacity: 1; transform: translateX(5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
                 @keyframes bubbleInRight { 0% { opacity: 0; transform: translateX(26px) scale(0.9); } 55% { opacity: 1; transform: translateX(-5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
                 @keyframes iconPop { 0% { transform: scale(0.4) rotate(-8deg); opacity: 0; } 70% { transform: scale(1.15) rotate(2deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+                @keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+                .animate-floatSlow { animation: floatSlow 4s ease-in-out infinite; }
               `}</style>
               <div className="flex flex-col items-center pt-10">
                 <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
@@ -1787,13 +1820,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#9C82FF" /><stop offset="1" stopColor="#22D3B8" /></linearGradient></defs>
                   </svg>
                 </div>
-                <h2 className="font-display text-2xl font-bold">Welcome to <span className="text-gradient">AiraThink</span>!</h2>
-                <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
+                <h2 className={`font-display text-2xl font-bold ${theme === "light" ? "text-gray-900" : "text-white"}`}>Welcome to <span className="text-gradient">AiraThink</span>!</h2>
+                <p className={`mt-2 text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Let&apos;s connect. Real conversations, real time.</p>
                 <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30">
                   Start a conversation
                 </button>
                 {conversations.length > 0 && (
-                  <button onClick={() => setMobileTab("chats")} className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white">
+                  <button onClick={() => setMobileTab("chats")} className={`mt-3 text-xs font-medium transition ${theme === "light" ? "text-gray-500 hover:text-gray-900" : "text-mist hover:text-black dark:hover:text-white"}`}>
                     Or go to your chats →
                   </button>
                 )}
@@ -1830,9 +1863,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
 
           {mobileTab === "status" && (
-            <div className="px-2 pb-4">
+            <div className={`px-2 pb-4 ${theme === "light" ? "bg-white/40" : ""}`}>
               <input ref={statusFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleStatusFilePick} />
-              <div className="flex items-center gap-3 px-3 py-3">
+              <div className={`flex items-center gap-3 px-3 py-3 rounded-xl ${theme === "light" ? "bg-gray-50" : ""}`}>
                 <div className="relative">
                   {myStatuses.length > 0 ? (
                     <button onClick={() => openStatusViewer(myProfile.id)}>
@@ -1843,47 +1876,47 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   ) : (
                     <Avatar name={myProfile.display_name} color={myProfile.avatar_color} avatarUrl={myProfile.avatar_url} size={64} />
                   )}
-                  <button onClick={() => statusFileInputRef.current?.click()} disabled={uploadingStatus} className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white disabled:opacity-50" aria-label="Add photo status">
+                  <button onClick={() => statusFileInputRef.current?.click()} disabled={uploadingStatus} className={`absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 ${theme === "light" ? "border-white bg-violet" : "border-ink-800 bg-violet"} text-white disabled:opacity-50`} aria-label="Add photo status">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.4" strokeLinecap="round" /></svg>
                   </button>
                 </div>
                 <button onClick={() => (myStatuses.length > 0 ? openStatusViewer(myProfile.id) : setShowTextStatusComposer(true))} className="flex-1 text-left">
-                  <p className="text-base font-semibold">My Status</p>
-                  <p className="text-sm text-mist">{uploadingStatus ? "Uploading…" : myStatuses.length > 0 ? "Tap to view" : "Tap to add a status update"}</p>
+                  <p className={`text-base font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>My Status</p>
+                  <p className={`text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{uploadingStatus ? "Uploading…" : myStatuses.length > 0 ? "Tap to view" : "Tap to add a status update"}</p>
                 </button>
-                <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
+                <button onClick={() => setShowTextStatusComposer(true)} className={`rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5`}>Aa</button>
               </div>
               {Object.keys(otherStatusesGrouped).length > 0 && (
-                <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Recent updates</p>
+                <p className={`px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide ${theme === "light" ? "text-gray-400" : "text-mist/70"}`}>Recent updates</p>
               )}
               {Object.entries(otherStatusesGrouped).map(([userId, list]) => {
                 const p = list[0].profile; const latest = list[list.length - 1]; const ring = statusRingPropsFor(userId);
                 return (
-                  <button key={userId} onClick={() => openStatusViewer(userId)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
+                  <button key={userId} onClick={() => openStatusViewer(userId)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${theme === "light" ? "hover:bg-gray-50" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
                     <StatusRing {...ring}>
                       <Avatar name={p?.display_name ?? "Unknown"} color={p?.avatar_color ?? "#7C5CFF"} avatarUrl={p?.avatar_url} size={64} />
                     </StatusRing>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-base font-semibold">
+                      <p className={`flex items-center truncate text-base font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>
                         <span className="truncate">{p?.display_name ?? "Unknown"}</span>
                         {isVerified(p?.username) && <VerifiedBadge />}
                       </p>
-                      <p className="text-sm text-mist">{formatLastSeen(latest.created_at)}</p>
+                      <p className={`text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{formatLastSeen(latest.created_at)}</p>
                     </div>
                   </button>
                 );
               })}
               {Object.keys(otherStatusesGrouped).length === 0 && myStatuses.length === 0 && (
-                <p className="px-3 py-6 text-center text-sm text-mist">No status updates yet.</p>
+                <p className={`px-3 py-6 text-center text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>No status updates yet.</p>
               )}
             </div>
           )}
 
           {mobileTab === "chats" && (
-            <div className="px-2 pb-4">
-              {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
+            <div className={`px-2 pb-4 ${theme === "light" ? "bg-white/40" : ""}`}>
+              {loadingConvos && <p className={`px-3 py-2 text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Loading…</p>}
               {!loadingConvos && conversations.length === 0 && (
-                <p className="px-3 py-6 text-center text-sm text-mist">No conversations yet. Tap Search to start one.</p>
+                <p className={`px-3 py-6 text-center text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>No conversations yet. Tap Search to start one.</p>
               )}
               {conversations.map((c) => {
                 const name = c.is_group ? c.name ?? "Group" : c.otherProfile?.display_name ?? "Unknown";
@@ -1891,16 +1924,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
                 const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
                 return (
-                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
+                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${theme === "light" ? "active:bg-gray-100 hover:bg-gray-50" : "active:bg-black/10 dark:active:bg-white/10"} ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
                     <StatusRing {...ring}>
                       <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
                     </StatusRing>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-lg font-semibold">
+                      <p className={`flex items-center truncate text-lg font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>
                         <span className="truncate">{name}</span>
                         {isVerified(c.otherProfile?.username) && <VerifiedBadge size={16} />}
                       </p>
-                      <p className="truncate text-sm text-mist">{c.lastMessage}</p>
+                      <p className={`truncate text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{c.lastMessage}</p>
                     </div>
                     {c.unreadCount > 0 && (
                       <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0C12]">
@@ -1914,44 +1947,44 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
 
           {mobileTab === "search" && (
-            <div className="p-4">
-              <input autoFocus value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search by username…" className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none" />
+            <div className={`p-4 ${theme === "light" ? "bg-white/40" : ""}`}>
+              <input autoFocus value={search} onChange={(e) => handleSearch(e.target.value)} placeholder="Search by username…" className={`w-full rounded-lg border px-3 py-2 text-sm placeholder:text-mist/50 focus:border-violet focus:outline-none ${theme === "light" ? "border-gray-200 bg-white text-gray-900" : "border-black/10 dark:border-white/10 bg-ink-800"}`} />
               <div className="mt-3">
                 {searchResults.map((r) => (
-                  <button key={r.id} onClick={() => openProfileView(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
+                  <button key={r.id} onClick={() => openProfileView(r)} className={`flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition ${theme === "light" ? "hover:bg-gray-50" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
                     <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center font-semibold">{r.display_name}{isVerified(r.username) && <VerifiedBadge />}</p>
-                      <p className="text-xs text-mist">@{r.username}</p>
+                      <p className={`flex items-center font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>{r.display_name}{isVerified(r.username) && <VerifiedBadge />}</p>
+                      <p className={`text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>@{r.username}</p>
                     </div>
                   </button>
                 ))}
                 {search.trim().length >= 2 && searchResults.length === 0 && (
-                  <p className="px-2 py-2 text-xs text-mist">No users found.</p>
+                  <p className={`px-2 py-2 text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>No users found.</p>
                 )}
               </div>
             </div>
           )}
 
           {mobileTab === "profile" && (
-            <div className="px-5 py-6">
-              <h2 className="mb-6 text-center font-display text-lg font-bold">Edit Profile</h2>
+            <div className={`px-5 py-6 ${theme === "light" ? "bg-white/40" : ""}`}>
+              <h2 className={`mb-6 text-center font-display text-lg font-bold ${theme === "light" ? "text-gray-900" : "text-white"}`}>Edit Profile</h2>
               <div className="flex flex-col items-center">
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
                 <button onClick={() => fileInputRef.current?.click()} className="group relative" disabled={uploading}>
                   <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={96} avatarUrl={myProfile.avatar_url} />
-                  <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
+                  <span className={`absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 ${theme === "light" ? "border-white bg-violet" : "border-ink-800 bg-violet"} text-white shadow-lg`}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="white" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" /></svg>
                   </span>
                 </button>
-                <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
+                <p className={`mt-2 text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
               {/* Dark / Light mode switch */}
-              <div className="glass mt-6 rounded-2xl overflow-hidden">
+              <div className={`glass mt-6 rounded-2xl overflow-hidden ${theme === "light" ? "bg-white border border-gray-200" : ""}`}>
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet/15 text-violet-light">
+                    <span className={`flex h-9 w-9 items-center justify-center rounded-full ${theme === "light" ? "bg-violet/10 text-violet-light" : "bg-violet/15 text-violet-light"}`}>
                       {theme === "dark" ? (
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                           <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
@@ -1964,38 +1997,38 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       )}
                     </span>
                     <div>
-                      <p className="text-sm font-semibold">Dark Mode</p>
-                      <p className="text-[11px] text-mist">{theme === "dark" ? "Currently using dark mode" : "Currently using light mode"}</p>
+                      <p className={`text-sm font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>Dark Mode</p>
+                      <p className={`text-[11px] ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{theme === "dark" ? "Currently using dark mode" : "Currently using light mode"}</p>
                     </div>
                   </div>
                   <ActiveStatusSwitch on={theme === "dark"} onChange={toggleTheme} />
                 </div>
               </div>
 
-              <div className="glass mt-4 divide-y divide-black/5 dark:divide-white/5 overflow-hidden rounded-2xl">
+              <div className={`glass mt-4 divide-y overflow-hidden rounded-2xl ${theme === "light" ? "bg-white border border-gray-200 divide-gray-100" : "divide-black/5 dark:divide-white/5"}`}>
                 <div className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-xs font-medium text-mist">Full name</span>
-                  <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} className="w-40 bg-transparent text-right text-sm outline-none" />
+                  <span className={`text-xs font-medium ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Full name</span>
+                  <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} className={`w-40 bg-transparent text-right text-sm outline-none ${theme === "light" ? "text-gray-900" : "text-white"}`} />
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-xs font-medium text-mist">Email</span>
-                  <span className="truncate text-sm">{myEmail || "—"}</span>
+                  <span className={`text-xs font-medium ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Email</span>
+                  <span className={`truncate text-sm ${theme === "light" ? "text-gray-700" : "text-white"}`}>{myEmail || "—"}</span>
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-xs font-medium text-mist">Username</span>
-                  <span className="inline-flex items-center text-sm">@{myProfile.username}{isVerified(myProfile.username) && <VerifiedBadge />}</span>
+                  <span className={`text-xs font-medium ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Username</span>
+                  <span className={`inline-flex items-center text-sm ${theme === "light" ? "text-gray-700" : "text-white"}`}>@{myProfile.username}{isVerified(myProfile.username) && <VerifiedBadge />}</span>
                 </div>
-                <button onClick={handleLogout} className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
-                  <span className="text-xs font-medium text-mist">Account</span>
+                <button onClick={handleLogout} className={`flex w-full items-center justify-between px-4 py-3.5 text-left transition ${theme === "light" ? "hover:bg-gray-50" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
+                  <span className={`text-xs font-medium ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Account</span>
                   <span className="text-sm font-medium text-red-400">Log out</span>
                 </button>
               </div>
-              <div className="glass mt-4 rounded-2xl px-4 py-3.5">
+              <div className={`glass mt-4 rounded-2xl px-4 py-3.5 ${theme === "light" ? "bg-white border border-gray-200" : ""}`}>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-mist">Bio</span>
-                  <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
+                  <span className={`text-xs font-medium ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Bio</span>
+                  <span className={`text-[10px] ${theme === "light" ? "text-gray-400" : "text-mist/70"}`}>{bioDraft.length}/{MAX_BIO_LENGTH}</span>
                 </div>
-                <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm placeholder:text-mist/50 outline-none" />
+                <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className={`mt-2 w-full resize-none bg-transparent text-sm placeholder:text-mist/50 outline-none ${theme === "light" ? "text-gray-900" : "text-white"}`} />
               </div>
               <button
                 onClick={() => { saveDisplayName(); saveBio(); }}
@@ -2008,9 +2041,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
         </div>
 
-        <div className="grid grid-cols-5 border-t border-black/5 dark:border-white/5 bg-ink-800/80">
+        <div className={`grid grid-cols-5 border-t ${theme === "light" ? "border-gray-200 bg-white/90" : "border-black/5 dark:border-white/5 bg-ink-800/80"}`}>
           {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => (
-            <button key={tab} onClick={() => setMobileTab(tab)} className={`flex flex-col items-center gap-1.5 py-3.5 text-sm font-medium capitalize transition ${mobileTab === tab ? "text-violet-light" : "text-mist"}`}>
+            <button key={tab} onClick={() => setMobileTab(tab)} className={`flex flex-col items-center gap-1.5 py-3.5 text-sm font-medium capitalize transition ${mobileTab === tab ? "text-violet-light" : theme === "light" ? "text-gray-400" : "text-mist"}`}>
               <TabIcon tab={tab} />{tab}
             </button>
           ))}
@@ -2021,26 +2054,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         <div className={`pointer-events-none absolute inset-0 bg-aurora ${theme === "light" ? "opacity-0" : "opacity-40"}`} />
 
         {!active ? (
-          <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
+          <div className={`relative z-10 flex flex-1 flex-col items-center justify-center text-center ${theme === "light" ? "bg-[#F8F9FC]" : ""}`}>
             <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="#9C82FF" strokeWidth="1.6" strokeLinejoin="round" /></svg>
             </div>
-            <h2 className="font-display text-xl font-semibold">Pick a conversation</h2>
-            <p className="mt-1 max-w-xs text-sm text-mist">Or start a new one from Search — your messages sync in real time.</p>
+            <h2 className={`font-display text-xl font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>Pick a conversation</h2>
+            <p className={`mt-1 max-w-xs text-sm ${theme === "light" ? "text-gray-500" : "text-mist"}`}>Or start a new one from Search — your messages sync in real time.</p>
           </div>
         ) : showContactInfo ? (
-          <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
+          <div className={`relative z-10 flex flex-1 flex-col overflow-y-auto ${theme === "light" ? "bg-[#F8F9FC]" : ""}`}>
             <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-30"
               style={{ background: `radial-gradient(circle, ${otherDisplayProfile?.avatar_color ?? "#7C5CFF"}55 0%, transparent 70%)` }} />
-            <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4">
-              <button onClick={() => setShowContactInfo(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white" aria-label="Back to chat">
+            <header className={`glass relative z-10 flex items-center gap-3 border-b px-4 py-4 ${theme === "light" ? "bg-white/90 border-gray-200" : "border-white/5"}`}>
+              <button onClick={() => setShowContactInfo(false)} className={`flex h-8 w-8 items-center justify-center rounded-full transition ${theme === "light" ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900" : "text-mist hover:bg-white/5 hover:text-white"}`} aria-label="Back to chat">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <p className="text-sm font-semibold text-white/80 tx2">Contact info</p>
+              <p className={`text-sm font-semibold ${theme === "light" ? "text-gray-700" : "text-white/80"} tx2`}>Contact info</p>
             </header>
             <div className="relative z-10 flex flex-col items-center px-6 pt-8 pb-6 text-center" style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}>
-              <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
-                <div className="rounded-full border-[3px] border-[#0A0C12]">
+              <div className={`mb-4 rounded-full p-[3px] ${theme === "light" ? "border-2 border-gray-200" : ""}`} style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
+                <div className={`rounded-full border-[3px] ${theme === "light" ? "border-white" : "border-[#0A0C12]"}`}>
                   <Avatar
                     name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
                     color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"}
@@ -2049,34 +2082,34 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   />
                 </div>
               </div>
-              <h2 className="flex items-center font-display text-xl font-bold text-white tx1">
+              <h2 className={`flex items-center font-display text-xl font-bold ${theme === "light" ? "text-gray-900" : "text-white"} tx1`}>
                 {active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
                 {isVerified(otherDisplayProfile?.username) && <VerifiedBadge size={18} />}
               </h2>
-              {!active.is_group && <p className="mt-1 text-sm text-white/45 tx2">@{otherDisplayProfile?.username}</p>}
+              {!active.is_group && <p className={`mt-1 text-sm ${theme === "light" ? "text-gray-500" : "text-white/45"} tx2`}>@{otherDisplayProfile?.username}</p>}
               {!active.is_group && (
-                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                  <span className={`h-2 w-2 rounded-full ${otherIsOnline ? "bg-teal" : "bg-white/25"}`} />
-                  <span className="text-xs text-white/60 tx2">
+                <div className={`mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 ${theme === "light" ? "border-gray-200 bg-white/50" : "border-white/10 bg-white/5"}`}>
+                  <span className={`h-2 w-2 rounded-full ${otherIsOnline ? "bg-teal" : "bg-gray-300"}`} />
+                  <span className={`text-xs ${theme === "light" ? "text-gray-500" : "text-white/60"} tx2`}>
                     {otherIsOnline ? "Active now" : otherDisplayProfile?.last_seen ? `Last seen ${formatLastSeen(otherDisplayProfile.last_seen)}` : "Offline"}
                   </span>
                 </div>
               )}
               {otherDisplayProfile?.bio && (
-                <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{otherDisplayProfile.bio}</p>
+                <p className={`mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed ${theme === "light" ? "text-gray-600" : "text-white/60"} tx2`}>{otherDisplayProfile.bio}</p>
               )}
             </div>
             {!active.is_group && (
               <div className="relative z-10 flex gap-3 px-5 pb-5">
-                <button onClick={() => setShowContactInfo(false)} className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 tx2 transition hover:bg-white/8">
+                <button onClick={() => setShowContactInfo(false)} className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl border py-3.5 transition ${theme === "light" ? "border-gray-200 bg-white/40 text-gray-600 hover:bg-gray-100" : "border-white/8 bg-white/4 text-white/75 hover:bg-white/8"}`}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
                   <span className="text-[11px] font-semibold tracking-wide">Message</span>
                 </button>
-                <button onClick={() => { setShowContactInfo(false); startCall(); }} disabled={callStatus !== "idle"} className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 tx2 transition hover:bg-white/8 disabled:opacity-40">
+                <button onClick={() => { setShowContactInfo(false); startCall(); }} disabled={callStatus !== "idle"} className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl border py-3.5 transition disabled:opacity-40 ${theme === "light" ? "border-gray-200 bg-white/40 text-gray-600 hover:bg-gray-100" : "border-white/8 bg-white/4 text-white/75 hover:bg-white/8"}`}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
                   <span className="text-[11px] font-semibold tracking-wide">Call</span>
                 </button>
-                <button onClick={() => setContactMuted((v) => !v)} className="flex flex-1 flex-col items-center gap-1.5 rounded-2xl border border-white/8 bg-white/4 py-3.5 text-white/75 tx2 transition hover:bg-white/8">
+                <button onClick={() => setContactMuted((v) => !v)} className={`flex flex-1 flex-col items-center gap-1.5 rounded-2xl border py-3.5 transition ${theme === "light" ? "border-gray-200 bg-white/40 text-gray-600 hover:bg-gray-100" : "border-white/8 bg-white/4 text-white/75 hover:bg-white/8"}`}>
                   {contactMuted ? (
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0M2 2l20 20" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   ) : (
@@ -2086,13 +2119,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </button>
               </div>
             )}
-            <div className="relative z-10 mx-5 mb-4 h-px bg-white/6" />
+            <div className={`relative z-10 mx-5 mb-4 h-px ${theme === "light" ? "bg-gray-200" : "bg-white/6"}`} />
             <div className="relative z-10 flex flex-col gap-2 px-5 pb-8">
-              <button onClick={() => setContactBlocked((v) => !v)} className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition" style={{ background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(255,255,255,0.03)", borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.07)", color: "#F87171" }}>
+              <button onClick={() => setContactBlocked((v) => !v)} className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition" style={{ background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(0,0,0,0.03)", borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(0,0,0,0.07)", color: "#F87171" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 {contactBlocked ? "Unblock User" : "Block User"}
               </button>
-              <button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/7 bg-white/3 py-3.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/8">
+              <button className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition" style={{ background: "rgba(0,0,0,0.02)", borderColor: "rgba(0,0,0,0.06)", color: "#F87171" }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 Delete Chat
               </button>
@@ -2100,19 +2133,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
-              <button onClick={() => setActiveId(null)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white md:hidden" aria-label="Back to conversations">
+            <header className={`glass relative z-10 flex items-center gap-3 border-b px-4 py-4 md:px-6 ${theme === "light" ? "bg-white/90 border-gray-200" : "border-black/5 dark:border-white/5"}`}>
+              <button onClick={() => setActiveId(null)} className={`mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition md:hidden ${theme === "light" ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900" : "text-mist hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"}`} aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <button onClick={() => setShowContactInfo(true)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
+              <button onClick={() => setShowContactInfo(true)} className={`flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left transition ${theme === "light" ? "hover:bg-gray-50" : "hover:bg-black/5 dark:hover:bg-white/5"}`}>
                 <Avatar name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"} color={active.otherProfile?.avatar_color ?? "#7C5CFF"} online={otherIsOnline} avatarUrl={active.otherProfile?.avatar_url} />
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center text-sm font-semibold">
+                  <p className={`flex items-center text-sm font-semibold ${theme === "light" ? "text-gray-900" : "text-white"}`}>
                     <span className="truncate">{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
                     {isVerified(active.otherProfile?.username) && <VerifiedBadge />}
                   </p>
                   {!active.is_group && (
-                    <p className="truncate text-xs text-mist">
+                    <p className={`truncate text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>
                       {peerTyping ? <span className="text-teal animate-pulse">typing…</span> : otherIsOnline ? <span className="text-teal">Active now</span> : otherProfileFresh?.last_seen ? `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}` : `@${active.otherProfile?.username}`}
                     </p>
                   )}
@@ -2125,8 +2158,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               )}
             </header>
 
-            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-6 py-6">
-              {loadingMore && <p className="pb-2 text-center text-xs text-mist">Loading older messages…</p>}
+            <div ref={scrollRef} onScroll={handleMessagesScroll} className={`relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-6 py-6 ${theme === "light" ? "bg-[#F8F9FC]" : ""}`}>
+              {loadingMore && <p className={`pb-2 text-center text-xs ${theme === "light" ? "text-gray-400" : "text-mist"}`}>Loading older messages…</p>}
               {messages.map((m, idx) => {
                 const mine = m.sender_id === myProfile.id;
                 const isImage = m.message_type === "image" && !!m.media_url;
@@ -2143,7 +2176,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <Fragment key={m.id}>
                     {showDayDivider && (
                       <div className="my-4 flex items-center justify-center">
-                        <span className="text-[13px] font-medium text-mist">
+                        <span className={`text-[13px] font-medium ${theme === "light" ? "text-gray-400" : "text-mist"}`}>
                           {formatDayLabel(m.created_at)}
                         </span>
                       </div>
@@ -2154,7 +2187,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       )}
                       <div style={{ transform: `translateX(${translateX}px)`, transition: isSwiping ? "none" : "transform 0.15s ease-out" }} className="max-w-[80%] md:max-w-md" onDoubleClick={() => toggleReaction(m.id, "❤️")} onContextMenu={(e) => { e.preventDefault(); setReactionPickerFor(reactionPickerFor === m.id ? null : m.id); }}>
                         {reactionPickerFor === m.id && (
-                          <div className={`mb-1 flex gap-1 rounded-full bg-ink-800 px-2 py-1 shadow-lg ${mine ? "justify-end" : "justify-start"}`}>
+                          <div className={`mb-1 flex gap-1 rounded-full ${theme === "light" ? "bg-white shadow-md" : "bg-ink-800"} px-2 py-1 shadow-lg ${mine ? "justify-end" : "justify-start"}`}>
                             {QUICK_EMOJIS.map((emo) => (
                               <button key={emo} onClick={() => toggleReaction(m.id, emo)} className="text-lg leading-none hover:scale-110 transition">{emo}</button>
                             ))}
@@ -2182,7 +2215,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           )}
                         </div>
                         {!isImage && (
-                          <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] text-mist ${mine ? "justify-end" : "justify-start"}`}>
+                          <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] ${theme === "light" ? "text-gray-400" : "text-mist"} ${mine ? "justify-end" : "justify-start"}`}>
                             <span>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
                             {mine && <Ticks read={!!m.read_at} className={m.read_at ? "text-sky-500" : "text-mist"} />}
                           </p>
@@ -2198,23 +2231,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <TypingBubble />
                 </div>
               )}
-              {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
+              {messages.length === 0 && !peerTyping && <p className={`pt-10 text-center text-sm ${theme === "light" ? "text-gray-400" : "text-mist"}`}>No messages yet — say hello 👋</p>}
             </div>
 
             {replyingTo && (
-              <div className="relative z-10 flex items-center justify-between border-t border-black/5 dark:border-white/5 bg-ink-800/60 px-6 py-2">
+              <div className={`relative z-10 flex items-center justify-between border-t px-6 py-2 ${theme === "light" ? "border-gray-200 bg-white/90" : "border-black/5 dark:border-white/5 bg-ink-800/60"}`}>
                 <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2">
                   <p className="text-xs font-medium text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
-                  <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
+                  <p className={`truncate text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{previewForQuote(replyingTo)}</p>
                 </div>
-                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 shrink-0 text-mist hover:text-black dark:hover:text-white" aria-label="Cancel reply">✕</button>
+                <button type="button" onClick={() => setReplyingTo(null)} className={`ml-3 shrink-0 transition ${theme === "light" ? "text-gray-400 hover:text-gray-900" : "text-mist hover:text-black dark:hover:text-white"}`} aria-label="Cancel reply">✕</button>
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
+            <form onSubmit={sendMessage} className={`relative z-10 border-t px-4 py-3 ${theme === "light" ? "border-gray-200 bg-white/90" : "border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent"}`}>
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20">
-                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
+              <div className={`flex items-center gap-2.5 rounded-2xl border px-1.5 py-1.5 backdrop-blur-xl shadow-lg ${theme === "light" ? "border-gray-200 bg-white/80 shadow-gray-200/50" : "border-white/10 bg-white/5 shadow-black/20"}`}>
+                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all hover:scale-105 active:scale-95 disabled:opacity-30 ${theme === "light" ? "bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900" : "bg-white/5 text-mist hover:bg-white/10 hover:text-white"}`} aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
                     <circle cx="8" cy="10" r="2" fill="currentColor"/>
@@ -2229,7 +2262,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         <span className="relative h-3 w-3 rounded-full bg-red-500" />
                       </span>
                       <span className="flex-1 text-sm font-medium tracking-wide text-red-400">Recording {formatDuration(recordingSeconds)}</span>
-                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mist transition hover:bg-white/10 hover:text-white">Cancel</button>
+                      <button type="button" onClick={cancelRecording} className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${theme === "light" ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-white/5 text-mist hover:bg-white/10 hover:text-white"}`}>Cancel</button>
                     </div>
                     <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95" aria-label="Send voice note">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -2246,7 +2279,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }}
                       placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Message"}
                       disabled={uploadingMedia}
-                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 msg-input-tx outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
+                      className={`min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40 ${
+                        theme === "light" 
+                          ? "text-gray-900 placeholder:text-gray-400" 
+                          : "text-white placeholder:text-white/25 msg-input-tx"
+                      }`}
                     />
                     {input.trim() ? (
                       <button type="submit" disabled={sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100" aria-label="Send message">
@@ -2256,7 +2293,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         </svg>
                       </button>
                     ) : (
-                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Record voice note">
+                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all hover:scale-105 active:scale-95 disabled:opacity-30 ${theme === "light" ? "bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900" : "bg-white/5 text-mist hover:bg-white/10 hover:text-white"}`} aria-label="Record voice note">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                           <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8"/>
                           <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
