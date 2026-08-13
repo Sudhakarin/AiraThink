@@ -155,11 +155,31 @@ function isVerified(username?: string) {
   return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
 
+// Updated VerifiedBadge - Light mode: Blue, Dark mode: White
 function VerifiedBadge({ size = 14 }: { size?: number }) {
+  const [isLight, setIsLight] = useState(false);
+  
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+      setIsLight(stored === "light");
+    } catch {}
+  }, []);
+  
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className="ml-1 inline-block shrink-0 align-middle" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 1.8l2.2 1.6 2.8-.4 1.1 2.6 2.6 1.1-.4 2.8L22.2 12l-1.9 2.3.4 2.8-2.6 1.1-1.1 2.6-2.8-.4L12 22.2l-2.2-1.8-2.8.4-1.1-2.6-2.6-1.1.4-2.8L1.8 12l1.9-2.3-.4-2.8 2.6-1.1 1.1-2.6 2.8.4L12 1.8Z" fill="white" />
-      <path d="M7.6 12.1L10.4 14.9L16.6 8.7" fill="none" stroke="#111827" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
+      <path 
+        d="M12 1.8l2.2 1.6 2.8-.4 1.1 2.6 2.6 1.1-.4 2.8L22.2 12l-1.9 2.3.4 2.8-2.6 1.1-1.1 2.6-2.8-.4L12 22.2l-2.2-1.8-2.8.4-1.1-2.6-2.6-1.1.4-2.8L1.8 12l1.9-2.3-.4-2.8 2.6-1.1 1.1-2.6 2.8.4L12 1.8Z" 
+        fill={isLight ? "#3B82F6" : "white"} 
+      />
+      <path 
+        d="M7.6 12.1L10.4 14.9L16.6 8.7" 
+        fill="none" 
+        stroke={isLight ? "white" : "#111827"} 
+        strokeWidth="1.9" 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+      />
     </svg>
   );
 }
@@ -1429,7 +1449,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Dark Mode ── */
         [data-theme="dark"] { 
           --color-text: #ffffff;
           --bubble-received: rgba(255,255,255,0.06);
@@ -1438,7 +1457,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           --shadow-color: rgba(0,0,0,0.3);
         }
         
-        /* ── Light Mode (iOS Messages-style) ── */
         [data-theme="light"] { 
           --color-text: #1C1C1E;
           --bubble-received: #E9E9EB;
@@ -1508,7 +1526,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
         [data-theme="light"] button, [data-theme="light"] .glass { -webkit-tap-highlight-color: transparent; }
         
-        /* Text gradient for light mode */
         [data-theme="light"] .text-gradient {
           background: linear-gradient(135deg, #7C5CFF, #22D3B8);
           -webkit-background-clip: text;
@@ -1980,7 +1997,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className={`mt-2 text-xs ${theme === "light" ? "text-gray-500" : "text-mist"}`}>{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-              {/* Dark / Light mode switch */}
               <div className={`glass mt-6 rounded-2xl overflow-hidden ${theme === "light" ? "bg-white border border-gray-200" : ""}`}>
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
