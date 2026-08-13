@@ -29,6 +29,11 @@ type Message = {
   media_url?: string | null;
   media_duration?: number | null;
   reply_to_id?: string | null;
+  edited_at?: string | null;
+  is_forwarded?: boolean;
+  original_message_id?: string | null;
+  deleted_at?: string | null;
+  is_deleted?: boolean;
 };
 
 type Reaction = {
@@ -94,6 +99,7 @@ const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airathink-active-status";
 const THEME_STORAGE_KEY = "airathink-theme";
+const EDIT_TIMEOUT_MS = 300000; // 5 minutes
 
 const HOME_FEATURES = [
   { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
@@ -155,7 +161,6 @@ function isVerified(username?: string) {
   return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
 
-// Updated VerifiedBadge - Light mode: Blue, Dark mode: White
 function VerifiedBadge({ size = 14 }: { size?: number }) {
   const [isLight, setIsLight] = useState(false);
   
@@ -257,15 +262,25 @@ function TabIcon({ tab }: { tab: MobileTab }) {
   );
 }
 
-function VoiceMessage({ url, duration, mine }: { url: string; duration: number; mine: boolean }) {
+// Updated VoiceMessage with speed control
+function VoiceMessage({ url, duration, mine, onDelete, isDeleted }: { 
+  url: string; 
+  duration: number; 
+  mine: boolean;
+  onDelete?: () => void;
+  isDeleted?: boolean;
+}) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [liveDuration, setLiveDuration] = useState(duration);
+  const [speed, setSpeed] = useState(1);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    audio.playbackRate = speed;
     const onTime = () => { if (audio.duration && isFinite(audio.duration)) setProgress(audio.currentTime / audio.duration); };
     const onLoaded = () => { if (audio.duration && isFinite(audio.duration)) setLiveDuration(audio.duration); };
     const onEnd = () => { setPlaying(false); setProgress(0); };
@@ -277,12 +292,22 @@ function VoiceMessage({ url, duration, mine }: { url: string; duration: number; 
       audio.removeEventListener("loadedmetadata", onLoaded);
       audio.removeEventListener("ended", onEnd);
     };
-  }, []);
+  }, [speed]);
 
   function toggle() {
     const audio = audioRef.current;
     if (!audio) return;
     if (playing) { audio.pause(); setPlaying(false); } else { audio.play(); setPlaying(true); }
+  }
+
+  const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+  if (isDeleted) {
+    return (
+      <div className="flex min-w-[190px] items-center gap-2.5 py-0.5 opacity-50">
+        <span className="text-sm text-mist">This message was deleted</span>
+      </div>
+    );
   }
 
   return (
@@ -299,6 +324,28 @@ function VoiceMessage({ url, duration, mine }: { url: string; duration: number; 
         <div className={`h-1 w-full overflow-hidden rounded-full ${mine ? "bg-white/25" : "bg-black/15 dark:bg-white/15"}`}>
           <div className={`h-full rounded-full ${mine ? "bg-white" : "bg-violet-light"}`} style={{ width: `${Math.min(100, progress * 100)}%` }} />
         </div>
+      </div>
+      <div className="relative">
+        <button 
+          type="button" 
+          onClick={() => setShowSpeedMenu(!showSpeedMenu)} 
+          className="shrink-0 text-[10px] font-medium tabular-nums text-mist hover:text-white transition"
+        >
+          {speed}x
+        </button>
+        {showSpeedMenu && (
+          <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded-lg bg-ink-800 p-1 shadow-xl">
+            {speedOptions.map(s => (
+              <button
+                key={s}
+                onClick={() => { setSpeed(s); setShowSpeedMenu(false); }}
+                className={`block w-full px-3 py-1 text-xs text-left hover:bg-white/5 rounded ${speed === s ? 'text-violet-light' : 'text-mist'}`}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <span className={`shrink-0 text-[10px] tabular-nums ${mine ? "text-white/70" : "text-mist"}`}>{formatDuration(liveDuration)}</span>
     </div>
@@ -424,6 +471,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const isPrependingRef = useRef(false);
   const realtimeConnectedRef = useRef(false);
 
+  // New states for features
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editContent, setEditContent] = useState("");
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResultsMessages, setSearchResultsMessages] = useState<Message[]>([]);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<Set<string>>(new Set());
+
   const lastMessageIdRef = useRef<string | null>(null);
   const lastMessageCreatedAtRef = useRef<string | null>(null);
 
@@ -454,7 +511,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordingPaused, setRecordingPaused] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [recordingDuration, setRecordingDuration] = useState(0);
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -531,6 +590,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     [conversations, activeId]
   );
 
+  // Load pinned messages
+  useEffect(() => {
+    if (!activeId) return;
+    const loadPinned = async () => {
+      const { data } = await supabase
+        .from('message_pins')
+        .select('message_id')
+        .eq('conversation_id', activeId)
+        .eq('user_id', myProfile.id);
+      setPinnedMessages(new Set(data?.map(d => d.message_id) || []));
+    };
+    loadPinned();
+  }, [activeId, myProfile.id, supabase]);
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       if (data.user?.email) setMyEmail(data.user.email);
@@ -548,7 +621,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     const { data: convos } = await supabase.from("conversations").select("id, is_group, name").in("id", convoIds);
     const { data: otherParticipants } = await supabase.from("conversation_participants").select("conversation_id, user_id, profiles(*)").in("conversation_id", convoIds).neq("user_id", myProfile.id);
-    const { data: lastMessages } = await supabase.from("messages").select("conversation_id, content, message_type, created_at").in("conversation_id", convoIds).order("created_at", { ascending: false });
+    const { data: lastMessages } = await supabase.from("messages").select("conversation_id, content, message_type, created_at, is_deleted").in("conversation_id", convoIds).order("created_at", { ascending: false });
     const { data: unreadRows } = await supabase.from("messages").select("id, conversation_id").in("conversation_id", convoIds).neq("sender_id", myProfile.id).is("read_at", null);
 
     const unreadCounts: Record<string, number> = {};
@@ -556,6 +629,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
     const previewFor = (m: any) => {
       if (!m) return "Say hello 👋";
+      if (m.is_deleted) return "This message was deleted";
       if (m.message_type === "image") return "📷 Photo";
       if (m.message_type === "voice") return "🎤 Voice message";
       return m.content;
@@ -656,6 +730,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         const msg = payload.new as Message;
         if (msg.sender_id !== myProfile.id) loadConversations();
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, (payload) => {
+        loadConversations();
+        const updated = payload.new as Message;
+        setMessages(prev => prev.map(m => m.id === updated.id ? updated : m));
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadConversations]);
@@ -697,12 +776,163 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
     recordingStreamRef.current = null; mediaRecorderRef.current = null; audioChunksRef.current = [];
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = null; setRecording(false); setRecordingSeconds(0);
+    recordingTimerRef.current = null; setRecording(false); setRecordingPaused(false); setRecordingSeconds(0); setRecordingDuration(0);
+  }
+
+  // Pause recording
+  function pauseRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
+    recorder.pause();
+    setRecordingPaused(true);
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+  }
+
+  // Resume recording
+  function resumeRecording() {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state !== "paused") return;
+    recorder.resume();
+    setRecordingPaused(false);
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingSeconds(prev => prev + 1);
+      setRecordingDuration(prev => prev + 1);
+    }, 1000);
   }
 
   useEffect(() => {
     cancelRecordingRef.current = cancelRecording;
   });
+
+  // Message search in chat
+  const searchMessagesInChat = async (query: string) => {
+    setSearchQuery(query);
+    if (!activeId || query.length < 2) {
+      setSearchResultsMessages([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', activeId)
+      .ilike('content', `%${query}%`)
+      .order('created_at', { ascending: false })
+      .limit(20);
+    setSearchResultsMessages(data || []);
+  };
+
+  // Pin/Unpin message
+  const togglePinMessage = async (messageId: string) => {
+    const isPinned = pinnedMessages.has(messageId);
+    if (isPinned) {
+      await supabase.from('message_pins').delete()
+        .eq('message_id', messageId)
+        .eq('conversation_id', activeId)
+        .eq('user_id', myProfile.id);
+      setPinnedMessages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(messageId);
+        return newSet;
+      });
+    } else {
+      await supabase.from('message_pins').insert({
+        message_id: messageId,
+        conversation_id: activeId,
+        user_id: myProfile.id
+      });
+      setPinnedMessages(prev => new Set(prev).add(messageId));
+    }
+  };
+
+  // Edit message
+  const startEditMessage = (message: Message) => {
+    if (message.sender_id !== myProfile.id) return;
+    const timeSince = Date.now() - new Date(message.created_at).getTime();
+    if (timeSince > EDIT_TIMEOUT_MS) {
+      setErrorMsg("You can only edit messages within 5 minutes");
+      return;
+    }
+    setEditingMessage(message);
+    setEditContent(message.content);
+  };
+
+  const saveEditMessage = async () => {
+    if (!editingMessage || !editContent.trim()) return;
+    const { error } = await supabase
+      .from('messages')
+      .update({ 
+        content: editContent.trim(), 
+        edited_at: new Date().toISOString() 
+      })
+      .eq('id', editingMessage.id)
+      .eq('sender_id', myProfile.id);
+    
+    if (error) {
+      setErrorMsg("Failed to edit message");
+      return;
+    }
+    setEditingMessage(null);
+    setEditContent("");
+    setMessages(prev => prev.map(m => 
+      m.id === editingMessage.id 
+        ? { ...m, content: editContent.trim(), edited_at: new Date().toISOString() }
+        : m
+    ));
+  };
+
+  // Delete message (for everyone or just me)
+  const deleteMessage = async (messageId: string, forEveryone: boolean) => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message) return;
+
+    if (forEveryone) {
+      // Admin or message owner can delete for everyone
+      if (message.sender_id !== myProfile.id) {
+        setErrorMsg("You can only delete your own messages");
+        return;
+      }
+      await supabase
+        .from('messages')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .eq('id', messageId);
+    } else {
+      // Delete only for me (hide message)
+      await supabase
+        .from('message_deletions')
+        .insert({
+          message_id: messageId,
+          user_id: myProfile.id,
+          deleted_at: new Date().toISOString()
+        });
+    }
+    
+    setMessages(prev => prev.map(m => 
+      m.id === messageId 
+        ? { ...m, is_deleted: forEveryone || message.sender_id === myProfile.id, deleted_at: new Date().toISOString() }
+        : m
+    ));
+  };
+
+  // Forward message
+  const forwardMessage = async (targetConversationId: string) => {
+    if (!forwardingMessage) return;
+    const { error } = await supabase.from('messages').insert({
+      conversation_id: targetConversationId,
+      sender_id: myProfile.id,
+      content: forwardingMessage.content,
+      message_type: forwardingMessage.message_type,
+      media_url: forwardingMessage.media_url,
+      is_forwarded: true,
+      original_message_id: forwardingMessage.id
+    });
+    if (error) {
+      setErrorMsg("Failed to forward message");
+      return;
+    }
+    setShowForwardModal(false);
+    setForwardingMessage(null);
+    loadConversations();
+  };
 
   useEffect(() => {
     if (!activeId) return;
@@ -742,6 +972,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` }, (payload) => {
         const updated = payload.new as Message;
         setMessages((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+        loadConversations();
       })
       .on("broadcast", { event: "typing" }, ({ payload }: any) => {
         if (!payload || payload.userId === myProfile.id) return;
@@ -1109,9 +1340,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     activeChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
     const replyTo = replyingTo; setReplyingTo(null);
     const tempId = `temp-${Date.now()}`;
-    const optimisticMsg: Message = { id: tempId, conversation_id: activeId, sender_id: myProfile.id, content, created_at: new Date().toISOString(), read_at: null, message_type: "text", reply_to_id: replyTo?.id ?? null };
+    const optimisticMsg: Message = { 
+      id: tempId, 
+      conversation_id: activeId, 
+      sender_id: myProfile.id, 
+      content, 
+      created_at: new Date().toISOString(), 
+      read_at: null, 
+      message_type: "text", 
+      reply_to_id: replyTo?.id ?? null,
+      is_forwarded: false,
+      is_deleted: false
+    };
     setMessages((prev) => [...prev, optimisticMsg]);
-    const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content, message_type: "text", reply_to_id: replyTo?.id ?? null }).select().single();
+    const { data: inserted, error } = await supabase.from("messages").insert({ 
+      conversation_id: activeId, 
+      sender_id: myProfile.id, 
+      content, 
+      message_type: "text", 
+      reply_to_id: replyTo?.id ?? null 
+    }).select().single();
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content); setReplyingTo(replyTo);
@@ -1133,9 +1381,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (!activeId) return;
     const replyTo = replyingTo; setReplyingTo(null);
     const tempId = `temp-${Date.now()}`;
-    const optimisticMsg: Message = { id: tempId, conversation_id: activeId, sender_id: myProfile.id, content: "", created_at: new Date().toISOString(), read_at: null, message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null };
+    const optimisticMsg: Message = { 
+      id: tempId, 
+      conversation_id: activeId, 
+      sender_id: myProfile.id, 
+      content: "", 
+      created_at: new Date().toISOString(), 
+      read_at: null, 
+      message_type: opts.type, 
+      media_url: opts.url, 
+      media_duration: opts.duration ?? null, 
+      reply_to_id: replyTo?.id ?? null,
+      is_forwarded: false,
+      is_deleted: false
+    };
     setMessages((prev) => [...prev, optimisticMsg]);
-    const { data: inserted, error } = await supabase.from("messages").insert({ conversation_id: activeId, sender_id: myProfile.id, content: "", message_type: opts.type, media_url: opts.url, media_duration: opts.duration ?? null, reply_to_id: replyTo?.id ?? null }).select().single();
+    const { data: inserted, error } = await supabase.from("messages").insert({ 
+      conversation_id: activeId, 
+      sender_id: myProfile.id, 
+      content: "", 
+      message_type: opts.type, 
+      media_url: opts.url, 
+      media_duration: opts.duration ?? null, 
+      reply_to_id: replyTo?.id ?? null 
+    }).select().single();
     if (error || !inserted) {
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       setErrorMsg("Failed to send media. Please try again.");
@@ -1185,8 +1454,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.start();
       mediaRecorderRef.current = recorder;
-      setRecording(true); setRecordingSeconds(0);
-      recordingTimerRef.current = setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+      setRecording(true); setRecordingPaused(false); setRecordingSeconds(0); setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingSeconds(prev => prev + 1);
+        setRecordingDuration(prev => prev + 1);
+      }, 1000);
     } catch (err: any) {
       setErrorMsg("Microphone access denied. Please allow microphone permission.");
     }
@@ -1195,13 +1467,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function stopAndSendRecording() {
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state === "inactive") return;
-    const finalDuration = recordingSeconds;
+    const finalDuration = recordingDuration || recordingSeconds;
     const mimeType = recordingMimeTypeRef.current || "audio/webm";
     const blob: Blob = await new Promise((resolve) => { recorder.onstop = () => { resolve(new Blob(audioChunksRef.current, { type: mimeType })); }; recorder.stop(); });
     recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
     recordingStreamRef.current = null; mediaRecorderRef.current = null; audioChunksRef.current = [];
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    recordingTimerRef.current = null; setRecording(false); setRecordingSeconds(0);
+    recordingTimerRef.current = null; setRecording(false); setRecordingPaused(false); setRecordingSeconds(0); setRecordingDuration(0);
     if (!activeId || finalDuration < 1) return;
     setUploadingMedia(true);
     const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("webm") ? "webm" : mimeType.includes("ogg") ? "ogg" : mimeType.includes("aac") ? "aac" : "webm";
@@ -1401,7 +1673,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   function toggleMic() { localStream?.getAudioTracks().forEach((t) => (t.enabled = !micOn)); setMicOn((v) => !v); }
   function formatCallTime(s: number) { const m = Math.floor(s / 60).toString().padStart(2, "0"); const sec = (s % 60).toString().padStart(2, "0"); return `${m}:${sec}`; }
   function messageById(id?: string | null) { if (!id) return null; return messages.find((m) => m.id === id) ?? null; }
-  function previewForQuote(m: Message | null) { if (!m) return "Message"; if (m.message_type === "image") return "📷 Photo"; if (m.message_type === "voice") return "🎤 Voice message"; return m.content; }
+  function previewForQuote(m: Message | null) { 
+    if (!m) return "Message"; 
+    if (m.is_deleted) return "This message was deleted";
+    if (m.message_type === "image") return "📷 Photo"; 
+    if (m.message_type === "voice") return "🎤 Voice message"; 
+    return m.content; 
+  }
 
   function onBubbleTouchStart(e: React.TouchEvent, m: Message) {
     if (reactionPickerFor) setReactionPickerFor(null);
@@ -1536,6 +1814,102 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       <audio ref={remoteAudioRef} autoPlay />
 
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
+
+      {/* Edit Message Modal */}
+      {editingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className={`w-full max-w-md rounded-2xl p-6 ${theme === 'light' ? 'bg-white' : 'bg-ink-800'}`}>
+            <h3 className="mb-2 font-semibold">Edit Message</h3>
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className={`w-full rounded-lg border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet ${theme === 'light' ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'}`}
+              rows={3}
+              autoFocus
+            />
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => setEditingMessage(null)} className={`flex-1 rounded-full border py-2 text-sm ${theme === 'light' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'border-white/10 text-mist hover:bg-white/5'}`}>
+                Cancel
+              </button>
+              <button onClick={saveEditMessage} className="flex-1 rounded-full bg-violet py-2 text-sm text-white">
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Forward Message Modal */}
+      {showForwardModal && forwardingMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className={`w-full max-w-sm rounded-2xl p-4 ${theme === 'light' ? 'bg-white' : 'bg-ink-800'}`}>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-semibold">Forward to</h3>
+              <button onClick={() => { setShowForwardModal(false); setForwardingMessage(null); }} className="text-mist hover:text-white">
+                ✕
+              </button>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              {conversations.filter(c => c.id !== activeId).map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => forwardMessage(c.id)}
+                  className="flex w-full items-center gap-3 rounded-lg p-2 hover:bg-white/5"
+                >
+                  <Avatar 
+                    name={c.otherProfile?.display_name || 'Unknown'} 
+                    color={c.otherProfile?.avatar_color || '#7C5CFF'} 
+                    size={36}
+                  />
+                  <span className="text-sm">{c.otherProfile?.display_name || 'Unknown'}</span>
+                </button>
+              ))}
+              {conversations.filter(c => c.id !== activeId).length === 0 && (
+                <p className="text-center text-sm text-mist">No other conversations to forward to</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Search Modal */}
+      {isSearchOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50">
+          <div className={`mx-auto max-w-2xl p-4 ${theme === 'light' ? 'bg-white' : 'bg-ink-900'}`}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold">Search Messages</h3>
+              <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); setSearchResultsMessages([]); }} className="text-mist hover:text-white">
+                ✕
+              </button>
+            </div>
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => searchMessagesInChat(e.target.value)}
+              placeholder="Search in this chat..."
+              className={`w-full rounded-lg border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet ${theme === 'light' ? 'border-gray-200 bg-gray-50' : 'border-white/10 bg-white/5'}`}
+            />
+            <div className="mt-4 max-h-96 overflow-y-auto">
+              {searchResultsMessages.length > 0 ? (
+                searchResultsMessages.map(msg => (
+                  <div key={msg.id} className={`rounded-lg p-3 text-sm ${theme === 'light' ? 'hover:bg-gray-50' : 'hover:bg-white/5'}`}>
+                    <p className={msg.is_deleted ? 'text-mist italic' : ''}>
+                      {msg.is_deleted ? 'This message was deleted' : msg.content}
+                    </p>
+                    <p className="mt-1 text-xs text-mist">
+                      {new Date(msg.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                ))
+              ) : searchQuery.length >= 2 ? (
+                <p className="text-center text-sm text-mist">No messages found</p>
+              ) : (
+                <p className="text-center text-sm text-mist">Type at least 2 characters to search</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {profileView && (
         <div className={`fixed inset-0 z-[60] flex flex-col overflow-y-auto ${theme === "light" ? "bg-white" : "bg-ink-900"}`}>
@@ -1777,7 +2151,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r ${theme === "light" ? "border-gray-200 bg-white/80" : "border-black/5 dark:border-white/5 bg-ink-800/60"}`}>
         <div className={`flex items-center justify-between px-5 py-5 ${theme === "light" ? "border-b border-gray-200" : ""}`}>
           <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">Think</span></span>
-          <div className="relative">
+          <div className="relative flex items-center gap-2">
+            {/* Chat Search Button - Only show when chat is active */}
+            {activeId && (
+              <button onClick={() => setIsSearchOpen(true)} className={`flex h-9 w-9 items-center justify-center rounded-full transition ${theme === "light" ? "text-gray-600 hover:bg-black/5 hover:text-gray-900" : "text-mist hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"}`} aria-label="Search messages">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              </button>
+            )}
             <button onClick={() => setShowNotifications((v) => !v)} className={`relative flex h-9 w-9 items-center justify-center rounded-full transition ${theme === "light" ? "text-gray-600 hover:bg-black/5 hover:text-gray-900" : "text-mist hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white"}`} aria-label="Notifications">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -2167,11 +2550,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   )}
                 </div>
               </button>
-              {!active.is_group && (
-                <button onClick={startCall} disabled={callStatus !== "idle"} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40" aria-label="Voice call">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+              <div className="flex items-center gap-2">
+                <button onClick={() => setIsSearchOpen(true)} className={`flex h-10 w-10 items-center justify-center rounded-full transition ${theme === "light" ? "text-gray-600 hover:bg-gray-100 hover:text-gray-900" : "text-mist hover:bg-white/5 hover:text-white"}`} aria-label="Search messages">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
+                    <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
                 </button>
-              )}
+                {!active.is_group && (
+                  <button onClick={startCall} disabled={callStatus !== "idle"} className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40" aria-label="Voice call">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                  </button>
+                )}
+              </div>
             </header>
 
             <div ref={scrollRef} onScroll={handleMessagesScroll} className={`relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-6 py-6 ${theme === "light" ? "bg-[#F8F9FC]" : ""}`}>
@@ -2187,6 +2578,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const showDayDivider = !prevMsg || formatDayLabel(prevMsg.created_at) !== formatDayLabel(m.created_at);
                 const grouped = !!prevMsg && !showDayDivider && prevMsg.sender_id === m.sender_id
                   && (new Date(m.created_at).getTime() - new Date(prevMsg.created_at).getTime()) < GROUPED_GAP_MS;
+                const isPinned = pinnedMessages.has(m.id);
+                const isDeleted = m.is_deleted || false;
+                const canEdit = mine && !isDeleted && Date.now() - new Date(m.created_at).getTime() < EDIT_TIMEOUT_MS;
 
                 return (
                   <Fragment key={m.id}>
@@ -2209,34 +2603,95 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             ))}
                           </div>
                         )}
-                        <div className={`text-[16px] leading-snug ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white shadow-md shadow-violet/20` : `${isImage ? "" : "glass bubble-received"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
-                          {quoted && (
-                            <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
-                              <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
-                              <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
-                            </div>
+                        <div className={`relative ${isDeleted ? 'opacity-50' : ''}`}>
+                          {isPinned && (
+                            <div className="absolute -top-3 -right-1 text-xs text-violet-light">📌</div>
                           )}
-                          {isImage ? (
-                            <img src={m.media_url!} alt="Shared photo" className="max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => window.open(m.media_url!, "_blank")} />
-                          ) : isVoice ? (
-                            <VoiceMessage url={m.media_url!} duration={m.media_duration ?? 0} mine={mine} />
-                          ) : (
-                            <p className="whitespace-pre-wrap break-words">{m.content}</p>
-                          )}
-                          {isImage && (
-                            <p className="mt-1 flex items-center justify-end gap-1 px-2 pb-1 text-[10px] text-white/60">
-                              {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                              {mine && <Ticks read={!!m.read_at} />}
+                          <div className={`text-[16px] leading-snug ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white shadow-md shadow-violet/20` : `${isImage ? "" : "glass bubble-received"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
+                            {quoted && (
+                              <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
+                                <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
+                                <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
+                              </div>
+                            )}
+                            {isDeleted ? (
+                              <p className="text-sm italic text-mist">This message was deleted</p>
+                            ) : isImage ? (
+                              <img src={m.media_url!} alt="Shared photo" className="max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => window.open(m.media_url!, "_blank")} />
+                            ) : isVoice ? (
+                              <VoiceMessage 
+                                url={m.media_url!} 
+                                duration={m.media_duration ?? 0} 
+                                mine={mine} 
+                                isDeleted={isDeleted}
+                              />
+                            ) : (
+                              <p className="whitespace-pre-wrap break-words">
+                                {m.content}
+                                {m.edited_at && <span className="ml-1 text-[10px] text-mist">(edited)</span>}
+                                {m.is_forwarded && <span className="ml-1 text-[10px] text-mist">↪ forwarded</span>}
+                              </p>
+                            )}
+                            {isImage && !isDeleted && (
+                              <p className="mt-1 flex items-center justify-end gap-1 px-2 pb-1 text-[10px] text-white/60">
+                                {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                {mine && <Ticks read={!!m.read_at} />}
+                              </p>
+                            )}
+                          </div>
+                          {!isImage && !isDeleted && (
+                            <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] ${theme === "light" ? "text-gray-400" : "text-mist"} ${mine ? "justify-end" : "justify-start"}`}>
+                              <span>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                              {mine && <Ticks read={!!m.read_at} className={m.read_at ? "text-sky-500" : "text-mist"} />}
                             </p>
                           )}
+                          <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
+                          
+                          {/* Message Actions */}
+                          {!isDeleted && (
+                            <div className={`mt-1 flex items-center gap-2 ${mine ? "justify-end" : "justify-start"}`}>
+                              {/* Pin Button */}
+                              <button 
+                                onClick={() => togglePinMessage(m.id)}
+                                className={`text-[10px] transition ${isPinned ? 'text-violet-light' : 'text-mist hover:text-white'}`}
+                              >
+                                {isPinned ? '📌' : '📍'}
+                              </button>
+                              {/* Forward Button */}
+                              <button 
+                                onClick={() => { setForwardingMessage(m); setShowForwardModal(true); }}
+                                className="text-[10px] text-mist hover:text-white transition"
+                              >
+                                ➡️
+                              </button>
+                              {/* Edit Button (only for own messages) */}
+                              {canEdit && (
+                                <button 
+                                  onClick={() => startEditMessage(m)}
+                                  className="text-[10px] text-mist hover:text-white transition"
+                                >
+                                  ✏️
+                                </button>
+                              )}
+                              {/* Delete Button */}
+                              <button 
+                                onClick={() => {
+                                  if (mine) {
+                                    const action = confirm("Delete for everyone or just for you?");
+                                    if (action !== null) {
+                                      deleteMessage(m.id, action);
+                                    }
+                                  } else {
+                                    deleteMessage(m.id, false);
+                                  }
+                                }}
+                                className="text-[10px] text-red-400 hover:text-red-500 transition"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
                         </div>
-                        {!isImage && (
-                          <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] ${theme === "light" ? "text-gray-400" : "text-mist"} ${mine ? "justify-end" : "justify-start"}`}>
-                            <span>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                            {mine && <Ticks read={!!m.read_at} className={m.read_at ? "text-sky-500" : "text-mist"} />}
-                          </p>
-                        )}
-                        <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
                       </div>
                     </div>
                   </Fragment>
@@ -2274,11 +2729,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <>
                     <div className="flex flex-1 items-center gap-3 px-3">
                       <span className="relative flex h-3 w-3 shrink-0">
-                        <span className="absolute inset-0 animate-ping rounded-full bg-red-400 opacity-75" />
-                        <span className="relative h-3 w-3 rounded-full bg-red-500" />
+                        <span className={`absolute inset-0 animate-ping rounded-full ${recordingPaused ? 'bg-yellow-400' : 'bg-red-400'} opacity-75`} />
+                        <span className={`relative h-3 w-3 rounded-full ${recordingPaused ? 'bg-yellow-500' : 'bg-red-500'}`} />
                       </span>
-                      <span className="flex-1 text-sm font-medium tracking-wide text-red-400">Recording {formatDuration(recordingSeconds)}</span>
-                      <button type="button" onClick={cancelRecording} className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${theme === "light" ? "bg-gray-100 text-gray-600 hover:bg-gray-200" : "bg-white/5 text-mist hover:bg-white/10 hover:text-white"}`}>Cancel</button>
+                      <span className={`flex-1 text-sm font-medium tracking-wide ${recordingPaused ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {recordingPaused ? 'Paused' : 'Recording'} {formatDuration(recordingSeconds)}
+                      </span>
+                      {recordingPaused ? (
+                        <button type="button" onClick={resumeRecording} className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition">
+                          Resume
+                        </button>
+                      ) : (
+                        <button type="button" onClick={pauseRecording} className="rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white hover:bg-white/20 transition">
+                          Pause
+                        </button>
+                      )}
+                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mist hover:bg-white/10 hover:text-white transition">
+                        Cancel
+                      </button>
                     </div>
                     <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95" aria-label="Send voice note">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
