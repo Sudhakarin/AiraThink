@@ -2749,7 +2749,56 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </form>
           </>
         )}
-      </section>
+            </section>
+
+      {activeArticle && (
+        <div className="fixed inset-0 z-[80] flex flex-col bg-ink-900">
+          <div
+            className="absolute left-0 top-0 z-20 h-[3px] bg-gradient-to-r from-violet-light to-teal transition-[width] duration-150"
+            style={{ width: `${readerProgress}%` }}
+          />
+
+          <div className="relative h-56 shrink-0" style={{ background: activeArticle.thumb_gradient }}>
+            <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-transparent to-ink-900" />
+            <div className="absolute left-4 right-4 top-5 z-10 flex items-center justify-between">
+              <button
+                onClick={closeArticle}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 bg-black/30 text-white backdrop-blur"
+                aria-label="Back to news feed"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
+            </div>
+            <div
+              className="absolute -bottom-7 left-5 flex h-[60px] w-[60px] items-center justify-center rounded-2xl text-2xl"
+              style={{ background: activeArticle.thumb_gradient, border: "4px solid #0A0C12" }}
+            >
+              {activeArticle.emoji}
+            </div>
+          </div>
+
+          <div
+            onScroll={handleReaderScroll}
+            className="flex-1 overflow-y-auto px-5 pb-10 pt-12"
+            style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}
+          >
+            <p className="mb-2 text-[10.5px] font-bold uppercase tracking-wide text-teal">{activeArticle.category}</p>
+            <h1 className="font-display text-xl font-bold leading-snug text-white">{activeArticle.title}</h1>
+            <div className="mt-3 mb-5 flex items-center gap-2 text-xs text-mist">
+              <span className="h-6 w-6 rounded-full" style={{ background: activeArticle.thumb_gradient }} />
+              <span>
+                {activeArticle.source} · {activeArticle.read_time}
+              </span>
+            </div>
+
+            {activeArticle.body.map((para, idx) => (
+              <p key={idx} className="mb-4 text-[14.5px] leading-relaxed text-white/80">
+                {para}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
