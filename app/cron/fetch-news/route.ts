@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import Parser from "rss-parser";
 import { createAdminClient } from "@/lib/supabase/admin";
 
-const parser = new Parser();
+const parser = new Parser({
+  customFields: {
+    item: [
+      ["media:content", "mediaContent", { keepArray: true }],
+      ["media:thumbnail", "mediaThumbnail"],
+    ],
+  },
+});
 
 // Feed sources → mapped to your app's category + visual style
 const FEEDS: {
@@ -48,6 +55,27 @@ function stripHtml(html: string) {
     .trim();
 }
 
+function extractImage(item: any): string | null {
+  // 1. Standard <enclosure> tag (rss-parser parses this automatically)
+  if (item.enclosure?.url && /\.(jpe?g|png|webp|gif)/i.test(item.enclosure.url)) {
+    return item.enclosure.url;
+  }
+  // 2. Media RSS <media:content>
+  if (Array.isArray(item.mediaContent) && item.mediaContent.length > 0) {
+    const url = item.mediaContent[0]?.$?.url;
+    if (url) return url;
+  }
+  // 3. Media RSS <media:thumbnail>
+  if (item.mediaThumbnail?.$?.url) {
+    return item.mediaThumbnail.$.url;
+  }
+  // 4. Fallback: find first <img src="..."> inside content/description HTML
+  const html = item.content || item["content:encoded"] || item.summary || "";
+  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (match) return match[1];
+  return null;
+}
+
 export async function GET(req: NextRequest) {
   // Protect the route so only Vercel Cron (or you, with the secret) can trigger it
   const authHeader = req.headers.get("authorization");
@@ -72,6 +100,7 @@ export async function GET(req: NextRequest) {
 
         const rawBody = item.contentSnippet || item.content || item.summary || "";
         const cleanBody = stripHtml(rawBody);
+        const imageUrl = extractImage(item);
 
         // Split into 2-3 paragraphs for the reader view; fall back to single paragraph
         const bodyParagraphs =
@@ -89,6 +118,7 @@ export async function GET(req: NextRequest) {
           body: bodyParagraphs,
           is_featured: false,
           source_url: item.link,
+          image_url: imageUrl,
         });
 
         if (error) {
