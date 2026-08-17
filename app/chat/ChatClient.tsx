@@ -2130,13 +2130,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
         <div className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
-            <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 text-center">
-              <style>{`
-                @keyframes bubbleInLeft { 0% { opacity: 0; transform: translateX(-26px) scale(0.9); } 55% { opacity: 1; transform: translateX(5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
-                @keyframes bubbleInRight { 0% { opacity: 0; transform: translateX(26px) scale(0.9); } 55% { opacity: 1; transform: translateX(-5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
-                @keyframes iconPop { 0% { transform: scale(0.4) rotate(-8deg); opacity: 0; } 70% { transform: scale(1.15) rotate(2deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
-              `}</style>
-              <div className="flex flex-col items-center pt-10">
+            <div className="flex h-full flex-col overflow-y-auto pb-10">
+              <div className="flex flex-col items-center px-8 pt-10 text-center">
                 <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                     <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="url(#homeGrad)" strokeWidth="1.6" strokeLinejoin="round" />
@@ -2154,33 +2149,87 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </button>
                 )}
               </div>
-              <div className="mt-10 flex flex-col gap-2.5">
-                {HOME_FEATURES.map((f, i) => {
-                  const mine = i % 2 === 1;
-                  return (
-                    <div key={f.title} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-                      <div
-                        className={`flex max-w-[88%] items-center gap-3 px-4 py-3.5 text-left opacity-0 shadow-sm ${
-                          mine
-                            ? "rounded-2xl rounded-br-sm bg-gradient-to-br from-violet to-violet-dark text-white shadow-violet/20"
-                            : "glass bubble-received rounded-2xl rounded-bl-sm"
-                        }`}
-                        style={{ animation: `${mine ? "bubbleInRight" : "bubbleInLeft"} 0.5s cubic-bezier(0.34,1.56,0.64,1) ${0.15 + i * 0.16}s forwards` }}
-                      >
-                        <span
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg opacity-0 ${mine ? "bg-white/20" : "bg-violet/15"}`}
-                          style={{ animation: `iconPop 0.45s cubic-bezier(0.34,1.56,0.64,1) ${0.32 + i * 0.16}s forwards` }}
-                        >
-                          {f.icon}
-                        </span>
-                        <div>
-                          <p className={`text-sm font-semibold ${mine ? "text-white" : ""}`}>{f.title}</p>
-                          <p className={`text-xs ${mine ? "text-white/70" : "text-mist"}`}>{f.desc}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+
+              {/* News feed */}
+              <div className="mt-8 px-4">
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <h3 className="font-display text-sm font-bold text-white">News for you</h3>
+                </div>
+
+                <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                  {["For you", "Tech", "Startups", "AI", "Design", "World"].map((label, i) => (
+                    <span
+                      key={label}
+                      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                        i === 0 ? "bg-gradient-to-r from-violet to-violet-dark text-white" : "border border-white/10 bg-white/5 text-mist"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+
+                {loadingNews && (
+                  <p className="px-1 py-6 text-center text-xs text-mist">Loading news…</p>
+                )}
+
+                {!loadingNews && newsArticles.length === 0 && (
+                  <p className="px-1 py-6 text-center text-sm text-mist">No news yet. Check back soon.</p>
+                )}
+
+                {!loadingNews && newsArticles.length > 0 && (
+                  <>
+                    {(() => {
+                      const featured = newsArticles.find((a) => a.is_featured) ?? newsArticles[0];
+                      const rest = newsArticles.filter((a) => a.id !== featured.id);
+                      return (
+                        <>
+                          <button
+                            onClick={() => openArticle(featured)}
+                            className="relative mb-3 block h-42 w-full overflow-hidden rounded-2xl border border-white/10 text-left"
+                            style={{ height: 168 }}
+                          >
+                            <div className="absolute inset-0" style={{ background: featured.thumb_gradient }} />
+                            <div className="absolute inset-0 bg-gradient-to-t from-ink-900/90 via-ink-900/20 to-transparent" />
+                            <div className="relative flex h-full flex-col justify-end p-4">
+                              <span className="mb-2 self-start rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
+                                Featured · {featured.category}
+                              </span>
+                              <h4 className="font-display text-base font-bold leading-snug text-white">{featured.title}</h4>
+                              <p className="mt-1.5 text-xs text-white/75">
+                                {featured.source} · {featured.read_time}
+                              </p>
+                            </div>
+                          </button>
+
+                          <div className="flex flex-col">
+                            {rest.map((article) => (
+                              <button
+                                key={article.id}
+                                onClick={() => openArticle(article)}
+                                className="flex items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition hover:bg-white/5"
+                              >
+                                <span
+                                  className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-2xl text-2xl"
+                                  style={{ background: article.thumb_gradient }}
+                                >
+                                  {article.emoji}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-teal">{article.category}</p>
+                                  <p className="text-[13.5px] font-semibold leading-snug text-white">{article.title}</p>
+                                  <p className="mt-1.5 text-[11px] text-mist">
+                                    {article.source} · {article.read_time}
+                                  </p>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                )}
               </div>
             </div>
           )}
