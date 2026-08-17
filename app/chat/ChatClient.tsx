@@ -73,6 +73,19 @@ type ConnectionRequest = {
   from_profile?: Profile;
 };
 
+type NewsArticle = {
+  id: string;
+  category: string;
+  emoji: string;
+  thumb_gradient: string;
+  title: string;
+  source: string;
+  read_time: string;
+  body: string[];
+  is_featured: boolean;
+  created_at: string;
+};
+
 type MobileTab = "home" | "status" | "chats" | "search" | "profile";
 type CallStatus = "idle" | "outgoing" | "incoming" | "connected";
 
@@ -100,105 +113,12 @@ const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airathink-active-status";
 const EDIT_TIMEOUT_MS = 300000; // 5 minutes
 
-type NewsItem = {
-  id: string;
-  title: string;
-  summary: string;
-  source: string;
-  category: string;
-  categoryColor: string;
-  time: string;
-  readTime: string;
-  imageEmoji: string;
-  bgGradient: string;
-  url?: string;
-};
-
-const NEWS_FEED: NewsItem[] = [
-  {
-    id: "n1",
-    title: "AI Assistants Are Changing How We Work Forever",
-    summary: "New research shows productivity gains of up to 40% when professionals use AI tools daily. Experts say the shift is permanent and industries must adapt quickly.",
-    source: "TechReview",
-    category: "Technology",
-    categoryColor: "#7C5CFF",
-    time: "2h ago",
-    readTime: "3 min read",
-    imageEmoji: "🤖",
-    bgGradient: "linear-gradient(135deg, #1a0d3d 0%, #0d1a3d 100%)",
-  },
-  {
-    id: "n2",
-    title: "India's Startup Ecosystem Hits Record $50B Valuation",
-    summary: "Bangalore and Hyderabad lead the charge as Indian startups secure unprecedented funding rounds. The fintech and healthtech sectors dominate investments this year.",
-    source: "EconomicTimes",
-    category: "Business",
-    categoryColor: "#22D3B8",
-    time: "4h ago",
-    readTime: "4 min read",
-    imageEmoji: "🚀",
-    bgGradient: "linear-gradient(135deg, #0d2d28 0%, #0a1a24 100%)",
-  },
-  {
-    id: "n3",
-    title: "Breakthrough in Quantum Computing Achieved by Scientists",
-    summary: "Researchers at IIT Delhi and MIT jointly demonstrate error-free quantum operations at room temperature — a milestone that could reshape computing as we know it.",
-    source: "ScienceDaily",
-    category: "Science",
-    categoryColor: "#F59E0B",
-    time: "6h ago",
-    readTime: "5 min read",
-    imageEmoji: "⚛️",
-    bgGradient: "linear-gradient(135deg, #2d1e00 0%, #1a1200 100%)",
-  },
-  {
-    id: "n4",
-    title: "Climate Summit 2026: 120 Nations Sign Historic Green Deal",
-    summary: "World leaders commit to halving carbon emissions by 2035. India pledges 500GW renewable energy capacity as part of the landmark agreement signed in Geneva.",
-    source: "GlobalNews",
-    category: "World",
-    categoryColor: "#10B981",
-    time: "8h ago",
-    readTime: "6 min read",
-    imageEmoji: "🌍",
-    bgGradient: "linear-gradient(135deg, #052015 0%, #021a10 100%)",
-  },
-  {
-    id: "n5",
-    title: "5G Rollout Reaches 200 Indian Cities — Faster Than Expected",
-    summary: "Telecom companies have exceeded targets with 5G coverage now available in tier-2 and tier-3 cities. Average speeds of 500 Mbps recorded in real-world tests.",
-    source: "TelecomToday",
-    category: "Technology",
-    categoryColor: "#7C5CFF",
-    time: "10h ago",
-    readTime: "2 min read",
-    imageEmoji: "📡",
-    bgGradient: "linear-gradient(135deg, #1a0d3d 0%, #0d1a3d 100%)",
-  },
-  {
-    id: "n6",
-    title: "Space Tourism Opens to Middle Class as Prices Drop 80%",
-    summary: "With competition intensifying among private space companies, orbital trips that once cost millions are now accessible to everyday consumers. Bookings open next month.",
-    source: "SpaceWatch",
-    category: "Space",
-    categoryColor: "#EC4899",
-    time: "12h ago",
-    readTime: "4 min read",
-    imageEmoji: "🛸",
-    bgGradient: "linear-gradient(135deg, #2d0a1e 0%, #1a0510 100%)",
-  },
-  {
-    id: "n7",
-    title: "Healthy Eating Trends: The Rise of Personalised Nutrition",
-    summary: "DNA-based diet plans are gaining mainstream adoption. Apps now analyse your genome and microbiome to suggest what to eat — and what to avoid — for optimal health.",
-    source: "HealthLine",
-    category: "Health",
-    categoryColor: "#EF4444",
-    time: "1d ago",
-    readTime: "3 min read",
-    imageEmoji: "🥗",
-    bgGradient: "linear-gradient(135deg, #2d0505 0%, #1a0a0a 100%)",
-  },
+const HOME_FEATURES = [
+  { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
+  { icon: "⚡", title: "Realtime chat", desc: "Messages arrive instantly, no delay." },
+  { icon: "⏳", title: "24 hours disappearing", desc: "Status updates vanish after a day." },
+  { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
+  { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
 ];
 
 function sendPushNotification(opts: { userId?: string | null; title: string; body: string; url?: string }) {
@@ -543,8 +463,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
-  const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
-  const [newsCategory, setNewsCategory] = useState<string>("All");
+  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
+  const [loadingNews, setLoadingNews] = useState(true);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
   const [uploading, setUploading] = useState(false);
@@ -717,6 +637,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }, 4000);
     return () => clearInterval(interval);
   }, [loadConversations]);
+
+  const fetchNews = useCallback(async () => {
+    setLoadingNews(true);
+    const { data, error } = await supabase
+      .from("news_articles")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("Failed to fetch news:", error.message);
+      setLoadingNews(false);
+      return;
+    }
+
+    setNewsArticles((data ?? []) as NewsArticle[]);
+    setLoadingNews(false);
+  }, [supabase]);
+
+  useEffect(() => { fetchNews(); }, [fetchNews]);
 
   const loadNotifications = useCallback(async () => {
     const { data } = await supabase
@@ -2171,242 +2111,58 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
         <div className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
-            <div className="flex h-full flex-col overflow-y-auto">
+            <div className="flex h-full flex-col overflow-y-auto px-8 pb-10 text-center">
               <style>{`
-                @keyframes newsSlideUp { 0% { opacity: 0; transform: translateY(18px); } 100% { opacity: 1; transform: translateY(0); } }
-                @keyframes newsCardIn { 0% { opacity: 0; transform: translateY(12px) scale(0.98); } 100% { opacity: 1; transform: translateY(0) scale(1); } }
-                @keyframes overlayFadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
-                @keyframes drawerSlideUp { 0% { opacity: 0; transform: translateY(100%); } 100% { opacity: 1; transform: translateY(0); } }
-                .news-card { animation: newsCardIn 0.4s cubic-bezier(0.25,0.46,0.45,0.94) both; }
-                .news-card:nth-child(1) { animation-delay: 0.05s; }
-                .news-card:nth-child(2) { animation-delay: 0.1s; }
-                .news-card:nth-child(3) { animation-delay: 0.15s; }
-                .news-card:nth-child(4) { animation-delay: 0.2s; }
-                .news-card:nth-child(5) { animation-delay: 0.25s; }
-                .news-card:nth-child(6) { animation-delay: 0.3s; }
-                .news-card:nth-child(7) { animation-delay: 0.35s; }
-                .news-scroll-x::-webkit-scrollbar { display: none; }
-                .news-scroll-x { -ms-overflow-style: none; scrollbar-width: none; }
+                @keyframes bubbleInLeft { 0% { opacity: 0; transform: translateX(-26px) scale(0.9); } 55% { opacity: 1; transform: translateX(5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
+                @keyframes bubbleInRight { 0% { opacity: 0; transform: translateX(26px) scale(0.9); } 55% { opacity: 1; transform: translateX(-5px) scale(1.02); } 100% { opacity: 1; transform: translateX(0) scale(1); } }
+                @keyframes iconPop { 0% { transform: scale(0.4) rotate(-8deg); opacity: 0; } 70% { transform: scale(1.15) rotate(2deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
               `}</style>
-
-              {/* Header - AiraThink branding */}
-              <div className="px-5 pt-6 pb-4" style={{ animation: "newsSlideUp 0.35s ease-out both" }}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="font-display text-2xl font-bold text-white">Welcome to <span className="text-gradient">AiraThink</span></h2>
-                    <p className="mt-0.5 text-xs text-mist">Today&apos;s top stories, just for you</p>
-                  </div>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-lg">
-                    📰
-                  </div>
+              <div className="flex flex-col items-center pt-10">
+                <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                    <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="url(#homeGrad)" strokeWidth="1.6" strokeLinejoin="round" />
+                    <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#9C82FF" /><stop offset="1" stopColor="#22D3B8" /></linearGradient></defs>
+                  </svg>
                 </div>
-
-                {/* Category filter pills */}
-                <div className="news-scroll-x mt-4 flex gap-2 overflow-x-auto pb-1">
-                  {["All", "Technology", "Business", "Science", "World", "Health", "Space"].map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setNewsCategory(cat)}
-                      className="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold transition-all"
-                      style={
-                        newsCategory === cat
-                          ? { background: "linear-gradient(90deg, #7C5CFF, #22D3B8)", color: "white" }
-                          : { background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.08)" }
-                      }
-                    >
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Featured article - large card */}
-              {(() => {
-                const featured = NEWS_FEED[0];
-                if (newsCategory !== "All" && featured.category !== newsCategory) return null;
-                return (
-                  <div className="px-4 pb-3">
-                    <button
-                      onClick={() => setSelectedNews(featured)}
-                      className="news-card w-full overflow-hidden rounded-2xl text-left transition-transform active:scale-[0.98]"
-                      style={{ background: featured.bgGradient, border: "1px solid rgba(255,255,255,0.08)" }}
-                    >
-                      <div className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider" style={{ background: featured.categoryColor + "25", color: featured.categoryColor }}>
-                            {featured.category}
-                          </span>
-                          <span className="text-[10px] text-white/40">{featured.time}</span>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl text-3xl" style={{ background: "rgba(255,255,255,0.06)" }}>
-                            {featured.imageEmoji}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="text-sm font-bold leading-snug text-white line-clamp-2">{featured.title}</h3>
-                            <p className="mt-1.5 text-xs text-white/50 line-clamp-2">{featured.summary}</p>
-                          </div>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between">
-                          <span className="text-[10px] font-medium text-white/40">{featured.source} · {featured.readTime}</span>
-                          <span className="flex items-center gap-1 rounded-full px-3 py-1 text-[10px] font-semibold text-white" style={{ background: featured.categoryColor + "30" }}>
-                            Read →
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {/* News list */}
-              <div className="flex flex-col gap-2.5 px-4 pb-6">
-                {NEWS_FEED.slice(1)
-                  .filter((item) => newsCategory === "All" || item.category === newsCategory)
-                  .map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => setSelectedNews(item)}
-                      className="news-card flex w-full items-start gap-3 rounded-xl p-3 text-left transition-all active:scale-[0.98]"
-                      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
-                    >
-                      <div
-                        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-2xl"
-                        style={{ background: item.bgGradient }}
-                      >
-                        {item.imageEmoji}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider" style={{ background: item.categoryColor + "20", color: item.categoryColor }}>
-                            {item.category}
-                          </span>
-                          <span className="text-[9px] text-white/30">{item.time}</span>
-                        </div>
-                        <h3 className="text-[13px] font-semibold leading-snug text-white line-clamp-2">{item.title}</h3>
-                        <p className="mt-0.5 text-[11px] text-white/40 line-clamp-1">{item.source} · {item.readTime}</p>
-                      </div>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="mt-1 shrink-0 text-white/20">
-                        <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </button>
-                  ))}
-
-                {NEWS_FEED.filter((item) => newsCategory === "All" || item.category === newsCategory).length === 0 && (
-                  <div className="flex flex-col items-center py-16 text-center">
-                    <span className="text-4xl">🔍</span>
-                    <p className="mt-3 text-sm font-medium text-white/60">No news in this category</p>
-                    <button onClick={() => setNewsCategory("All")} className="mt-2 text-xs text-violet-light">Show all →</button>
-                  </div>
-                )}
-
-                {/* CTA */}
-                <div className="mt-2 rounded-xl p-4 text-center" style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.12), rgba(34,211,184,0.08))", border: "1px solid rgba(124,92,255,0.2)" }}>
-                  <p className="text-xs font-semibold text-white/80">Ready to chat?</p>
-                  <p className="mt-0.5 text-[11px] text-mist">Connect with people on AiraThink</p>
-                  <button onClick={() => setMobileTab("search")} className="mt-3 rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-2 text-xs font-semibold text-white shadow-lg shadow-violet/25">
-                    Start a Conversation
+                <h2 className="font-display text-2xl font-bold text-white">Welcome to <span className="text-gradient">AiraThink</span>!</h2>
+                <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
+                <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30">
+                  Start a conversation
+                </button>
+                {conversations.length > 0 && (
+                  <button onClick={() => setMobileTab("chats")} className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white">
+                    Or go to your chats →
                   </button>
-                </div>
+                )}
               </div>
-
-              {/* News Article Full Reader Modal */}
-              {selectedNews && (
-                <div
-                  className="fixed inset-0 z-[80] flex flex-col"
-                  style={{ animation: "overlayFadeIn 0.2s ease-out both", background: "rgba(0,0,0,0.85)", backdropFilter: "blur(12px)" }}
-                >
-                  <div
-                    className="absolute inset-x-0 bottom-0 flex max-h-[92vh] flex-col overflow-hidden rounded-t-3xl"
-                    style={{ animation: "drawerSlideUp 0.35s cubic-bezier(0.25,0.46,0.45,0.94) both", background: "#0D0F1A", border: "1px solid rgba(255,255,255,0.08)" }}
-                  >
-                    {/* Drag handle */}
-                    <div className="flex justify-center pt-3 pb-1">
-                      <div className="h-1 w-10 rounded-full bg-white/20" />
-                    </div>
-
-                    {/* Close button */}
-                    <div className="flex items-center justify-between px-5 py-2">
-                      <span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider" style={{ background: selectedNews.categoryColor + "22", color: selectedNews.categoryColor }}>
-                        {selectedNews.category}
-                      </span>
-                      <button
-                        onClick={() => setSelectedNews(null)}
-                        className="flex h-8 w-8 items-center justify-center rounded-full text-white/50 transition hover:bg-white/8 hover:text-white"
-                        aria-label="Close"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-                        </svg>
-                      </button>
-                    </div>
-
-                    {/* Scrollable article content */}
-                    <div className="flex-1 overflow-y-auto px-5 pb-10">
-                      {/* Hero image area */}
+              <div className="mt-10 flex flex-col gap-2.5">
+                {HOME_FEATURES.map((f, i) => {
+                  const mine = i % 2 === 1;
+                  return (
+                    <div key={f.title} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                       <div
-                        className="mb-5 flex h-44 items-center justify-center rounded-2xl"
-                        style={{ background: selectedNews.bgGradient, border: "1px solid rgba(255,255,255,0.07)" }}
+                        className={`flex max-w-[88%] items-center gap-3 px-4 py-3.5 text-left opacity-0 shadow-sm ${
+                          mine
+                            ? "rounded-2xl rounded-br-sm bg-gradient-to-br from-violet to-violet-dark text-white shadow-violet/20"
+                            : "glass bubble-received rounded-2xl rounded-bl-sm"
+                        }`}
+                        style={{ animation: `${mine ? "bubbleInRight" : "bubbleInLeft"} 0.5s cubic-bezier(0.34,1.56,0.64,1) ${0.15 + i * 0.16}s forwards` }}
                       >
-                        <span className="text-7xl">{selectedNews.imageEmoji}</span>
-                      </div>
-
-                      {/* Meta */}
-                      <div className="mb-3 flex items-center gap-3">
-                        <span className="text-[11px] font-semibold text-white/50">{selectedNews.source}</span>
-                        <span className="h-1 w-1 rounded-full bg-white/20" />
-                        <span className="text-[11px] text-white/40">{selectedNews.time}</span>
-                        <span className="h-1 w-1 rounded-full bg-white/20" />
-                        <span className="text-[11px] text-white/40">{selectedNews.readTime}</span>
-                      </div>
-
-                      {/* Title */}
-                      <h2 className="mb-4 font-display text-xl font-bold leading-snug text-white">{selectedNews.title}</h2>
-
-                      {/* Divider */}
-                      <div className="mb-4 h-px" style={{ background: `linear-gradient(90deg, ${selectedNews.categoryColor}40, transparent)` }} />
-
-                      {/* Article body */}
-                      <div className="space-y-4 text-sm leading-relaxed text-white/70">
-                        <p>{selectedNews.summary}</p>
-                        <p>
-                          This development marks a turning point in the industry, with experts suggesting that the ripple effects will be felt across multiple sectors for years to come. Analysts have described the situation as both exciting and challenging for stakeholders worldwide.
-                        </p>
-                        <p>
-                          Key players in the space are already responding with strategic pivots and new investments. The coming months are expected to bring further announcements as organisations align themselves with the emerging reality.
-                        </p>
-                        <p>
-                          Public response has been largely positive, with communities and advocacy groups welcoming the changes while calling for greater transparency and accountability from the institutions involved.
-                        </p>
-                        <p style={{ color: selectedNews.categoryColor + "cc" }} className="text-xs font-medium">
-                          — {selectedNews.source} Editorial Team
-                        </p>
-                      </div>
-
-                      {/* Share / action row */}
-                      <div className="mt-8 flex gap-3">
-                        <button
-                          onClick={() => setSelectedNews(null)}
-                          className="flex-1 rounded-full border border-white/10 py-2.5 text-sm font-semibold text-mist transition hover:border-white/20 hover:text-white"
+                        <span
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg opacity-0 ${mine ? "bg-white/20" : "bg-violet/15"}`}
+                          style={{ animation: `iconPop 0.45s cubic-bezier(0.34,1.56,0.64,1) ${0.32 + i * 0.16}s forwards` }}
                         >
-                          ← Back
-                        </button>
-                        <button
-                          className="flex-1 rounded-full py-2.5 text-sm font-semibold text-white shadow-lg"
-                          style={{ background: `linear-gradient(90deg, ${selectedNews.categoryColor}, ${selectedNews.categoryColor}99)` }}
-                          onClick={() => {
-                            if (navigator.share) {
-                              navigator.share({ title: selectedNews.title, text: selectedNews.summary });
-                            }
-                          }}
-                        >
-                          Share 🔗
-                        </button>
+                          {f.icon}
+                        </span>
+                        <div>
+                          <p className={`text-sm font-semibold ${mine ? "text-white" : ""}`}>{f.title}</p>
+                          <p className={`text-xs ${mine ? "text-white/70" : "text-mist"}`}>{f.desc}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              )}
+                  );
+                })}
+              </div>
             </div>
           )}
 
