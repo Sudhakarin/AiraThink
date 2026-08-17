@@ -51,7 +51,10 @@ function stripHtml(html: string) {
 export async function GET(req: NextRequest) {
   // Protect the route so only Vercel Cron (or you, with the secret) can trigger it
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const querySecret = req.nextUrl.searchParams.get("secret");
+  const isAuthorized =
+    authHeader === `Bearer ${process.env.CRON_SECRET}` || querySecret === process.env.CRON_SECRET;
+  if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
