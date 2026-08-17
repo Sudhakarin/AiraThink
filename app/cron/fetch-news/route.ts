@@ -13,25 +13,25 @@ const FEEDS: {
   thumb_gradient: string;
 }[] = [
   {
-    url: "https://techcrunch.com/feed/",
-    source: "TechCrunch",
-    category: "Startups",
-    emoji: "🚀",
-    thumb_gradient: "linear-gradient(135deg,#7C5CFF,#5B3FD9)",
+    url: "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+    source: "The New York Times",
+    category: "World",
+    emoji: "🗞️",
+    thumb_gradient: "linear-gradient(135deg,#3B82F6,#1D4ED8)",
   },
   {
-    url: "https://techcrunch.com/category/artificial-intelligence/feed/",
-    source: "TechCrunch AI",
-    category: "AI",
-    emoji: "🤖",
-    thumb_gradient: "linear-gradient(135deg,#22D3B8,#0E9B86)",
+    url: "http://feeds.bbci.co.uk/news/world/rss.xml",
+    source: "BBC News",
+    category: "World",
+    emoji: "🌍",
+    thumb_gradient: "linear-gradient(135deg,#EF4444,#B91C1C)",
   },
   {
-    url: "https://venturebeat.com/category/ai/feed/",
-    source: "VentureBeat",
-    category: "AI",
-    emoji: "⚡",
-    thumb_gradient: "linear-gradient(135deg,#EC4899,#9D174D)",
+    url: "https://www.indiatoday.in/rss/1206578",
+    source: "India Today",
+    category: "India",
+    emoji: "🇮🇳",
+    thumb_gradient: "linear-gradient(135deg,#F59E0B,#B45309)",
   },
 ];
 
