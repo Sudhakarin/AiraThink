@@ -78,6 +78,7 @@ type NewsArticle = {
   category: string;
   emoji: string;
   thumb_gradient: string;
+  image_url?: string | null;  // <-- NEW: Added image_url field
   title: string;
   source: string;
   read_time: string;
@@ -1741,6 +1742,103 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
 
+      {/* ============ NEW: ARTICLE READER MODAL ============ */}
+      {activeArticle && (
+        <div className="fixed inset-0 z-[100] flex flex-col bg-ink-900">
+          {/* Progress bar */}
+          <div className="h-0.5 w-full bg-white/10">
+            <div className="h-full bg-violet-light" style={{ width: `${readerProgress}%` }} />
+          </div>
+          
+          {/* Header */}
+          <header className="flex items-center justify-between px-4 py-3 bg-ink-900/95 border-b border-white/5">
+            <button 
+              onClick={closeArticle} 
+              className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-mist">{activeArticle.source}</span>
+              <span className="text-xs text-mist">·</span>
+              <span className="text-xs text-mist">{activeArticle.read_time}</span>
+            </div>
+            <button 
+              onClick={() => {
+                // Share article
+                if (navigator.share) {
+                  navigator.share({
+                    title: activeArticle.title,
+                    text: activeArticle.title,
+                    url: window.location.href,
+                  });
+                }
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </header>
+          
+          {/* Article content */}
+          <div 
+            className="flex-1 overflow-y-auto px-6 py-8"
+            onScroll={handleReaderScroll}
+          >
+            <div className="mx-auto max-w-2xl">
+              {/* Category badge */}
+              <span className="inline-block rounded-full bg-violet/20 px-3 py-1 text-xs font-semibold text-violet-light">
+                {activeArticle.category}
+              </span>
+              
+              {/* Title */}
+              <h1 className="mt-4 font-display text-2xl font-bold text-white leading-tight">
+                {activeArticle.title}
+              </h1>
+              
+              {/* Metadata */}
+              <div className="mt-3 flex items-center gap-3 text-sm text-mist">
+                <span>{activeArticle.source}</span>
+                <span>·</span>
+                <span>{activeArticle.read_time}</span>
+                <span>·</span>
+                <span>{new Date(activeArticle.created_at).toLocaleDateString()}</span>
+              </div>
+              
+              {/* Feature image - NEW: Now shows actual image if available */}
+              <div className="mt-6 h-48 w-full rounded-2xl overflow-hidden flex items-center justify-center bg-ink-800">
+                {activeArticle.image_url ? (
+                  <img 
+                    src={activeArticle.image_url} 
+                    alt={activeArticle.title}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span 
+                    className="flex h-full w-full items-center justify-center text-6xl"
+                    style={{ background: activeArticle.thumb_gradient }}
+                  >
+                    {activeArticle.emoji}
+                  </span>
+                )}
+              </div>
+              
+              {/* Body content */}
+              <div className="mt-6 space-y-4 text-[15px] leading-relaxed text-white/80">
+                {activeArticle.body.map((paragraph, index) => (
+                  <p key={index}>{paragraph}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ============ END ARTICLE READER MODAL ============ */}
+
       {/* Edit Message Modal */}
       {editingMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -2184,12 +2282,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       const rest = newsArticles.filter((a) => a.id !== featured.id);
                       return (
                         <>
+                          {/* ============ UPDATED: Featured Article with image support ============ */}
                           <button
                             onClick={() => openArticle(featured)}
                             className="relative mb-3 block h-42 w-full overflow-hidden rounded-2xl border border-white/10 text-left"
                             style={{ height: 168 }}
                           >
-                            <div className="absolute inset-0" style={{ background: featured.thumb_gradient }} />
+                            {/* Background image or gradient */}
+                            {featured.image_url ? (
+                              <img 
+                                src={featured.image_url} 
+                                alt={featured.title}
+                                className="absolute inset-0 h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="absolute inset-0" style={{ background: featured.thumb_gradient }} />
+                            )}
                             <div className="absolute inset-0 bg-gradient-to-t from-ink-900/90 via-ink-900/20 to-transparent" />
                             <div className="relative flex h-full flex-col justify-end p-4">
                               <span className="mb-2 self-start rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
@@ -2202,6 +2310,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             </div>
                           </button>
 
+                          {/* ============ UPDATED: Regular articles with image support ============ */}
                           <div className="flex flex-col">
                             {rest.map((article) => (
                               <button
@@ -2209,12 +2318,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 onClick={() => openArticle(article)}
                                 className="flex items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition hover:bg-white/5"
                               >
-                                <span
-                                  className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-2xl text-2xl"
-                                  style={{ background: article.thumb_gradient }}
-                                >
-                                  {article.emoji}
-                                </span>
+                                {/* Thumbnail - now shows image if available */}
+                                {article.image_url ? (
+                                  <img 
+                                    src={article.image_url} 
+                                    alt={article.title}
+                                    className="h-[70px] w-[70px] shrink-0 rounded-2xl object-cover"
+                                  />
+                                ) : (
+                                  <span
+                                    className="flex h-[70px] w-[70px] shrink-0 items-center justify-center rounded-2xl text-2xl"
+                                    style={{ background: article.thumb_gradient }}
+                                  >
+                                    {article.emoji}
+                                  </span>
+                                )}
                                 <div className="min-w-0 flex-1">
                                   <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-teal">{article.category}</p>
                                   <p className="text-[13.5px] font-semibold leading-snug text-white">{article.title}</p>
@@ -2352,7 +2470,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-              {/* Active Status Switch - Updated */}
+              {/* Active Status Switch */}
               <div className="glass mt-6 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
