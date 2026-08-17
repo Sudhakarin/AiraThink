@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, Fragment, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, Fragment, useMemo, type UIEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToPush } from "@/lib/push";
@@ -465,6 +465,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [loadingNews, setLoadingNews] = useState(true);
+  const [activeArticle, setActiveArticle] = useState<NewsArticle | null>(null);
+  const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
   const [uploading, setUploading] = useState(false);
@@ -657,6 +659,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [supabase]);
 
   useEffect(() => { fetchNews(); }, [fetchNews]);
+
+  const openArticle = useCallback((article: NewsArticle) => {
+    setActiveArticle(article);
+    setReaderProgress(0);
+  }, []);
+
+  const closeArticle = useCallback(() => {
+    setActiveArticle(null);
+    setReaderProgress(0);
+  }, []);
+
+  const handleReaderScroll = useCallback((e: UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const max = el.scrollHeight - el.clientHeight;
+    const pct = max > 0 ? (el.scrollTop / max) * 100 : 0;
+    setReaderProgress(Math.min(100, Math.max(0, pct)));
+  }, []);
 
   const loadNotifications = useCallback(async () => {
     const { data } = await supabase
