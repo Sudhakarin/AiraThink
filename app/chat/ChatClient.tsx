@@ -198,6 +198,10 @@ function isVerified(username?: string) {
   return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
 
+function isAiraThinkSource(source?: string) {
+  return (source || "").toLowerCase() === "airathink";
+}
+
 function VerifiedBadge({ size = 14 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" className="ml-1 inline-block shrink-0 align-middle" xmlns="http://www.w3.org/2000/svg">
@@ -499,6 +503,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [publishFeatured, setPublishFeatured] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [publishError, setPublishError] = useState("");
+  const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
+  const [deletingArticle, setDeletingArticle] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeArticle, setActiveArticle] = useState<NewsArticle | null>(null);
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
@@ -702,8 +709,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }
     setPublishing(true);
     try {
-      const res = await fetch("/api/publish", {
-        method: "POST",
+      const isEditing = !!editingArticleId;
+      const res = await fetch(isEditing ? `/api/publish/${editingArticleId}` : "/api/publish", {
+        method: isEditing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: publishTitle,
@@ -722,14 +730,48 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setPublishBody("");
       setPublishImageUrl("");
       setPublishFeatured(true);
+      setEditingArticleId(null);
       setShowPublishModal(false);
+      if (activeArticle && isEditing) {
+        setActiveArticle({ ...activeArticle, title: publishTitle, body: [publishBody], category: publishCategory, image_url: publishImageUrl || null, is_featured: publishFeatured });
+      }
       await fetchNews();
     } catch {
       setPublishError("Network error — dubara try karo.");
     } finally {
       setPublishing(false);
     }
-  }, [publishTitle, publishBody, publishCategory, publishImageUrl, publishFeatured, fetchNews]);
+  }, [publishTitle, publishBody, publishCategory, publishImageUrl, publishFeatured, editingArticleId, activeArticle, fetchNews]);
+
+  const openEditArticle = useCallback((article: NewsArticle) => {
+    setEditingArticleId(article.id);
+    setPublishTitle(article.title);
+    setPublishBody(article.body?.[0] || "");
+    setPublishCategory(article.category);
+    setPublishImageUrl(article.image_url || "");
+    setPublishFeatured(article.is_featured);
+    setPublishError("");
+    setShowPublishModal(true);
+  }, []);
+
+  const handleDeleteArticle = useCallback(async (id: string) => {
+    setDeletingArticle(true);
+    try {
+      const res = await fetch(`/api/publish/${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) {
+        setPublishError(json.error || "Delete nahi ho paya.");
+        return;
+      }
+      setConfirmDeleteId(null);
+      setActiveArticle(null);
+      await fetchNews();
+    } catch {
+      setPublishError("Network error — dubara try karo.");
+    } finally {
+      setDeletingArticle(false);
+    }
+  }, [fetchNews]);
 
   const openArticle = useCallback((article: NewsArticle) => {
     setActiveArticle(article);
@@ -1831,27 +1873,55 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </svg>
             </button>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-mist">{activeArticle.source}</span>
+              <span className="flex items-center text-xs text-mist">
+                {activeArticle.source}
+                {isAiraThinkSource(activeArticle.source) && <VerifiedBadge size={13} />}
+              </span>
               <span className="text-xs text-mist">·</span>
               <span className="text-xs text-mist">{activeArticle.read_time}</span>
             </div>
-            <button 
-              onClick={() => {
-                // Share article
-                if (navigator.share) {
-                  navigator.share({
-                    title: activeArticle.title,
-                    text: activeArticle.title,
-                    url: window.location.href,
-                  });
-                }
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+            <div className="flex items-center gap-1">
+              {isAiraThinkSource(activeArticle.source) && myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
+                <>
+                  <button
+                    onClick={() => openEditArticle(activeArticle)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+                    aria-label="Edit article"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path d="M12 20h9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(activeArticle.id)}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-red-400"
+                    aria-label="Delete article"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </>
+              )}
+              <button 
+                onClick={() => {
+                  // Share article
+                  if (navigator.share) {
+                    navigator.share({
+                      title: activeArticle.title,
+                      text: activeArticle.title,
+                      url: window.location.href,
+                    });
+                  }
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
           </header>
           
           {/* Article content */}
@@ -1872,7 +1942,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               
               {/* Metadata */}
               <div className="mt-3 flex items-center gap-3 text-sm text-mist">
-                <span>{activeArticle.source}</span>
+                <span className="flex items-center">
+                  {activeArticle.source}
+                  {isAiraThinkSource(activeArticle.source) && <VerifiedBadge size={14} />}
+                </span>
                 <span>·</span>
                 <span>{activeArticle.read_time}</span>
                 <span>·</span>
@@ -2342,7 +2415,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
                     <button
                       type="button"
-                      onClick={() => setShowPublishModal(true)}
+                      onClick={() => { setEditingArticleId(null); setPublishTitle(""); setPublishBody(""); setPublishImageUrl(""); setPublishCategory("India"); setPublishFeatured(true); setShowPublishModal(true); }}
                       className="rounded-full bg-gradient-to-r from-violet to-violet-dark px-3 py-1 text-[11px] font-semibold text-white"
                     >
                       + Write article
@@ -2414,7 +2487,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                               </span>
                               <h4 className="font-display text-base font-bold leading-snug text-white">{featured.title}</h4>
                               <p className="mt-1.5 flex items-center gap-1 text-xs text-white/75">
-                                {featured.source} · {featured.read_time}
+                                {featured.source}{isAiraThinkSource(featured.source) && <VerifiedBadge size={11} />} · {featured.read_time}
                                 <span className="ml-1 inline-flex items-center gap-1 text-teal">
                                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
                                   {formatViewCount(seededViewCount(featured.id))}
@@ -2450,7 +2523,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                   <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-teal">{article.category}</p>
                                   <p className="text-[13.5px] font-semibold leading-snug text-white">{article.title}</p>
                                   <p className="mt-1.5 flex items-center gap-1 text-[11px] text-mist">
-                                    {article.source} · {article.read_time}
+                                    {article.source}{isAiraThinkSource(article.source) && <VerifiedBadge size={10} />} · {article.read_time}
                                     <span className="ml-1 inline-flex items-center gap-1 text-teal">
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
                                       {formatViewCount(seededViewCount(article.id))}
@@ -2988,10 +3061,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
           <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl">
             <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-lg font-bold text-white">Write article</h3>
+              <h3 className="font-display text-lg font-bold text-white">{editingArticleId ? "Edit article" : "Write article"}</h3>
               <button
                 type="button"
-                onClick={() => { setShowPublishModal(false); setPublishError(""); }}
+                onClick={() => { setShowPublishModal(false); setPublishError(""); setEditingArticleId(null); }}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
                 aria-label="Close"
               >
@@ -3064,7 +3137,36 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 disabled={publishing}
                 className="mt-1 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
               >
-                {publishing ? "Publishing…" : "Publish"}
+                {publishing ? (editingArticleId ? "Saving…" : "Publishing…") : (editingArticleId ? "Save changes" : "Publish")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-900 p-5">
+            <h3 className="font-display text-base font-bold text-white">Article delete karein?</h3>
+            <p className="mt-2 text-sm text-mist">Ye action undo nahi ho sakta.</p>
+            {publishError && (
+              <p className="mt-2 text-xs font-medium text-red-400">{publishError}</p>
+            )}
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setConfirmDeleteId(null); setPublishError(""); }}
+                className="flex-1 rounded-full bg-white/5 py-2.5 text-sm font-semibold text-white"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteArticle(confirmDeleteId)}
+                disabled={deletingArticle}
+                className="flex-1 rounded-full bg-red-500 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {deletingArticle ? "Deleting…" : "Delete"}
               </button>
             </div>
           </div>
