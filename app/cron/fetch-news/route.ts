@@ -40,6 +40,62 @@ const FEEDS: {
     emoji: "🇮🇳",
     thumb_gradient: "linear-gradient(135deg,#F59E0B,#B45309)",
   },
+  {
+    url: "https://feeds.washingtonpost.com/rss/world",
+    source: "The Washington Post",
+    category: "World",
+    emoji: "🏛️",
+    thumb_gradient: "linear-gradient(135deg,#1E293B,#0F172A)",
+  },
+  {
+    url: "https://www.theguardian.com/world/rss",
+    source: "The Guardian",
+    category: "World",
+    emoji: "📰",
+    thumb_gradient: "linear-gradient(135deg,#0B5A46,#052E20)",
+  },
+  {
+    url: "https://www.independent.co.uk/rss",
+    source: "The Independent",
+    category: "World",
+    emoji: "🔷",
+    thumb_gradient: "linear-gradient(135deg,#DC2626,#7F1D1D)",
+  },
+  {
+    url: "https://www.ft.com/rss/home",
+    source: "Financial Times",
+    category: "Business",
+    emoji: "💹",
+    thumb_gradient: "linear-gradient(135deg,#FFCF9E,#B8860B)",
+  },
+  {
+    url: "https://aajtak.in/rssfeeds/?id=home",
+    source: "Aaj Tak",
+    category: "India",
+    emoji: "🔴",
+    thumb_gradient: "linear-gradient(135deg,#EF4444,#991B1B)",
+  },
+  {
+    url: "https://www.news18.com/rss/india.xml",
+    source: "News18",
+    category: "India",
+    emoji: "🟢",
+    thumb_gradient: "linear-gradient(135deg,#16A34A,#166534)",
+  },
+  {
+    url: "http://www.deccanherald.com/rss-internal/top-stories.rss",
+    source: "Deccan Herald",
+    category: "India",
+    emoji: "🗺️",
+    thumb_gradient: "linear-gradient(135deg,#7C3AED,#4C1D95)",
+  },
+  {
+    url: "https://www.india.com/feed/",
+    source: "India.com",
+    category: "India",
+    emoji: "🧡",
+    thumb_gradient: "linear-gradient(135deg,#FB923C,#C2410C)",
+  },
 ];
 
 function estimateReadTime(text: string) {
@@ -102,11 +158,9 @@ export async function GET(req: NextRequest) {
         const cleanBody = stripHtml(rawBody);
         const imageUrl = extractImage(item);
 
-        // Split into 2-3 paragraphs for the reader view; fall back to single paragraph
-        const bodyParagraphs =
-          cleanBody.length > 280
-            ? [cleanBody.slice(0, Math.ceil(cleanBody.length / 2)), cleanBody.slice(Math.ceil(cleanBody.length / 2))]
-            : [cleanBody || "Read the full story at the source link."];
+        // RSS feeds only provide a short summary, not the full article.
+        // Keep it as a single clean paragraph instead of slicing mid-sentence.
+        const bodyParagraphs = [cleanBody || "Read the full story at the source link."];
 
         const { error } = await supabase.from("news_articles").insert({
           category: feed.category,
