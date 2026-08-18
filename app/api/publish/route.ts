@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
         emoji: style.emoji,
         thumb_gradient: style.gradient,
         title,
-        source: "Community",
+        source: "AiraThink",
         read_time: estimateReadTime(body),
         body: [body],
         is_featured,
