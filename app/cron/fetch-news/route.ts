@@ -75,34 +75,6 @@ const FEEDS: {
     emoji: "💹",
     thumb_gradient: "linear-gradient(135deg,#FFCF9E,#B8860B)",
   },
-  {
-    url: "https://aajtak.in/rssfeeds/?id=home",
-    source: "Aaj Tak",
-    category: "India",
-    emoji: "🔴",
-    thumb_gradient: "linear-gradient(135deg,#EF4444,#991B1B)",
-  },
-  {
-    url: "https://www.news18.com/commonfeeds/v1/eng/rss/india.xml",
-    source: "News18",
-    category: "India",
-    emoji: "🟢",
-    thumb_gradient: "linear-gradient(135deg,#16A34A,#166534)",
-  },
-  {
-    url: "https://www.deccanherald.com/rss-feeds/top-news.xml",
-    source: "Deccan Herald",
-    category: "India",
-    emoji: "🗺️",
-    thumb_gradient: "linear-gradient(135deg,#7C3AED,#4C1D95)",
-  },
-  {
-    url: "https://www.india.com/feed/",
-    source: "India.com",
-    category: "India",
-    emoji: "🧡",
-    thumb_gradient: "linear-gradient(135deg,#FB923C,#C2410C)",
-  },
 ];
 
 function estimateReadTime(text: string) {
@@ -145,6 +117,7 @@ function extractImage(item: any): string | null {
 }
 
 export async function GET(req: NextRequest) {
+  // Protect the route so only Vercel Cron (or you, with the secret) can trigger it
   const authHeader = req.headers.get("authorization");
   const querySecret = req.nextUrl.searchParams.get("secret");
   const isAuthorized =
@@ -157,15 +130,10 @@ export async function GET(req: NextRequest) {
   let inserted = 0;
   let skipped = 0;
   const errors: string[] = [];
-  const debug: Record<string, any> = {}; // remove once things look good
 
   for (const feed of FEEDS) {
     try {
       const parsed = await parser.parseURL(feed.url);
-
-      if (feed.source === "Aaj Tak" && parsed.items[0]) {
-        debug["Aaj Tak sample item"] = parsed.items[0];
-      }
 
       for (const item of parsed.items.slice(0, 8)) {
         if (!item.link || !item.title) continue;
@@ -205,5 +173,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ inserted, skipped, errors, debug });
+  return NextResponse.json({ inserted, skipped, errors });
 }
