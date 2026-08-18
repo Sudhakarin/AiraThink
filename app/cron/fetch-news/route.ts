@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import Parser from "rss-parser";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { decode } from "html-entities";
 
 const parser = new Parser({
+  headers: {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "application/rss+xml, application/xml, text/xml, */*",
+  },
   customFields: {
     item: [
       ["media:content", "mediaContent", { keepArray: true }],
       ["media:thumbnail", "mediaThumbnail"],
+      ["enclosure", "enclosure"],
     ],
   },
 });
@@ -76,14 +83,14 @@ const FEEDS: {
     thumb_gradient: "linear-gradient(135deg,#EF4444,#991B1B)",
   },
   {
-    url: "https://www.news18.com/rss/india.xml",
+    url: "https://www.news18.com/commonfeeds/v1/eng/rss/india.xml",
     source: "News18",
     category: "India",
     emoji: "🟢",
     thumb_gradient: "linear-gradient(135deg,#16A34A,#166534)",
   },
   {
-    url: "http://www.deccanherald.com/rss-internal/top-stories.rss",
+    url: "https://www.deccanherald.com/rss-feeds/top-news.xml",
     source: "Deccan Herald",
     category: "India",
     emoji: "🗺️",
@@ -104,36 +111,40 @@ function estimateReadTime(text: string) {
   return `${minutes} min read`;
 }
 
-function stripHtml(html: string) {
-  return html
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+// Strip HTML tags AND decode entities (&#039; &amp; &quot; etc.)
+function cleanText(html: string) {
+  const noTags = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return decode(noTags);
 }
 
 function extractImage(item: any): string | null {
-  // 1. Standard <enclosure> tag (rss-parser parses this automatically)
-  if (item.enclosure?.url && /\.(jpe?g|png|webp|gif)/i.test(item.enclosure.url)) {
-    return item.enclosure.url;
+  if (item.enclosure?.url) {
+    const looksLikeImage =
+      /\.(jpe?g|png|webp|gif|avif)/i.test(item.enclosure.url) ||
+      (typeof item.enclosure.type === "string" && item.enclosure.type.startsWith("image"));
+    if (looksLikeImage) return item.enclosure.url;
   }
-  // 2. Media RSS <media:content>
+
   if (Array.isArray(item.mediaContent) && item.mediaContent.length > 0) {
-    const url = item.mediaContent[0]?.$?.url;
-    if (url) return url;
+    for (const mc of item.mediaContent) {
+      const url = mc?.$?.url;
+      const type = mc?.$?.type;
+      if (url && (!type || type.startsWith("image"))) return url;
+    }
   }
-  // 3. Media RSS <media:thumbnail>
+
   if (item.mediaThumbnail?.$?.url) {
     return item.mediaThumbnail.$.url;
   }
-  // 4. Fallback: find first <img src="..."> inside content/description HTML
+
   const html = item.content || item["content:encoded"] || item.summary || "";
-  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (match) return match[1];
+  const srcMatch = html.match(/<img[^>]+(?:data-)?src=["']([^"']+)["']/i);
+  if (srcMatch) return srcMatch[1];
+
   return null;
 }
 
 export async function GET(req: NextRequest) {
-  // Protect the route so only Vercel Cron (or you, with the secret) can trigger it
   const authHeader = req.headers.get("authorization");
   const querySecret = req.nextUrl.searchParams.get("secret");
   const isAuthorized =
@@ -146,27 +157,31 @@ export async function GET(req: NextRequest) {
   let inserted = 0;
   let skipped = 0;
   const errors: string[] = [];
+  const debug: Record<string, any> = {}; // remove once things look good
 
   for (const feed of FEEDS) {
     try {
       const parsed = await parser.parseURL(feed.url);
 
+      if (feed.source === "Aaj Tak" && parsed.items[0]) {
+        debug["Aaj Tak sample item"] = parsed.items[0];
+      }
+
       for (const item of parsed.items.slice(0, 8)) {
         if (!item.link || !item.title) continue;
 
         const rawBody = item.contentSnippet || item.content || item.summary || "";
-        const cleanBody = stripHtml(rawBody);
+        const cleanBody = cleanText(rawBody);
+        const cleanTitle = decode(item.title);
         const imageUrl = extractImage(item);
 
-        // RSS feeds only provide a short summary, not the full article.
-        // Keep it as a single clean paragraph instead of slicing mid-sentence.
         const bodyParagraphs = [cleanBody || "Read the full story at the source link."];
 
         const { error } = await supabase.from("news_articles").insert({
           category: feed.category,
           emoji: feed.emoji,
           thumb_gradient: feed.thumb_gradient,
-          title: item.title,
+          title: cleanTitle,
           source: feed.source,
           read_time: estimateReadTime(cleanBody),
           body: bodyParagraphs,
@@ -176,7 +191,6 @@ export async function GET(req: NextRequest) {
         });
 
         if (error) {
-          // Duplicate (unique source_url) is expected and fine — just skip
           if (error.code === "23505") {
             skipped++;
           } else {
@@ -191,5 +205,5 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ inserted, skipped, errors });
+  return NextResponse.json({ inserted, skipped, errors, debug });
 }
