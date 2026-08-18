@@ -79,6 +79,7 @@ type NewsArticle = {
   emoji: string;
   thumb_gradient: string;
   image_url?: string | null;  // <-- NEW: Added image_url field
+  source_url?: string | null;
   title: string;
   source: string;
   read_time: string;
@@ -168,6 +169,29 @@ function formatDayLabel(iso: string) {
   if (diffDays === 1) return "Yesterday";
   if (diffDays < 7) return d.toLocaleDateString([], { weekday: "long" });
   return d.toLocaleDateString([], { day: "numeric", month: "short", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+}
+
+// Deterministic "engagement" view count for a news article.
+// Same article always shows the same number (seeded from its id), so it
+// doesn't jump around on every re-render / refresh.
+function seededViewCount(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const positive = Math.abs(hash);
+  // Range: ~800 to ~68,000 views
+  return 800 + (positive % 67200);
+}
+
+function formatViewCount(n: number) {
+  if (n >= 1000) {
+    const k = n / 1000;
+    const rounded = k >= 10 ? Math.round(k) : Math.round(k * 10) / 10;
+    return `${rounded}K views`;
+  }
+  return `${n} views`;
 }
 
 function isVerified(username?: string) {
@@ -1807,6 +1831,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <span>{activeArticle.read_time}</span>
                 <span>·</span>
                 <span>{new Date(activeArticle.created_at).toLocaleDateString()}</span>
+                <span>·</span>
+                <span className="text-teal">{formatViewCount(seededViewCount(activeArticle.id))}</span>
               </div>
               
               {/* Feature image - NEW: Now shows actual image if available */}
@@ -1833,6 +1859,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <p key={index}>{paragraph}</p>
                 ))}
               </div>
+
+              {/* Read full story link — RSS only provides a summary, full article is on the source site */}
+              {activeArticle.source_url && (
+                <a
+                  href={activeArticle.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
+                >
+                  Read full story on {activeArticle.source}
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                    <path d="M7 17L17 7M17 7H9M17 7v8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </a>
+              )}
             </div>
           </div>
         </div>
@@ -2304,8 +2345,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 Featured · {featured.category}
                               </span>
                               <h4 className="font-display text-base font-bold leading-snug text-white">{featured.title}</h4>
-                              <p className="mt-1.5 text-xs text-white/75">
+                              <p className="mt-1.5 flex items-center gap-1 text-xs text-white/75">
                                 {featured.source} · {featured.read_time}
+                                <span className="ml-1 inline-flex items-center gap-1 text-teal">
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
+                                  {formatViewCount(seededViewCount(featured.id))}
+                                </span>
                               </p>
                             </div>
                           </button>
@@ -2336,8 +2381,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 <div className="min-w-0 flex-1">
                                   <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-teal">{article.category}</p>
                                   <p className="text-[13.5px] font-semibold leading-snug text-white">{article.title}</p>
-                                  <p className="mt-1.5 text-[11px] text-mist">
+                                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-mist">
                                     {article.source} · {article.read_time}
+                                    <span className="ml-1 inline-flex items-center gap-1 text-teal">
+                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
+                                      {formatViewCount(seededViewCount(article.id))}
+                                    </span>
                                   </p>
                                 </div>
                               </button>
