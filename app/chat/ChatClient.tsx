@@ -490,6 +490,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [loadingNews, setLoadingNews] = useState(true);
+  const [selectedNewsCategory, setSelectedNewsCategory] = useState("For you");
   const [activeArticle, setActiveArticle] = useState<NewsArticle | null>(null);
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
@@ -2296,32 +2297,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
 
                 <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                  {["For you", "Tech", "Startups", "AI", "Design", "World"].map((label, i) => (
-                    <span
+                  {["For you", "Tech", "Startups", "AI", "Design", "World"].map((label) => (
+                    <button
                       key={label}
-                      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold ${
-                        i === 0 ? "bg-gradient-to-r from-violet to-violet-dark text-white" : "border border-white/10 bg-white/5 text-mist"
+                      type="button"
+                      onClick={() => setSelectedNewsCategory(label)}
+                      className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                        selectedNewsCategory === label
+                          ? "bg-gradient-to-r from-violet to-violet-dark text-white"
+                          : "border border-white/10 bg-white/5 text-mist hover:text-white"
                       }`}
                     >
                       {label}
-                    </span>
+                    </button>
                   ))}
                 </div>
 
-                {loadingNews && (
-                  <p className="px-1 py-6 text-center text-xs text-mist">Loading news…</p>
-                )}
+                {(() => {
+                  const filteredNews =
+                    selectedNewsCategory === "For you"
+                      ? newsArticles
+                      : newsArticles.filter(
+                          (a) => a.category?.toLowerCase() === selectedNewsCategory.toLowerCase()
+                        );
 
-                {!loadingNews && newsArticles.length === 0 && (
-                  <p className="px-1 py-6 text-center text-sm text-mist">No news yet. Check back soon.</p>
-                )}
+                  if (loadingNews) {
+                    return <p className="px-1 py-6 text-center text-xs text-mist">Loading news…</p>;
+                  }
 
-                {!loadingNews && newsArticles.length > 0 && (
-                  <>
-                    {(() => {
-                      const featured = newsArticles.find((a) => a.is_featured) ?? newsArticles[0];
-                      const rest = newsArticles.filter((a) => a.id !== featured.id);
-                      return (
+                  if (filteredNews.length === 0) {
+                    return (
+                      <p className="px-1 py-6 text-center text-sm text-mist">
+                        No {selectedNewsCategory === "For you" ? "news" : selectedNewsCategory} articles yet. Check back soon.
+                      </p>
+                    );
+                  }
+
+                  const featured = filteredNews.find((a) => a.is_featured) ?? filteredNews[0];
+                  const rest = filteredNews.filter((a) => a.id !== featured.id);
+                  return (
                         <>
                           {/* ============ UPDATED: Featured Article with image support ============ */}
                           <button
@@ -2394,9 +2408,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           </div>
                         </>
                       );
-                    })()}
-                  </>
-                )}
+                })()}
               </div>
             </div>
           )}
