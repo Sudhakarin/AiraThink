@@ -75,6 +75,50 @@ const FEEDS: {
     emoji: "💹",
     thumb_gradient: "linear-gradient(135deg,#FFCF9E,#B8860B)",
   },
+
+  // ============ NEW: India-focused student / jobs / awareness feeds ============
+  {
+    url: "https://feeds.feedburner.com/NDTV-LatestNews",
+    source: "NDTV",
+    category: "India",
+    emoji: "🔺",
+    thumb_gradient: "linear-gradient(135deg,#DC2626,#7F1D1D)",
+  },
+  {
+    url: "https://www.thehindu.com/news/feeder/default.rss",
+    source: "The Hindu",
+    category: "India",
+    emoji: "📰",
+    thumb_gradient: "linear-gradient(135deg,#1E3A8A,#1E293B)",
+  },
+  {
+    url: "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    source: "Times of India",
+    category: "India",
+    emoji: "🕰️",
+    thumb_gradient: "linear-gradient(135deg,#DB2777,#9D174D)",
+  },
+  {
+    url: "https://pib.gov.in/RssMain.aspx?ModId=6&Lang=1&Regid=1",
+    source: "PIB India",
+    category: "Awareness",
+    emoji: "📢",
+    thumb_gradient: "linear-gradient(135deg,#0EA5E9,#0369A1)",
+  },
+  {
+    url: "https://www.hindustantimes.com/feeds/rss/education/rssfeed.xml",
+    source: "Hindustan Times Education",
+    category: "Education",
+    emoji: "🎓",
+    thumb_gradient: "linear-gradient(135deg,#7C3AED,#4C1D95)",
+  },
+  {
+    url: "https://www.thebetterindia.com/topics/education/feed/",
+    source: "The Better India",
+    category: "Education",
+    emoji: "🌱",
+    thumb_gradient: "linear-gradient(135deg,#16A34A,#166534)",
+  },
 ];
 
 function estimateReadTime(text: string) {
