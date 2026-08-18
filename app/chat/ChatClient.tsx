@@ -101,6 +101,7 @@ const ICE_SERVERS: RTCConfiguration = {
 const PAGE_SIZE = 30;
 const CHAT_MEDIA_BUCKET = "chat-media";
 const STATUS_MEDIA_BUCKET = "status-media";
+const NEWS_MEDIA_BUCKET = "news-media";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
@@ -505,6 +506,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [publishError, setPublishError] = useState("");
   const [editingArticleId, setEditingArticleId] = useState<string | null>(null);
   const [deletingArticle, setDeletingArticle] = useState(false);
+  const [uploadingPublishImage, setUploadingPublishImage] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [activeArticle, setActiveArticle] = useState<NewsArticle | null>(null);
   const [readerProgress, setReaderProgress] = useState(0);
@@ -742,6 +744,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setPublishing(false);
     }
   }, [publishTitle, publishBody, publishCategory, publishImageUrl, publishFeatured, editingArticleId, activeArticle, fetchNews]);
+
+  async function handlePublishImagePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      setPublishError("Image is too large. Maximum size is 8 MB.");
+      return;
+    }
+    setUploadingPublishImage(true);
+    setPublishError("");
+    const ext = file.name.split(".").pop() ?? "jpg";
+    const path = `${myProfile?.id || "anon"}-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from(NEWS_MEDIA_BUCKET)
+      .upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
+    if (uploadError) {
+      setUploadingPublishImage(false);
+      setPublishError("Image upload nahi ho paya. Dubara try karo.");
+      return;
+    }
+    const { data: publicUrlData } = supabase.storage.from(NEWS_MEDIA_BUCKET).getPublicUrl(path);
+    setPublishImageUrl(publicUrlData.publicUrl);
+    setUploadingPublishImage(false);
+  }
 
   const openEditArticle = useCallback((article: NewsArticle) => {
     setEditingArticleId(article.id);
@@ -3108,11 +3134,44 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-mist">Image URL (optional)</label>
+                <label className="mb-1 block text-xs font-semibold text-mist">Image</label>
+                {publishImageUrl ? (
+                  <div className="relative mb-2 h-36 w-full overflow-hidden rounded-xl">
+                    <img src={publishImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setPublishImageUrl("")}
+                      className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white"
+                      aria-label="Remove image"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mb-2 flex h-24 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/5 text-sm text-mist hover:border-violet hover:text-white">
+                    {uploadingPublishImage ? (
+                      "Uploading…"
+                    ) : (
+                      <>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                        </svg>
+                        Upload photo from device
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handlePublishImagePick}
+                      disabled={uploadingPublishImage}
+                    />
+                  </label>
+                )}
                 <input
                   value={publishImageUrl}
                   onChange={(e) => setPublishImageUrl(e.target.value)}
-                  placeholder="https://…"
+                  placeholder="or paste an image URL…"
                   className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
                 />
               </div>
@@ -3134,7 +3193,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button
                 type="button"
                 onClick={handlePublish}
-                disabled={publishing}
+                disabled={publishing || uploadingPublishImage}
                 className="mt-1 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
               >
                 {publishing ? (editingArticleId ? "Saving…" : "Publishing…") : (editingArticleId ? "Save changes" : "Publish")}
