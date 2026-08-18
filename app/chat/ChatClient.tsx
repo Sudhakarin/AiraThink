@@ -491,6 +491,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [loadingNews, setLoadingNews] = useState(true);
   const [selectedNewsCategory, setSelectedNewsCategory] = useState("For you");
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishTitle, setPublishTitle] = useState("");
+  const [publishBody, setPublishBody] = useState("");
+  const [publishCategory, setPublishCategory] = useState("India");
+  const [publishImageUrl, setPublishImageUrl] = useState("");
+  const [publishFeatured, setPublishFeatured] = useState(true);
+  const [publishing, setPublishing] = useState(false);
+  const [publishError, setPublishError] = useState("");
   const [activeArticle, setActiveArticle] = useState<NewsArticle | null>(null);
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
@@ -685,6 +693,43 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [supabase]);
 
   useEffect(() => { fetchNews(); }, [fetchNews]);
+
+  const handlePublish = useCallback(async () => {
+    setPublishError("");
+    if (!publishTitle.trim() || !publishBody.trim()) {
+      setPublishError("Title aur body dono zaroori hain.");
+      return;
+    }
+    setPublishing(true);
+    try {
+      const res = await fetch("/api/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: publishTitle,
+          body: publishBody,
+          category: publishCategory,
+          image_url: publishImageUrl || undefined,
+          is_featured: publishFeatured,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setPublishError(json.error || "Publish nahi ho paya.");
+        return;
+      }
+      setPublishTitle("");
+      setPublishBody("");
+      setPublishImageUrl("");
+      setPublishFeatured(true);
+      setShowPublishModal(false);
+      await fetchNews();
+    } catch {
+      setPublishError("Network error — dubara try karo.");
+    } finally {
+      setPublishing(false);
+    }
+  }, [publishTitle, publishBody, publishCategory, publishImageUrl, publishFeatured, fetchNews]);
 
   const openArticle = useCallback((article: NewsArticle) => {
     setActiveArticle(article);
@@ -2294,10 +2339,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <div className="mt-8 px-4">
                 <div className="mb-3 flex items-center justify-between px-1">
                   <h3 className="font-display text-sm font-bold text-white">News for you</h3>
+                  {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPublishModal(true)}
+                      className="rounded-full bg-gradient-to-r from-violet to-violet-dark px-3 py-1 text-[11px] font-semibold text-white"
+                    >
+                      + Write article
+                    </button>
+                  )}
                 </div>
 
                 <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-                  {["For you", "Tech", "Startups", "AI", "Design", "World"].map((label) => (
+                  {["For you", "World", "India", "Business", "Education", "Awareness"].map((label) => (
                     <button
                       key={label}
                       type="button"
@@ -2929,6 +2983,93 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </>
         )}
       </section>
+
+      {showPublishModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display text-lg font-bold text-white">Write article</h3>
+              <button
+                type="button"
+                onClick={() => { setShowPublishModal(false); setPublishError(""); }}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-mist">Title</label>
+                <input
+                  value={publishTitle}
+                  onChange={(e) => setPublishTitle(e.target.value)}
+                  placeholder="Article title"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-mist">Category</label>
+                <select
+                  value={publishCategory}
+                  onChange={(e) => setPublishCategory(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-violet"
+                >
+                  {["World", "India", "Business", "Education", "Awareness"].map((c) => (
+                    <option key={c} value={c} className="bg-ink-900">{c}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-mist">Body</label>
+                <textarea
+                  value={publishBody}
+                  onChange={(e) => setPublishBody(e.target.value)}
+                  placeholder="Article content — blank line = new paragraph"
+                  rows={8}
+                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-mist">Image URL (optional)</label>
+                <input
+                  value={publishImageUrl}
+                  onChange={(e) => setPublishImageUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                />
+              </div>
+
+              <label className="flex items-center gap-2 text-sm text-mist">
+                <input
+                  type="checkbox"
+                  checked={publishFeatured}
+                  onChange={(e) => setPublishFeatured(e.target.checked)}
+                  className="h-4 w-4 rounded border-white/20 bg-white/5"
+                />
+                Show in featured section
+              </label>
+
+              {publishError && (
+                <p className="text-xs font-medium text-red-400">{publishError}</p>
+              )}
+
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={publishing}
+                className="mt-1 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+              >
+                {publishing ? "Publishing…" : "Publish"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
