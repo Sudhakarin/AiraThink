@@ -2944,10 +2944,50 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       )}
                       <div style={{ transform: `translateX(${translateX}px)`, transition: isSwiping ? "none" : "transform 0.15s ease-out" }} className="max-w-[80%] md:max-w-md" onDoubleClick={() => toggleReaction(m.id, "❤️")} onContextMenu={(e) => { e.preventDefault(); setReactionPickerFor(reactionPickerFor === m.id ? null : m.id); }}>
                         {reactionPickerFor === m.id && (
-                          <div className={`mb-1 flex gap-1 rounded-full bg-ink-800 px-2 py-1 shadow-lg ${mine ? "justify-end" : "justify-start"}`}>
-                            {QUICK_EMOJIS.map((emo) => (
-                              <button key={emo} onClick={() => toggleReaction(m.id, emo)} className="text-lg leading-none hover:scale-110 transition">{emo}</button>
-                            ))}
+                          <div className={`mb-1.5 flex flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
+                            <div className="flex gap-1 rounded-full bg-ink-800 px-2 py-1.5 shadow-lg">
+                              {QUICK_EMOJIS.map((emo) => (
+                                <button key={emo} onClick={() => { toggleReaction(m.id, emo); setReactionPickerFor(null); }} className="text-lg leading-none hover:scale-110 transition">{emo}</button>
+                              ))}
+                            </div>
+                            {!isDeleted && (
+                              <div className="min-w-[168px] overflow-hidden rounded-2xl bg-ink-800 shadow-lg">
+                                <button
+                                  onClick={() => { togglePinMessage(m.id); setReactionPickerFor(null); }}
+                                  className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition hover:bg-white/5 ${isPinned ? "text-violet-light" : "text-white"}`}
+                                >
+                                  <span className="text-base">📌</span> {isPinned ? "Unpin" : "Pin"}
+                                </button>
+                                <button
+                                  onClick={() => { setForwardingMessage(m); setShowForwardModal(true); setReactionPickerFor(null); }}
+                                  className="flex w-full items-center gap-2.5 border-t border-white/5 px-4 py-2.5 text-left text-sm text-white transition hover:bg-white/5"
+                                >
+                                  <span className="text-base">➡️</span> Forward
+                                </button>
+                                {canEdit && (
+                                  <button
+                                    onClick={() => { startEditMessage(m); setReactionPickerFor(null); }}
+                                    className="flex w-full items-center gap-2.5 border-t border-white/5 px-4 py-2.5 text-left text-sm text-white transition hover:bg-white/5"
+                                  >
+                                    <span className="text-base">✏️</span> Edit
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    if (mine) {
+                                      const action = confirm("Delete for everyone or just for you?");
+                                      if (action !== null) deleteMessage(m.id, action);
+                                    } else {
+                                      deleteMessage(m.id, false);
+                                    }
+                                    setReactionPickerFor(null);
+                                  }}
+                                  className="flex w-full items-center gap-2.5 border-t border-white/5 px-4 py-2.5 text-left text-sm text-red-400 transition hover:bg-white/5"
+                                >
+                                  <span className="text-base">🗑️</span> Delete
+                                </button>
+                              </div>
+                            )}
                           </div>
                         )}
                         <div className={`relative ${isDeleted ? 'opacity-50' : ''}`}>
@@ -2993,47 +3033,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             </p>
                           )}
                           <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
-                          
-                          {/* Message Actions */}
-                          {!isDeleted && (
-                            <div className={`mt-1 flex items-center gap-2 ${mine ? "justify-end" : "justify-start"}`}>
-                              <button 
-                                onClick={() => togglePinMessage(m.id)}
-                                className={`text-[10px] transition ${isPinned ? 'text-violet-light' : 'text-mist hover:text-white'}`}
-                              >
-                                {isPinned ? '📌' : '📍'}
-                              </button>
-                              <button 
-                                onClick={() => { setForwardingMessage(m); setShowForwardModal(true); }}
-                                className="text-[10px] text-mist hover:text-white transition"
-                              >
-                                ➡️
-                              </button>
-                              {canEdit && (
-                                <button 
-                                  onClick={() => startEditMessage(m)}
-                                  className="text-[10px] text-mist hover:text-white transition"
-                                >
-                                  ✏️
-                                </button>
-                              )}
-                              <button 
-                                onClick={() => {
-                                  if (mine) {
-                                    const action = confirm("Delete for everyone or just for you?");
-                                    if (action !== null) {
-                                      deleteMessage(m.id, action);
-                                    }
-                                  } else {
-                                    deleteMessage(m.id, false);
-                                  }
-                                }}
-                                className="text-[10px] text-red-400 hover:text-red-500 transition"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          )}
                         </div>
                       </div>
                     </div>
