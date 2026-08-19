@@ -416,6 +416,11 @@ function useVisualViewportHeight() {
       const vv = window.visualViewport;
       const height = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", `${height}px`);
+      // iOS Safari sometimes auto-scrolls the page when the keyboard opens,
+      // which shoves the fixed-position app (and composer) out of view.
+      // Snapping scroll back to 0 keeps the app pinned to the top of the
+      // visual viewport so the composer stays glued above the keyboard.
+      window.scrollTo(0, 0);
     }
     setHeight();
     window.visualViewport?.addEventListener("resize", setHeight);
@@ -503,6 +508,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const supabase = createClient();
   const router = useRouter();
   useVisualViewportHeight();
+
+  // Modern browsers (Chrome, newer Safari) can natively resize the page
+  // content around the on-screen keyboard instead of just overlaying it,
+  // which is what keeps a WhatsApp-style composer glued above the keyboard.
+  useEffect(() => {
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute("name", "viewport");
+      document.head.appendChild(meta);
+    }
+    const desired = "width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content";
+    if (meta.getAttribute("content") !== desired) {
+      meta.setAttribute("content", desired);
+    }
+  }, []);
 
   const [myProfile, setMyProfile] = useState<Profile>(initialProfile);
   const [myEmail, setMyEmail] = useState<string>("");
@@ -1888,12 +1909,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     <div
       className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
       style={{
+        position: "fixed",
+        inset: 0,
         height: "var(--app-height, 100dvh)",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
         WebkitFontSmoothing: "antialiased",
       }}
     >
       <style>{`
+        html, body {
+          height: 100%;
+          overflow: hidden;
+          overscroll-behavior: none;
+          position: fixed;
+          width: 100%;
+        }
         @keyframes typingDot {
           0%, 60%, 100% { opacity: 0.25; transform: translateY(0px); }
           30% { opacity: 1; transform: translateY(-5px); }
@@ -3102,7 +3132,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <input
                       value={input}
                       onChange={handleInputChange}
-                      onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }}
+                      onFocus={() => {
+                        window.scrollTo(0, 0);
+                        setTimeout(() => {
+                          window.scrollTo(0, 0);
+                          scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+                        }, 300);
+                      }}
                       placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Message"}
                       disabled={uploadingMedia}
                       className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 msg-input-tx outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
