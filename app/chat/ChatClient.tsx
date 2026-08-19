@@ -558,6 +558,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
   const realtimeConnectedRef = useRef(false);
@@ -1531,6 +1532,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const content = input.trim();
     if (!content || !activeId) return;
     setSending(true); setInput("");
+    messageInputRef.current?.focus();
     activeChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
     const replyTo = replyingTo; setReplyingTo(null);
     const tempId = `temp-${Date.now()}`;
@@ -1569,6 +1571,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     sendPushNotification({ userId: active?.otherProfile?.id, title: myProfile.display_name, body: content, url: "/" });
     loadConversations();
     setSending(false);
+    messageInputRef.current?.focus();
   }
 
   async function sendMediaMessage(opts: { type: "image" | "voice"; url: string; duration?: number }) {
@@ -3116,15 +3119,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 ) : (
                   <>
                     <input
+                      ref={messageInputRef}
                       value={input}
                       onChange={handleInputChange}
                       onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }}
                       placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Message"}
                       disabled={uploadingMedia}
-                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-[15px] text-white placeholder:text-white/25 msg-input-tx outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
+                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-base text-white placeholder:text-white/25 msg-input-tx outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
+                      style={{ fontSize: 16 }}
                     />
                     {input.trim() ? (
-                      <button type="submit" disabled={sending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100" aria-label="Send message">
+                      <button
+                        type="submit"
+                        disabled={sending}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onTouchStart={(e) => e.preventDefault()}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
+                        aria-label="Send message"
+                      >
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                           <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
