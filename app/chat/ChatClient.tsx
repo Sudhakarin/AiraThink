@@ -416,6 +416,8 @@ function useVisualViewportHeight() {
       const vv = window.visualViewport;
       const height = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", `${height}px`);
+      const offsetTop = vv ? vv.offsetTop : 0;
+      document.documentElement.style.setProperty("--app-offset-top", `${offsetTop}px`);
     }
     setHeight();
     window.visualViewport?.addEventListener("resize", setHeight);
@@ -1907,12 +1909,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     <div
       className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
       style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
         height: "var(--app-height, 100dvh)",
+        transform: "translateY(var(--app-offset-top, 0px))",
+        overscrollBehavior: "none",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
         WebkitFontSmoothing: "antialiased",
       }}
     >
       <style>{`
+        html, body {
+          overscroll-behavior: none;
+        }
         @keyframes typingDot {
           0%, 60%, 100% { opacity: 0.25; transform: translateY(0px); }
           30% { opacity: 1; transform: translateY(-5px); }
