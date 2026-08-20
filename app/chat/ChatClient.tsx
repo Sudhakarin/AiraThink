@@ -266,55 +266,55 @@ function Ticks({ read, className = "text-white" }: { read: boolean; className?: 
 function TabIcon({ tab, active = false }: { tab: MobileTab; active?: boolean }) {
   // Instagram-style: outline icon when inactive, solid/filled icon when active.
   if (tab === "home") return active ? (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2.6 2.4 10.8a1 1 0 0 0 .65 1.76H4.5V20a1.5 1.5 0 0 0 1.5 1.5h4a1 1 0 0 0 1-1V15h2v5.5a1 1 0 0 0 1 1h4a1.5 1.5 0 0 0 1.5-1.5v-7.44h1.45a1 1 0 0 0 .65-1.76L12 2.6Z" />
     </svg>
   ) : (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <path d="M4 11l8-7 8 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
   if (tab === "status") return active ? (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.18" />
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
       <circle cx="12" cy="12" r="3.5" fill="currentColor" />
     </svg>
   ) : (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="3 3" />
       <circle cx="12" cy="12" r="3.5" fill="currentColor" />
     </svg>
   );
   if (tab === "chats") return active ? (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor">
       <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" />
     </svg>
   ) : (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
   if (tab === "search") return active ? (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <circle cx="11" cy="11" r="7" fill="currentColor" opacity="0.18" />
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2.2" />
       <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   ) : (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
       <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
   return active ? (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor">
       <circle cx="12" cy="8" r="4" />
       <path d="M4 20c0-4 4-6 8-6s8 2 8 6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" />
     </svg>
   ) : (
-    <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
+    <svg width="21" height="21" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
       <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
@@ -2795,42 +2795,34 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
         </div>
 
-        <div className="relative border-t border-white/10 bg-ink-900/95 backdrop-blur-xl pb-[env(safe-area-inset-bottom)]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-light/40 to-transparent" />
-          <div className="grid grid-cols-5 gap-1 px-2 py-2">
-            {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => {
-              const isActive = mobileTab === tab;
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setMobileTab(tab)}
-                  className="relative flex flex-col items-center justify-center gap-1 rounded-2xl py-2 transition-all duration-200 active:scale-90"
-                  aria-label={tab}
-                  aria-current={isActive ? "page" : undefined}
+        <div className="grid grid-cols-5 border-t border-black/10 dark:border-white/10 bg-ink-900/95 backdrop-blur-md px-1 pb-[env(safe-area-inset-bottom)]">
+          {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => {
+            const isActive = mobileTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setMobileTab(tab)}
+                className="flex flex-col items-center justify-center gap-0.5 py-1.5 transition-transform active:scale-90"
+                aria-label={tab}
+                aria-current={isActive ? "page" : undefined}
+              >
+                <span
+                  className={`flex h-7 w-7 items-center justify-center transition-all duration-150 ${
+                    isActive ? "text-violet-light scale-105" : "text-mist"
+                  }`}
                 >
-                  {isActive && (
-                    <span className="absolute inset-0 rounded-2xl bg-gradient-to-b from-violet/25 to-teal/10 shadow-[0_0_16px_-2px_rgba(156,130,255,0.55)]" />
-                  )}
-                  <span
-                    className={`relative flex h-9 w-9 items-center justify-center rounded-full transition-all duration-200 ${
-                      isActive
-                        ? "bg-gradient-to-br from-violet to-teal text-white shadow-lg shadow-violet/40 scale-105"
-                        : "text-mist"
-                    }`}
-                  >
-                    <TabIcon tab={tab} active={isActive} />
-                  </span>
-                  <span
-                    className={`relative text-[10.5px] font-bold capitalize tracking-tight transition-colors ${
-                      isActive ? "text-white" : "text-mist/60"
-                    }`}
-                  >
-                    {tab}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  <TabIcon tab={tab} active={isActive} />
+                </span>
+                <span
+                  className={`text-[9px] font-semibold capitalize transition-colors ${
+                    isActive ? "text-violet-light" : "text-mist/60"
+                  }`}
+                >
+                  {tab}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </aside>
 
