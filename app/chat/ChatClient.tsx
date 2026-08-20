@@ -113,7 +113,7 @@ const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
-const ACTIVE_STATUS_STORAGE_KEY = "airathink-active-status";
+const ACTIVE_STATUS_STORAGE_KEY = "airalance-active-status";
 const EDIT_TIMEOUT_MS = 300000; // 5 minutes
 
 const HOME_FEATURES = [
@@ -199,8 +199,8 @@ function isVerified(username?: string) {
   return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
 
-function isAiraThinkSource(source?: string) {
-  return (source || "").toLowerCase() === "airathink";
+function isAiralanceSource(source?: string) {
+  return (source || "").toLowerCase() === "airalance";
 }
 
 function VerifiedBadge({ size = 14 }: { size?: number }) {
@@ -1957,13 +1957,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div className="flex items-center gap-2">
               <span className="flex items-center text-xs text-mist">
                 {activeArticle.source}
-                {isAiraThinkSource(activeArticle.source) && <VerifiedBadge size={13} />}
+                {isAiralanceSource(activeArticle.source) && <VerifiedBadge size={13} />}
               </span>
               <span className="text-xs text-mist">·</span>
               <span className="text-xs text-mist">{activeArticle.read_time}</span>
             </div>
             <div className="flex items-center gap-1">
-              {isAiraThinkSource(activeArticle.source) && myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
+              {isAiralanceSource(activeArticle.source) && myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
                 <>
                   <button
                     onClick={() => openEditArticle(activeArticle)}
@@ -2026,7 +2026,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <div className="mt-3 flex items-center gap-3 text-sm text-mist">
                 <span className="flex items-center">
                   {activeArticle.source}
-                  {isAiraThinkSource(activeArticle.source) && <VerifiedBadge size={14} />}
+                  {isAiralanceSource(activeArticle.source) && <VerifiedBadge size={14} />}
                 </span>
                 <span>·</span>
                 <span>{activeArticle.read_time}</span>
@@ -2416,7 +2416,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
         <div className="flex items-center justify-between px-5 py-5">
-          <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">Think</span></span>
+          <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">lance!</span></span>
           <div className="relative flex items-center gap-2">
             {activeId && (
               <button onClick={() => setIsSearchOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
@@ -2478,7 +2478,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#9C82FF" /><stop offset="1" stopColor="#22D3B8" /></linearGradient></defs>
                   </svg>
                 </div>
-                <h2 className="font-display text-2xl font-bold text-white">Welcome to <span className="text-gradient">AiraThink</span>!</h2>
+                <h2 className="font-display text-2xl font-bold text-white">Welcome to <span className="text-gradient">Airalance</span>!</h2>
                 <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
                 <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30">
                   Start a conversation
@@ -2569,7 +2569,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                               </span>
                               <h4 className="font-display text-base font-bold leading-snug text-white">{featured.title}</h4>
                               <p className="mt-1.5 flex items-center gap-1 text-xs text-white/75">
-                                {featured.source}{isAiraThinkSource(featured.source) && <VerifiedBadge size={11} />} · {featured.read_time}
+                                {featured.source}{isAiralanceSource(featured.source) && <VerifiedBadge size={11} />} · {featured.read_time}
                                 <span className="ml-1 inline-flex items-center gap-1 text-teal">
                                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
                                   {formatViewCount(seededViewCount(featured.id))}
@@ -2605,7 +2605,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                   <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-teal">{article.category}</p>
                                   <p className="text-[13.5px] font-semibold leading-snug text-white">{article.title}</p>
                                   <p className="mt-1.5 flex items-center gap-1 text-[11px] text-mist">
-                                    {article.source}{isAiraThinkSource(article.source) && <VerifiedBadge size={10} />} · {article.read_time}
+                                    {article.source}{isAiralanceSource(article.source) && <VerifiedBadge size={10} />} · {article.read_time}
                                     <span className="ml-1 inline-flex items-center gap-1 text-teal">
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
                                       {formatViewCount(seededViewCount(article.id))}
