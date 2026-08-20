@@ -533,6 +533,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
+  const [suggestedProfiles, setSuggestedProfiles] = useState<Profile[]>([]);
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
@@ -872,6 +873,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [myProfile.id, supabase]);
 
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
+  useEffect(() => {
+    if (mobileTab === "search") loadSuggestedProfiles();
+  }, [mobileTab]);
   useEffect(() => {
     const interval = setInterval(() => { loadNotifications(); }, 4000);
     return () => clearInterval(interval);
@@ -1405,6 +1409,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (q.trim().length < 2) { setSearchResults([]); return; }
     const { data } = await supabase.from("profiles").select("*").ilike("username", `%${q.trim()}%`).neq("id", myProfile.id).limit(8);
     setSearchResults(data ?? []);
+  }
+
+  async function loadSuggestedProfiles() {
+    const { data } = await supabase
+      .from("profiles")
+      .select("*")
+      .in("username", ["Sudhakarin", "Instagram"])
+      .neq("id", myProfile.id);
+    if (data) setSuggestedProfiles(data);
   }
 
   async function openConnectPopup(other: Profile) {
@@ -2717,21 +2730,25 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 style={{ fontSize: 16 }}
                 className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
-              {search.trim().length === 0 && (
+              {search.trim().length === 0 && suggestedProfiles.length > 0 && (
                 <div className="glass mt-4 rounded-2xl px-4 py-3.5">
                   <p className="mb-3 text-xs font-semibold text-mist">Suggestions for you</p>
                   <div className="space-y-1">
-                    {[
-                      { name: "Sudhakar In", username: "Sudhakarin", color: "#7C5CFF" },
-                      { name: "Instagram", username: "Instagram", color: "#22D3B8" },
-                    ].map((s) => (
-                      <div key={s.username} className="flex items-center gap-3 rounded-xl px-1 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
-                        <Avatar name={s.name} color={s.color} size={44} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-white">{s.name}</p>
+                    {suggestedProfiles.map((s) => (
+                      <div key={s.id} className="flex items-center gap-3 rounded-xl px-1 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
+                        <button onClick={() => openProfileView(s)} className="shrink-0">
+                          <Avatar name={s.display_name} color={s.avatar_color} avatarUrl={s.avatar_url} size={44} />
+                        </button>
+                        <button onClick={() => openProfileView(s)} className="min-w-0 flex-1 text-left">
+                          <p className="flex items-center truncate text-sm font-semibold text-white">
+                            {s.display_name}{isVerified(s.username) && <VerifiedBadge />}
+                          </p>
                           <p className="truncate text-xs text-mist">@{s.username}</p>
-                        </div>
-                        <button className="shrink-0 rounded-full bg-gradient-to-r from-violet to-violet-light px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-violet/30 transition hover:shadow-violet/50">
+                        </button>
+                        <button
+                          onClick={() => openConnectPopup(s)}
+                          className="shrink-0 rounded-full bg-gradient-to-r from-violet to-violet-light px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-violet/30 transition hover:shadow-violet/50"
+                        >
                           Connect
                         </button>
                       </div>
