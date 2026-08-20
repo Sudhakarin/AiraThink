@@ -2416,7 +2416,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
         <div className="flex items-center justify-between px-5 py-5">
-          <span className="font-display text-2xl font-bold">Aira<span className="text-gradient">lance!</span></span>
+          <span className="font-display text-2xl font-bold text-white">Airalance!</span>
           <div className="relative flex items-center gap-2">
             {activeId && (
               <button onClick={() => setIsSearchOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
@@ -2478,7 +2478,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#9C82FF" /><stop offset="1" stopColor="#22D3B8" /></linearGradient></defs>
                   </svg>
                 </div>
-                <h2 className="font-display text-2xl font-bold text-white">Welcome to <span className="text-gradient">Airalance</span>!</h2>
+                <h2 className="font-display text-2xl font-bold text-white">Welcome to Airalance!</h2>
                 <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
                 <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30">
                   Start a conversation
