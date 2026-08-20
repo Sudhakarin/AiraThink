@@ -416,13 +416,6 @@ function useVisualViewportHeight() {
       const vv = window.visualViewport;
       const height = vv ? vv.height : window.innerHeight;
       document.documentElement.style.setProperty("--app-height", `${height}px`);
-      // iOS Safari shifts the *visual* viewport (not the layout viewport) up
-      // when a focused input needs to stay visible above the keyboard. A
-      // position:fixed element stays pinned to the layout viewport, so it
-      // visually drifts out of sync with what's actually on screen. Tracking
-      // offsetTop and countering it with a transform keeps things glued.
-      const offsetTop = vv ? vv.offsetTop : 0;
-      document.documentElement.style.setProperty("--app-offset-top", `${offsetTop}px`);
     }
     setHeight();
     window.visualViewport?.addEventListener("resize", setHeight);
@@ -1914,12 +1907,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     <div
       className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
       style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        width: "100%",
         height: "var(--app-height, 100dvh)",
-        transform: "translateY(var(--app-offset-top, 0px))",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
         WebkitFontSmoothing: "antialiased",
       }}
