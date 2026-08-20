@@ -1907,6 +1907,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     <div
       className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
       style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        width: "100%",
         height: "var(--app-height, 100dvh)",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
         WebkitFontSmoothing: "antialiased",
