@@ -266,55 +266,55 @@ function Ticks({ read, className = "text-white" }: { read: boolean; className?: 
 function TabIcon({ tab, active = false }: { tab: MobileTab; active?: boolean }) {
   // Instagram-style: outline icon when inactive, solid/filled icon when active.
   if (tab === "home") return active ? (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2.6 2.4 10.8a1 1 0 0 0 .65 1.76H4.5V20a1.5 1.5 0 0 0 1.5 1.5h4a1 1 0 0 0 1-1V15h2v5.5a1 1 0 0 0 1 1h4a1.5 1.5 0 0 0 1.5-1.5v-7.44h1.45a1 1 0 0 0 .65-1.76L12 2.6Z" />
     </svg>
   ) : (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <path d="M4 11l8-7 8 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M6 10v9a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
   if (tab === "status") return active ? (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.18" />
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
       <circle cx="12" cy="12" r="3.5" fill="currentColor" />
     </svg>
   ) : (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="3 3" />
       <circle cx="12" cy="12" r="3.5" fill="currentColor" />
     </svg>
   );
   if (tab === "chats") return active ? (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
       <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" />
     </svg>
   ) : (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   );
   if (tab === "search") return active ? (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <circle cx="11" cy="11" r="7" fill="currentColor" opacity="0.18" />
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2.2" />
       <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
     </svg>
   ) : (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
       <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
   return active ? (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
       <circle cx="12" cy="8" r="4" />
       <path d="M4 20c0-4 4-6 8-6s8 2 8 6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1Z" />
     </svg>
   ) : (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
       <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="1.8" />
       <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
@@ -2415,19 +2415,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       )}
 
       <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
-        <div className="flex items-center justify-between px-5 py-5">
-          <span className="font-display text-2xl font-bold text-white">Airalance!</span>
-          <div className="relative flex items-center gap-2">
+        <div className="flex items-center justify-between px-5 py-2.5">
+          <span className="font-display text-lg font-bold text-white">Airalance!</span>
+          <div className="relative flex items-center gap-1.5">
             {activeId && (
-              <button onClick={() => setIsSearchOpen(true)} className="flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <button onClick={() => setIsSearchOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
                   <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
               </button>
             )}
-            <button onClick={() => setShowNotifications((v) => !v)} className="relative flex h-9 w-9 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Notifications">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <button onClick={() => setShowNotifications((v) => !v)} className="relative flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Notifications">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               {notifications.length > 0 && (
@@ -2802,19 +2802,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button
                 key={tab}
                 onClick={() => setMobileTab(tab)}
-                className="flex flex-col items-center justify-center gap-1 py-3 transition-transform active:scale-90"
+                className="flex flex-col items-center justify-center gap-0.5 py-1.5 transition-transform active:scale-90"
                 aria-label={tab}
                 aria-current={isActive ? "page" : undefined}
               >
                 <span
-                  className={`flex h-9 w-9 items-center justify-center rounded-2xl transition-all duration-200 ${
+                  className={`flex h-7 w-7 items-center justify-center rounded-xl transition-all duration-200 ${
                     isActive ? "bg-violet/20 text-violet-light scale-110" : "text-mist"
                   }`}
                 >
                   <TabIcon tab={tab} active={isActive} />
                 </span>
                 <span
-                  className={`text-[10px] font-semibold capitalize transition-colors ${
+                  className={`text-[9px] font-semibold capitalize transition-colors ${
                     isActive ? "text-violet-light" : "text-mist/70"
                   }`}
                 >
