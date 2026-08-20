@@ -1415,9 +1415,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .in("username", ["Sudhakarin", "Instagram"])
+      .or("username.ilike.sudhakarin,username.ilike.instagram")
       .neq("id", myProfile.id);
-    if (data) setSuggestedProfiles(data);
+    if (data) {
+      const order = ["sudhakarin", "instagram"];
+      const sorted = [...data].sort(
+        (a, b) => order.indexOf((a.username || "").toLowerCase()) - order.indexOf((b.username || "").toLowerCase())
+      );
+      setSuggestedProfiles(sorted);
+    }
   }
 
   async function openConnectPopup(other: Profile) {
