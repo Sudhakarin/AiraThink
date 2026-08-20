@@ -2416,7 +2416,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
         <div className="flex items-center justify-between px-5 py-2.5">
-          <span className="font-display text-lg font-bold text-white">Airalance!</span>
+          <span className="font-display text-2xl font-bold text-white">Airalance!</span>
           <div className="relative flex items-center gap-1.5">
             {activeId && (
               <button onClick={() => setIsSearchOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
