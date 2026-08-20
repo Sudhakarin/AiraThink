@@ -16,7 +16,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "AiraThink — Where Privacy Matters!",
+  title: "Airalance — Where Privacy Matters!",
   description: "A premium, real-time chat experience. Fast, private, beautifully simple.",
 };
 
