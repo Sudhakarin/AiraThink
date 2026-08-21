@@ -138,7 +138,12 @@ export default function PrivacyPolicyPage() {
         <Section title="10. Grievance Redressal">
           <p>If you have privacy concerns or complaints, please contact our Grievance Officer:</p>
           <div className="mt-2 rounded-xl border border-white/10 bg-ink-800 px-4 py-3">
-            <p><span className="text-mist-light">Name:</span> Sudhakar Mishra</p>
+            <p>
+              <span className="text-mist-light">Name:</span>{" "}
+              <Link href="/about" className="font-medium text-violet-light hover:underline">
+                Sudhakar Mishra
+              </Link>
+            </p>
             <p><span className="text-mist-light">Email:</span> help@airalance.com</p>
             <p><span className="text-mist-light">Phone:</span> 7055520186</p>
             <p><span className="text-mist-light">Response Time:</span> We aim to respond within 30 days.</p>
