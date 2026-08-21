@@ -196,6 +196,40 @@ function formatViewCount(n: number) {
   return `${n} views`;
 }
 
+// Detects http(s)/www URLs inside plain text and renders them as clickable links,
+// leaving the rest of the text untouched.
+function linkifyText(text: string): React.ReactNode[] {
+  const regex = /(https?:\/\/[^\s<]+[^\s<.,!?:;'")\]]|www\.[^\s<]+[^\s<.,!?:;'")\]])/gi;
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+    const raw = match[0];
+    const href = raw.startsWith("www.") ? `https://${raw}` : raw;
+    nodes.push(
+      <a
+        key={key++}
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="underline underline-offset-2 text-teal hover:opacity-80 break-all"
+      >
+        {raw}
+      </a>
+    );
+    lastIndex = match.index + raw.length;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+  return nodes;
+}
+
 function isVerified(username?: string) {
   return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
@@ -2077,7 +2111,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               {/* Body content */}
               <div className="mt-6 space-y-4 text-[15px] leading-relaxed text-white/80">
                 {activeArticle.body.map((paragraph, index) => (
-                  <p key={index}>{paragraph}</p>
+                  <p key={index}>{linkifyText(paragraph)}</p>
                 ))}
               </div>
 
@@ -3098,7 +3132,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                               />
                             ) : (
                               <p className="whitespace-pre-wrap break-words text-white">
-                                {m.content}
+                                {linkifyText(m.content)}
                                 {m.edited_at && <span className="ml-1 text-[10px] text-mist">(edited)</span>}
                                 {m.is_forwarded && <span className="ml-1 text-[10px] text-mist">↪ forwarded</span>}
                               </p>
