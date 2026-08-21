@@ -18,14 +18,6 @@ export default async function Home() {
       <div className="pointer-events-none absolute inset-0 bg-aurora" />
       <div className="pointer-events-none absolute -top-40 left-1/2 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-violet/20 blur-[120px]" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-[420px] w-[420px] translate-x-1/3 translate-y-1/3 rounded-full bg-teal/10 blur-[130px]" />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
-          backgroundSize: "56px 56px",
-        }}
-      />
 
       {/* Nav */}
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 md:px-12">
