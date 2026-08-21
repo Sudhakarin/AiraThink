@@ -20,7 +20,7 @@ export default async function Home() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 md:px-12">
         <div className="flex items-center gap-2">
           <span className="font-display text-xl font-bold tracking-tight text-white">
-            Aira<span className="text-gradient">Think</span>
+            Aira<span className="text-gradient">lance!</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
@@ -49,13 +49,13 @@ export default async function Home() {
         </div>
 
         <h1 className="font-display text-5xl font-extrabold leading-[1.05] tracking-tight text-white md:text-7xl">
-          Conversations that
+          Where Privacy
           <br />
-          <span className="text-gradient">think ahead.</span>
+          <span className="text-gradient">Matters!</span>
         </h1>
 
         <p className="mt-6 max-w-xl text-balance text-lg text-mist">
-          AiraThink is a calm, quietly premium space to talk. No clutter, no
+          Airalance is a calm, quietly premium space to talk. No clutter, no
           noise — just fast, real-time messages wrapped in a design that gets
           out of your way.
         </p>
@@ -105,7 +105,7 @@ export default async function Home() {
       </section>
 
       <footer className="relative z-10 mt-24 px-6 pb-10 text-center text-xs text-mist/60">
-        Built with AiraThink · Your messages, your database, your rules.
+        Copyright © 2026 by AiraThink! · All rights reserved.
       </footer>
     </main>
   );
