@@ -14,14 +14,23 @@ export default async function Home() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-ink-900">
+      {/* Background layers */}
       <div className="pointer-events-none absolute inset-0 bg-aurora" />
       <div className="pointer-events-none absolute -top-40 left-1/2 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-violet/20 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 right-0 h-[420px] w-[420px] translate-x-1/3 translate-y-1/3 rounded-full bg-teal/10 blur-[130px]" />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, white 1px, transparent 1px), linear-gradient(to bottom, white 1px, transparent 1px)",
+          backgroundSize: "56px 56px",
+        }}
+      />
 
+      {/* Nav */}
       <nav className="relative z-10 flex items-center justify-between px-6 py-6 md:px-12">
         <div className="flex items-center gap-2">
-          <span className="font-display text-xl font-bold tracking-tight text-white">
-            Aira<span className="text-gradient">lance!</span>
-          </span>
+          <span className="font-display text-2xl font-bold text-white">Airalance!</span>
         </div>
         <div className="flex items-center gap-3">
           <Link
@@ -39,13 +48,19 @@ export default async function Home() {
         </div>
       </nav>
 
-      <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 pt-20 text-center md:pt-28">
-        <div className="mb-8 flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-mist-light">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-teal" />
-          </span>
-          Real-time, end-to-end fast
+      {/* Hero */}
+      <section className="relative z-10 mx-auto flex max-w-5xl flex-col items-center px-6 pt-16 text-center md:pt-24">
+        <div className="mb-8 flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium text-mist-light backdrop-blur-sm">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="text-teal">
+            <path
+              d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path d="m9 12 2 2 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          End-to-end encrypted · Real-time
         </div>
 
         <h1 className="font-display text-5xl font-extrabold leading-[1.05] tracking-tight text-white md:text-7xl">
@@ -75,7 +90,67 @@ export default async function Home() {
           </Link>
         </div>
 
-        <div className="relative mt-24 flex h-56 w-56 items-center justify-center">
+        {/* Feature strip */}
+        <div className="mt-16 grid w-full max-w-3xl grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            {
+              title: "Private by design",
+              desc: "Your messages, your database, your rules.",
+              icon: (
+                <path
+                  d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3Z"
+                  stroke="url(#g1)"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              ),
+            },
+            {
+              title: "Real-time, always",
+              desc: "Messages land instantly, no delays.",
+              icon: (
+                <path
+                  d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"
+                  stroke="url(#g1)"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              ),
+            },
+            {
+              title: "Made to feel calm",
+              desc: "A quiet, distraction-free space to talk.",
+              icon: (
+                <path
+                  d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"
+                  stroke="url(#g1)"
+                  strokeWidth="1.6"
+                  strokeLinejoin="round"
+                />
+              ),
+            },
+          ].map((feature) => (
+            <div
+              key={feature.title}
+              className="glass rounded-2xl border border-white/5 px-5 py-6 text-left transition hover:border-white/10"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="mb-3">
+                {feature.icon}
+                <defs>
+                  <linearGradient id="g1" x1="3" y1="3" x2="21" y2="21">
+                    <stop stopColor="#9C82FF" />
+                    <stop offset="1" stopColor="#22D3B8" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <h3 className="font-display text-sm font-bold text-white">{feature.title}</h3>
+              <p className="mt-1 text-xs leading-relaxed text-mist">{feature.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Animated badge */}
+        <div className="relative mt-20 flex h-56 w-56 items-center justify-center">
           <span className="absolute h-full w-full animate-pulseRing rounded-full border border-violet/40" />
           <span
             className="absolute h-full w-full animate-pulseRing rounded-full border border-teal/30"
@@ -104,7 +179,7 @@ export default async function Home() {
         </div>
       </section>
 
-      <footer className="relative z-10 mt-24 px-6 pb-10 text-center text-xs text-mist/60">
+      <footer className="relative z-10 mt-20 border-t border-white/5 px-6 py-8 text-center text-xs text-mist/60">
         Copyright © 2026 by AiraThink! · All rights reserved.
       </footer>
     </main>
