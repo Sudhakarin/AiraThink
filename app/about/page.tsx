@@ -27,8 +27,12 @@ export default function AboutPage() {
 
         {/* Hero */}
         <div className="mt-6 flex items-center gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet to-violet-light font-display text-2xl font-bold text-white">
-            SM
+          <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl">
+            <img
+              src="https://ikmdqafwfdrnlproyuyx.supabase.co/storage/v1/object/public/news-media/073a41f2-eb03-44c0-8e0f-0c441e8635eb-1787293650120.jpeg"
+              alt="Sudhakar Mishra"
+              className="h-full w-full object-cover"
+            />
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">Sudhakar Mishra</h1>
