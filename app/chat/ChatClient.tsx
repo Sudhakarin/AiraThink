@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, Fragment, useMemo, type UIEvent } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToPush } from "@/lib/push";
@@ -3222,8 +3223,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         )}
       </section>
 
-      {showPublishModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center">
+      {showPublishModal && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" style={{ height: "100dvh" }}>
           <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-bold text-white">{editingArticleId ? "Edit article" : "Write article"}</h3>
@@ -3339,11 +3340,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {confirmDeleteId && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+      {confirmDeleteId && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6" style={{ height: "100dvh" }}>
           <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-900 p-5">
             <h3 className="font-display text-base font-bold text-white">Article delete karein?</h3>
             <p className="mt-2 text-sm text-mist">Ye action undo nahi ho sakta.</p>
@@ -3368,7 +3370,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
