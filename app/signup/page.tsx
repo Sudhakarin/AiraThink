@@ -13,6 +13,7 @@ export default function SignupPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
@@ -20,6 +21,12 @@ export default function SignupPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (!agreedToPolicy) {
+      setError("Please agree to the Privacy Policy to create an account.");
+      return;
+    }
+
     setLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
@@ -29,6 +36,7 @@ export default function SignupPage() {
         data: {
           username: username.trim().toLowerCase(),
           display_name: displayName.trim() || username.trim(),
+          privacy_accepted_at: new Date().toISOString(),
         },
       },
     });
@@ -128,14 +136,34 @@ export default function SignupPage() {
                 />
               </div>
 
+              <label className="flex items-start gap-2.5 text-xs text-mist">
+                <input
+                  type="checkbox"
+                  checked={agreedToPolicy}
+                  onChange={(e) => setAgreedToPolicy(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-ink-800 accent-violet"
+                />
+                <span>
+                  I agree to the{" "}
+                  <Link
+                    href="/privacy-policy"
+                    target="_blank"
+                    className="font-medium text-violet-light hover:underline"
+                  >
+                    Privacy Policy
+                  </Link>{" "}
+                  and consent to the collection and use of my information as described.
+                </span>
+              </label>
+
               {error && (
                 <p className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>
               )}
 
               <button
                 type="submit"
-                disabled={loading}
-                className="mt-2 rounded-xl bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
+                disabled={loading || !agreedToPolicy}
+                className="mt-2 rounded-xl bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {loading ? "Creating…" : "Create account"}
               </button>
