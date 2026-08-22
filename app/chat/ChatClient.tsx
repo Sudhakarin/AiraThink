@@ -119,7 +119,7 @@ const MAX_BIO_LENGTH = 160;
 const STATUS_DURATION_MS = 15000; // 15s per status (image/text), video statuses use actual clip duration
 const STATUS_MAX_VIDEO_MS = 30000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
-const STATUS_REPLY_PREFIX = "\u0000STATUS_REPLY\u0000";
+const STATUS_REPLY_PREFIX = "\u27E6STATUS_REPLY\u27E7";
 const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
@@ -1883,6 +1883,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   statuses.filter((s) => s.user_id !== myProfile.id).forEach((s) => { otherStatusesGrouped[s.user_id] = [...(otherStatusesGrouped[s.user_id] ?? []), s]; });
 
   const myStatusIdsKey = myStatuses.map((s) => s.id).join(",");
+  const myStatusIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => { myStatusIdsRef.current = new Set(myStatuses.map((s) => s.id)); }, [myStatusIdsKey]);
+
   useEffect(() => {
     if (myStatuses.length === 0) { setMyStatusViewCounts({}); return; }
     supabase.from("status_views").select("status_id").in("status_id", myStatuses.map((s) => s.id))
@@ -1892,6 +1895,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         setMyStatusViewCounts(counts);
       });
   }, [myStatusIdsKey, supabase]);
+
+  // Live-update "N views" the instant someone else views my status — no refresh needed,
+  // matches the WhatsApp/Instagram feel.
+  useEffect(() => {
+    const channel = supabase
+      .channel("status-views-live")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "status_views" }, (payload: any) => {
+        const row = payload.new;
+        if (!row || !myStatusIdsRef.current.has(row.status_id)) return;
+        setMyStatusViewCounts((prev) => ({ ...prev, [row.status_id]: (prev[row.status_id] || 0) + 1 }));
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [supabase]);
 
   const myTotalStatusViews = Object.values(myStatusViewCounts).reduce((a, b) => a + b, 0);
 
@@ -1968,13 +1985,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         sendPushNotification({ userId: status.user_id, title: myProfile.display_name, body: "❤️ liked your status", url: "/" });
       }
     }
-    if (statusViewersOpen) openStatusViewersList(status.id);
+    if (statusViewersOpen) fetchStatusViewers(status.id);
   }
 
-  async function openStatusViewersList(statusId: string) {
-    setStatusViewersOpen(true);
-    setStatusViewersLoading(true);
-    setStatusPaused(true); statusPausedRef.current = true;
+  async function fetchStatusViewers(statusId: string) {
     const [{ data: views }, { data: likes }] = await Promise.all([
       supabase.from("status_views").select("viewer_id, created_at, profile:profiles(*)").eq("status_id", statusId).order("created_at", { ascending: false }),
       supabase.from("status_likes").select("user_id").eq("status_id", statusId),
@@ -1983,8 +1997,28 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setStatusViewersList(
       (views ?? []).map((v: any) => ({ viewer_id: v.viewer_id, created_at: v.created_at, liked: likedSet.has(v.viewer_id), profile: v.profile as Profile }))
     );
+  }
+
+  async function openStatusViewersList(statusId: string) {
+    setStatusViewersOpen(true);
+    setStatusViewersLoading(true);
+    setStatusPaused(true); statusPausedRef.current = true;
+    await fetchStatusViewers(statusId);
     setStatusViewersLoading(false);
   }
+
+  // While the viewers sheet is open, live-refresh it the instant a new view/like comes
+  // in for that specific status — no need to close and reopen.
+  useEffect(() => {
+    if (!statusViewersOpen || !activeStatusItem) return;
+    const statusId = activeStatusItem.id;
+    const channel = supabase
+      .channel(`status-viewers-${statusId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "status_views", filter: `status_id=eq.${statusId}` }, () => fetchStatusViewers(statusId))
+      .on("postgres_changes", { event: "*", schema: "public", table: "status_likes", filter: `status_id=eq.${statusId}` }, () => fetchStatusViewers(statusId))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [statusViewersOpen, activeStatusItem?.id, supabase]);
 
   function closeStatusViewersList() {
     setStatusViewersOpen(false);
