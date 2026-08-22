@@ -87,7 +87,7 @@ type NewsArticle = {
   category: string;
   emoji: string;
   thumb_gradient: string;
-  image_url?: string | null;  // <-- NEW: Added image_url field
+  image_url?: string | null;
   source_url?: string | null;
   title: string;
   source: string;
@@ -116,7 +116,7 @@ const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
 const SWIPE_REPLY_MAX = 64;
 const MAX_BIO_LENGTH = 160;
-const STATUS_DURATION_MS = 15000; // 15s per status (image/text), video statuses use actual clip duration
+const STATUS_DURATION_MS = 15000;
 const STATUS_MAX_VIDEO_MS = 30000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
 const STATUS_REPLY_PREFIX = "\u27E6STATUS_REPLY\u27E7";
@@ -125,7 +125,7 @@ const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airalance-active-status";
-const EDIT_TIMEOUT_MS = 300000; // 5 minutes
+const EDIT_TIMEOUT_MS = 300000;
 
 const HOME_FEATURES = [
   { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
@@ -143,8 +143,6 @@ type StatusReplyPayload = {
   bgColor: string | null;
 };
 
-// Encodes a status reply into a normal message's `content` string so no schema change is
-// needed on the messages table. Format: \0STATUS_REPLY\0<base64 json payload>\0<reply text>
 function encodeStatusReply(status: Status, replyText: string): string {
   const payload: StatusReplyPayload = {
     statusId: status.id,
@@ -225,9 +223,6 @@ function formatDayLabel(iso: string) {
   return d.toLocaleDateString([], { day: "numeric", month: "short", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
 }
 
-// Deterministic "engagement" view count for a news article.
-// Same article always shows the same number (seeded from its id), so it
-// doesn't jump around on every re-render / refresh.
 function seededViewCount(id: string) {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
@@ -235,7 +230,6 @@ function seededViewCount(id: string) {
     hash |= 0;
   }
   const positive = Math.abs(hash);
-  // Range: ~800 to ~68,000 views
   return 800 + (positive % 67200);
 }
 
@@ -248,8 +242,6 @@ function formatViewCount(n: number) {
   return `${n} views`;
 }
 
-// Detects http(s)/www URLs inside plain text and renders them as clickable links,
-// leaving the rest of the text untouched.
 function linkifyText(text: string): React.ReactNode[] {
   const regex = /(https?:\/\/[^\s<]+[^\s<.,!?:;'")\]]|www\.[^\s<]+[^\s<.,!?:;'")\]])/gi;
   const nodes: React.ReactNode[] = [];
@@ -351,7 +343,6 @@ function Ticks({ read, className = "text-white" }: { read: boolean; className?: 
 }
 
 function TabIcon({ tab, active = false }: { tab: MobileTab; active?: boolean }) {
-  // Instagram-style: outline icon when inactive, solid/filled icon when active.
   if (tab === "home") return active ? (
     <svg width="21" height="21" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2.6 2.4 10.8a1 1 0 0 0 .65 1.76H4.5V20a1.5 1.5 0 0 0 1.5 1.5h4a1 1 0 0 0 1-1V15h2v5.5a1 1 0 0 0 1 1h4a1.5 1.5 0 0 0 1.5-1.5v-7.44h1.45a1 1 0 0 0 .65-1.76L12 2.6Z" />
@@ -593,9 +584,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const router = useRouter();
   useVisualViewportHeight();
 
-  // Modern browsers (Chrome, newer Safari) can natively resize the page
-  // content around the on-screen keyboard instead of just overlaying it,
-  // which is what keeps a WhatsApp-style composer glued above the keyboard.
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -1896,8 +1884,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       });
   }, [myStatusIdsKey, supabase]);
 
-  // Live-update "N views" the instant someone else views my status — no refresh needed,
-  // matches the WhatsApp/Instagram feel.
   useEffect(() => {
     const channel = supabase
       .channel("status-views-live")
@@ -2007,18 +1993,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setStatusViewersLoading(false);
   }
 
-  // While the viewers sheet is open, live-refresh it the instant a new view/like comes
-  // in for that specific status — no need to close and reopen.
+  const activeStatusListForEffects = statusViewerUserId ? (statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? []) : [];
+  const activeStatusIdForEffects = activeStatusListForEffects[statusViewerIndex]?.id ?? null;
+
   useEffect(() => {
-    if (!statusViewersOpen || !activeStatusItem) return;
-    const statusId = activeStatusItem.id;
+    if (!statusViewersOpen || !activeStatusIdForEffects) return;
+    const statusId = activeStatusIdForEffects;
     const channel = supabase
       .channel(`status-viewers-${statusId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "status_views", filter: `status_id=eq.${statusId}` }, () => fetchStatusViewers(statusId))
       .on("postgres_changes", { event: "*", schema: "public", table: "status_likes", filter: `status_id=eq.${statusId}` }, () => fetchStatusViewers(statusId))
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [statusViewersOpen, activeStatusItem?.id, supabase]);
+  }, [statusViewersOpen, activeStatusIdForEffects, supabase]);
 
   function closeStatusViewersList() {
     setStatusViewersOpen(false);
@@ -2026,36 +2013,95 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setStatusPaused(false); statusPausedRef.current = false;
   }
 
+  // ===== FIXED: sendStatusReply with proper connection check =====
   async function sendStatusReply(status: Status) {
     const text = statusReplyText.trim();
     if (!text || sendingStatusReply) return;
     setSendingStatusReply(true);
-    const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
-    const myIds = (mine ?? []).map((r: any) => r.conversation_id);
-    let convoId: string | null = null;
-    if (myIds.length > 0) {
-      const { data: theirs } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", status.user_id).in("conversation_id", myIds);
-      if (theirs && theirs.length > 0) convoId = theirs[0].conversation_id;
-    }
-    if (!convoId) {
+    
+    try {
+      // Check if a conversation exists between the two users
+      const { data: mine } = await supabase
+        .from("conversation_participants")
+        .select("conversation_id")
+        .eq("user_id", myProfile.id);
+      
+      const myIds = (mine ?? []).map((r: any) => r.conversation_id);
+      let convoId: string | null = null;
+      let isConnected = false;
+      
+      if (myIds.length > 0) {
+        const { data: theirs } = await supabase
+          .from("conversation_participants")
+          .select("conversation_id")
+          .eq("user_id", status.user_id)
+          .in("conversation_id", myIds);
+        if (theirs && theirs.length > 0) {
+          convoId = theirs[0].conversation_id;
+          isConnected = true;
+        }
+      }
+
+      // If NOT connected, show a connection request option instead
+      if (!isConnected) {
+        setSendingStatusReply(false);
+        setShowStatusReplyInput(false);
+        setStatusReplyText("");
+        
+        // Close status viewer and show connection popup
+        const statusOwner = statuses.find(s => s.id === status.id)?.profile;
+        if (statusOwner) {
+          closeStatusViewer();
+          // Show connect popup
+          setConnectPopupTarget(statusOwner);
+          setConnectPopupMode("ask");
+          setErrorMsg(`You need to connect with ${statusOwner.display_name} to reply to their status.`);
+        } else {
+          setErrorMsg("You need to be connected to reply to this status.");
+        }
+        return;
+      }
+
+      // If connected, send the reply
+      const content = encodeStatusReply(status, text);
+      const { error: msgError } = await supabase
+        .from("messages")
+        .insert({ 
+          conversation_id: convoId!, 
+          sender_id: myProfile.id, 
+          content, 
+          message_type: "text" 
+        });
+      
+      if (msgError) {
+        setSendingStatusReply(false);
+        setErrorMsg(msgError.message || "Failed to send reply. Please try again.");
+        return;
+      }
+
+      // Send push notification
+      sendPushNotification({ 
+        userId: status.user_id, 
+        title: myProfile.display_name, 
+        body: `Replied to your status: ${text}`, 
+        url: "/" 
+      });
+
+      // Reset state
       setSendingStatusReply(false);
-      setErrorMsg("You need to be connected with this person to reply to their status.");
-      return;
-    }
-    const content = encodeStatusReply(status, text);
-    const { error } = await supabase.from("messages").insert({ conversation_id: convoId, sender_id: myProfile.id, content, message_type: "text" });
-    if (error) {
+      setStatusReplyText("");
+      setShowStatusReplyInput(false);
+      
+      // Close status viewer and navigate to chat
+      const targetConvoId = convoId;
+      closeStatusViewer();
+      setActiveId(targetConvoId);
+      setMobileTab("chats");
+      
+    } catch (err: any) {
       setSendingStatusReply(false);
-      setErrorMsg("Failed to send reply. Please try again.");
-      return;
+      setErrorMsg(err.message || "Something went wrong. Please try again.");
     }
-    sendPushNotification({ userId: status.user_id, title: myProfile.display_name, body: `Replied to your status: ${text}`, url: "/" });
-    setSendingStatusReply(false);
-    setStatusReplyText(""); setShowStatusReplyInput(false);
-    const targetConvoId = convoId;
-    closeStatusViewer();
-    setActiveId(targetConvoId);
-    setMobileTab("chats");
   }
 
   function advanceStatus(dir: 1 | -1) {
@@ -2070,8 +2116,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   function pauseStatusTimer() { setStatusPaused(true); statusPausedRef.current = true; }
   function resumeStatusTimer() { setStatusPaused(false); statusPausedRef.current = false; }
 
-  // Called once the <video> tag for a video status reports its real duration, so the
-  // progress bar tracks the actual clip length (Instagram-style) instead of the flat 15s default.
   function handleStatusVideoMeta() {
     const el = statusVideoRef.current;
     if (!el || !isFinite(el.duration) || el.duration <= 0) return;
@@ -2198,6 +2242,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const activeStatusItem = activeStatusList[statusViewerIndex] ?? null;
   const activeStatusProfile = activeStatusItem?.profile ?? (statusViewerUserId === myProfile.id ? myProfile : active?.otherProfile) ?? null;
 
+  // Helper function to check if current user is connected to a specific user
+  const isConnectedTo = useCallback((userId: string) => {
+    return conversations.some(c => c.otherProfile?.id === userId);
+  }, [conversations]);
+
   return (
     <div
       className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
@@ -2229,15 +2278,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
 
-      {/* ============ NEW: ARTICLE READER MODAL ============ */}
+      {/* Article Reader Modal - same as before */}
       {activeArticle && (
         <div className="fixed inset-0 z-[100] flex flex-col bg-ink-900">
-          {/* Progress bar */}
           <div className="h-0.5 w-full bg-white/10">
             <div className="h-full bg-violet-light" style={{ width: `${readerProgress}%` }} />
           </div>
           
-          {/* Header */}
           <header className="flex items-center justify-between px-4 py-3 bg-ink-900/95 border-b border-white/5">
             <button 
               onClick={closeArticle} 
@@ -2281,7 +2328,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               )}
               <button 
                 onClick={() => {
-                  // Share article
                   if (navigator.share) {
                     navigator.share({
                       title: activeArticle.title,
@@ -2299,23 +2345,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
           </header>
           
-          {/* Article content */}
           <div 
             className="flex-1 overflow-y-auto px-6 py-8"
             onScroll={handleReaderScroll}
           >
             <div className="mx-auto max-w-2xl">
-              {/* Category badge */}
               <span className="inline-block rounded-full bg-violet/20 px-3 py-1 text-xs font-semibold text-violet-light">
                 {activeArticle.category}
               </span>
               
-              {/* Title */}
               <h1 className="mt-4 font-display text-2xl font-bold text-white leading-tight">
                 {activeArticle.title}
               </h1>
               
-              {/* Metadata */}
               <div className="mt-3 flex items-center gap-3 text-sm text-mist">
                 <span className="flex items-center">
                   {activeArticle.source}
@@ -2329,7 +2371,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <span className="text-teal">{formatViewCount(seededViewCount(activeArticle.id))}</span>
               </div>
               
-              {/* Feature image - NEW: Now shows actual image if available */}
               <div className="mt-6 h-48 w-full rounded-2xl overflow-hidden flex items-center justify-center bg-ink-800">
                 {activeArticle.image_url ? (
                   <img 
@@ -2347,14 +2388,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 )}
               </div>
               
-              {/* Body content */}
               <div className="mt-6 space-y-4 text-[15px] leading-relaxed text-white/80">
                 {activeArticle.body.map((paragraph, index) => (
                   <p key={index}>{linkifyText(paragraph)}</p>
                 ))}
               </div>
 
-              {/* Read full story link — RSS only provides a summary, full article is on the source site */}
               {activeArticle.source_url && (
                 <a
                   href={activeArticle.source_url}
@@ -2372,7 +2411,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         </div>
       )}
-      {/* ============ END ARTICLE READER MODAL ============ */}
 
       {/* Edit Message Modal */}
       {editingMessage && (
@@ -2719,7 +2757,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
           </div>
 
-          {/* Footer: own status → view count; others' status → reply + heart */}
+          {/* ===== FIXED: Footer with proper connection check ===== */}
           {activeStatusItem.user_id === myProfile.id ? (
             <button
               onClick={() => openStatusViewersList(activeStatusItem.id)}
@@ -2730,43 +2768,70 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </button>
           ) : (
             <div className="flex items-center gap-2 px-4 pb-4 pt-2" onPointerDown={pauseStatusTimer}>
-              {!showStatusReplyInput ? (
-                <button
-                  onClick={() => { setShowStatusReplyInput(true); pauseStatusTimer(); }}
-                  className="flex-1 rounded-full border border-white/30 px-4 py-2.5 text-left text-sm text-white/70"
-                >
-                  Reply to status…
-                </button>
-              ) : (
-                <form
-                  onSubmit={(e) => { e.preventDefault(); sendStatusReply(activeStatusItem); }}
-                  className="flex flex-1 items-center gap-2"
-                >
-                  <input
-                    autoFocus
-                    value={statusReplyText}
-                    onChange={(e) => setStatusReplyText(e.target.value)}
-                    onBlur={() => { if (!statusReplyText.trim()) { setShowStatusReplyInput(false); resumeStatusTimer(); } }}
-                    placeholder="Reply to status…"
-                    className="flex-1 rounded-full border border-white/30 bg-transparent px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={!statusReplyText.trim() || sendingStatusReply}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet text-white disabled:opacity-40"
-                    aria-label="Send reply"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 6l6 6-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </button>
-                </form>
-              )}
-              <button
-                onClick={() => toggleStatusLike(activeStatusItem)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl transition active:scale-90"
-                aria-label={myLikedStatusIds.has(activeStatusItem.id) ? "Unlike status" : "Like status"}
-              >
-                {myLikedStatusIds.has(activeStatusItem.id) ? "❤️" : "🤍"}
-              </button>
+              {(() => {
+                // Check if connected
+                const connected = isConnectedTo(activeStatusItem.user_id);
+                
+                if (!connected) {
+                  return (
+                    <button
+                      onClick={() => {
+                        const statusOwner = statuses.find(s => s.id === activeStatusItem.id)?.profile;
+                        if (statusOwner) {
+                          closeStatusViewer();
+                          setConnectPopupTarget(statusOwner);
+                          setConnectPopupMode("ask");
+                        }
+                      }}
+                      className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
+                    >
+                      Connect to reply
+                    </button>
+                  );
+                }
+                
+                return (
+                  <>
+                    {!showStatusReplyInput ? (
+                      <button
+                        onClick={() => { setShowStatusReplyInput(true); pauseStatusTimer(); }}
+                        className="flex-1 rounded-full border border-white/30 px-4 py-2.5 text-left text-sm text-white/70"
+                      >
+                        Reply to status…
+                      </button>
+                    ) : (
+                      <form
+                        onSubmit={(e) => { e.preventDefault(); sendStatusReply(activeStatusItem); }}
+                        className="flex flex-1 items-center gap-2"
+                      >
+                        <input
+                          autoFocus
+                          value={statusReplyText}
+                          onChange={(e) => setStatusReplyText(e.target.value)}
+                          onBlur={() => { if (!statusReplyText.trim()) { setShowStatusReplyInput(false); resumeStatusTimer(); } }}
+                          placeholder="Reply to status…"
+                          className="flex-1 rounded-full border border-white/30 bg-transparent px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none"
+                        />
+                        <button
+                          type="submit"
+                          disabled={!statusReplyText.trim() || sendingStatusReply}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet text-white disabled:opacity-40"
+                          aria-label="Send reply"
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 6l6 6-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        </button>
+                      </form>
+                    )}
+                    <button
+                      onClick={() => toggleStatusLike(activeStatusItem)}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl transition active:scale-90"
+                      aria-label={myLikedStatusIds.has(activeStatusItem.id) ? "Unlike status" : "Like status"}
+                    >
+                      {myLikedStatusIds.has(activeStatusItem.id) ? "❤️" : "🤍"}
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -2953,13 +3018,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   const rest = filteredNews.filter((a) => a.id !== featured.id);
                   return (
                         <>
-                          {/* ============ UPDATED: Featured Article with image support ============ */}
                           <button
                             onClick={() => openArticle(featured)}
                             className="relative mb-3 block h-42 w-full overflow-hidden rounded-2xl border border-white/10 text-left"
                             style={{ height: 168 }}
                           >
-                            {/* Background image or gradient */}
                             {featured.image_url ? (
                               <img 
                                 src={featured.image_url} 
@@ -2985,7 +3048,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             </div>
                           </button>
 
-                          {/* ============ UPDATED: Regular articles with image support ============ */}
                           <div className="flex flex-col">
                             {rest.map((article) => (
                               <button
@@ -2993,7 +3055,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 onClick={() => openArticle(article)}
                                 className="flex items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition hover:bg-white/5"
                               >
-                                {/* Thumbnail - now shows image if available */}
                                 {article.image_url ? (
                                   <img 
                                     src={article.image_url} 
@@ -3187,7 +3248,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-              {/* Active Status Switch */}
               <div className="glass mt-6 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
