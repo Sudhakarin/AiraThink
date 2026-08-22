@@ -2288,13 +2288,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         height: "var(--app-height, 100dvh)",
         transform: "translateY(var(--app-offset-top, 0px))",
         overscrollBehavior: "none",
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif",
+        fontFamily: "var(--app-font, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif)",
         WebkitFontSmoothing: "antialiased",
-      }}
+        textSizeAdjust: "100%",
+        WebkitTextSizeAdjust: "100%",
+      } as React.CSSProperties}
     >
       <style>{`
         html, body {
           overscroll-behavior: none;
+          -webkit-text-size-adjust: 100%;
+          text-size-adjust: 100%;
+        }
+        * {
+          -webkit-tap-highlight-color: transparent;
+        }
+        svg {
+          shape-rendering: geometricPrecision;
         }
         @keyframes typingDot {
           0%, 60%, 100% { opacity: 0.25; transform: translateY(0px); }
