@@ -48,10 +48,18 @@ type Status = {
   id: string;
   user_id: string;
   media_url: string | null;
+  media_type?: "image" | "video" | "text" | null;
   text_content: string | null;
   bg_color: string | null;
   created_at: string;
   expires_at: string;
+  profile?: Profile;
+};
+
+type StatusViewer = {
+  viewer_id: string;
+  created_at: string;
+  liked: boolean;
   profile?: Profile;
 };
 
@@ -108,8 +116,10 @@ const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
 const SWIPE_REPLY_MAX = 64;
 const MAX_BIO_LENGTH = 160;
-const STATUS_DURATION_MS = 5000;
+const STATUS_DURATION_MS = 15000; // 15s per status (image/text), video statuses use actual clip duration
+const STATUS_MAX_VIDEO_MS = 30000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
+const STATUS_REPLY_PREFIX = "\u0000STATUS_REPLY\u0000";
 const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
@@ -124,6 +134,48 @@ const HOME_FEATURES = [
   { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
   { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
 ];
+
+type StatusReplyPayload = {
+  statusId: string;
+  mediaUrl: string | null;
+  mediaType: string | null;
+  textContent: string | null;
+  bgColor: string | null;
+};
+
+// Encodes a status reply into a normal message's `content` string so no schema change is
+// needed on the messages table. Format: \0STATUS_REPLY\0<base64 json payload>\0<reply text>
+function encodeStatusReply(status: Status, replyText: string): string {
+  const payload: StatusReplyPayload = {
+    statusId: status.id,
+    mediaUrl: status.media_url,
+    mediaType: status.media_type ?? (status.media_url ? "image" : "text"),
+    textContent: status.text_content,
+    bgColor: status.bg_color,
+  };
+  let encoded = "";
+  try {
+    encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+  } catch {
+    encoded = "";
+  }
+  return `${STATUS_REPLY_PREFIX}${encoded}${STATUS_REPLY_PREFIX}${replyText}`;
+}
+
+function decodeStatusReply(content: string | null | undefined): { payload: StatusReplyPayload; text: string } | null {
+  if (!content || !content.startsWith(STATUS_REPLY_PREFIX)) return null;
+  const rest = content.slice(STATUS_REPLY_PREFIX.length);
+  const sepIdx = rest.indexOf(STATUS_REPLY_PREFIX);
+  if (sepIdx === -1) return null;
+  const encoded = rest.slice(0, sepIdx);
+  const text = rest.slice(sepIdx + STATUS_REPLY_PREFIX.length);
+  try {
+    const payload = JSON.parse(decodeURIComponent(atob(encoded))) as StatusReplyPayload;
+    return { payload, text };
+  } catch {
+    return null;
+  }
+}
 
 function sendPushNotification(opts: { userId?: string | null; title: string; body: string; url?: string }) {
   if (!opts.userId) return;
@@ -660,6 +712,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [textStatusColor, setTextStatusColor] = useState(STATUS_COLORS[0]);
   const statusFileInputRef = useRef<HTMLInputElement>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [myLikedStatusIds, setMyLikedStatusIds] = useState<Set<string>>(new Set());
+  const [myStatusViewCounts, setMyStatusViewCounts] = useState<Record<string, number>>({});
+  const [statusProgress, setStatusProgress] = useState(0);
+  const [statusPaused, setStatusPaused] = useState(false);
+  const statusPausedRef = useRef(false);
+  const statusDurationRef = useRef(STATUS_DURATION_MS);
+  const statusElapsedRef = useRef(0);
+  const statusFrameStartRef = useRef(0);
+  const statusRafRef = useRef<number | null>(null);
+  const [showStatusReplyInput, setShowStatusReplyInput] = useState(false);
+  const [statusReplyText, setStatusReplyText] = useState("");
+  const [sendingStatusReply, setSendingStatusReply] = useState(false);
+  const [statusViewersOpen, setStatusViewersOpen] = useState(false);
+  const [statusViewersList, setStatusViewersList] = useState<StatusViewer[]>([]);
+  const [statusViewersLoading, setStatusViewersLoading] = useState(false);
+  const statusVideoRef = useRef<HTMLVideoElement>(null);
 
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
@@ -741,6 +809,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (m.is_deleted) return "This message was deleted";
       if (m.message_type === "image") return "📷 Photo";
       if (m.message_type === "voice") return "🎤 Voice message";
+      const statusReply = decodeStatusReply(m.content);
+      if (statusReply) return `↩️ Replied to status: ${statusReply.text}`;
       return m.content;
     };
 
@@ -1803,9 +1873,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .then(({ data }) => setMyViewedStatusIds(new Set((data ?? []).map((r: any) => r.status_id))));
   }, [myProfile.id, supabase, statuses.length]);
 
+  useEffect(() => {
+    supabase.from("status_likes").select("status_id").eq("user_id", myProfile.id)
+      .then(({ data }) => setMyLikedStatusIds(new Set((data ?? []).map((r: any) => r.status_id))));
+  }, [myProfile.id, supabase, statuses.length]);
+
   const myStatuses = statuses.filter((s) => s.user_id === myProfile.id);
   const otherStatusesGrouped: Record<string, Status[]> = {};
   statuses.filter((s) => s.user_id !== myProfile.id).forEach((s) => { otherStatusesGrouped[s.user_id] = [...(otherStatusesGrouped[s.user_id] ?? []), s]; });
+
+  const myStatusIdsKey = myStatuses.map((s) => s.id).join(",");
+  useEffect(() => {
+    if (myStatuses.length === 0) { setMyStatusViewCounts({}); return; }
+    supabase.from("status_views").select("status_id").in("status_id", myStatuses.map((s) => s.id))
+      .then(({ data }) => {
+        const counts: Record<string, number> = {};
+        (data ?? []).forEach((r: any) => { counts[r.status_id] = (counts[r.status_id] || 0) + 1; });
+        setMyStatusViewCounts(counts);
+      });
+  }, [myStatusIdsKey, supabase]);
+
+  const myTotalStatusViews = Object.values(myStatusViewCounts).reduce((a, b) => a + b, 0);
 
   function statusRingPropsFor(userId: string) {
     const list = userId === myProfile.id ? myStatuses : otherStatusesGrouped[userId] ?? [];
@@ -1823,12 +1911,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function handleStatusFilePick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]; e.target.value = "";
     if (!file) return;
-    if (file.size > MAX_IMAGE_BYTES) {
-      setErrorMsg("Image is too large. Maximum size is 8 MB.");
+    const isVideo = file.type.startsWith("video/");
+    if (file.size > (isVideo ? MAX_IMAGE_BYTES * 4 : MAX_IMAGE_BYTES)) {
+      setErrorMsg(isVideo ? "Video is too large. Maximum size is 32 MB." : "Image is too large. Maximum size is 8 MB.");
       return;
     }
     setUploadingStatus(true);
-    const ext = file.name.split(".").pop() ?? "jpg";
+    const ext = file.name.split(".").pop() ?? (isVideo ? "mp4" : "jpg");
     const path = `${myProfile.id}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type || undefined });
     if (uploadError) {
@@ -1837,14 +1926,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return;
     }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl });
+    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl, media_type: isVideo ? "video" : "image" });
     if (error) { setErrorMsg("Failed to post status. Please try again."); }
     setUploadingStatus(false); loadStatuses();
   }
 
   async function postTextStatus() {
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
-    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor });
+    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor, media_type: "text" });
     if (error) { setErrorMsg("Failed to post status. Please try again."); return; }
     setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses();
   }
@@ -1855,7 +1944,85 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   function openStatusViewer(userId: string) { setStatusViewerUserId(userId); setStatusViewerIndex(0); }
-  function closeStatusViewer() { if (statusTimerRef.current) clearTimeout(statusTimerRef.current); setStatusViewerUserId(null); setStatusViewerIndex(0); }
+  function closeStatusViewer() {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+    if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current);
+    setStatusViewerUserId(null); setStatusViewerIndex(0);
+    setShowStatusReplyInput(false); setStatusReplyText("");
+    setStatusViewersOpen(false); setStatusViewersList([]);
+    setStatusPaused(false); statusPausedRef.current = false;
+  }
+
+  async function toggleStatusLike(status: Status) {
+    const alreadyLiked = myLikedStatusIds.has(status.id);
+    setMyLikedStatusIds((prev) => {
+      const next = new Set(prev);
+      if (alreadyLiked) next.delete(status.id); else next.add(status.id);
+      return next;
+    });
+    if (alreadyLiked) {
+      await supabase.from("status_likes").delete().eq("status_id", status.id).eq("user_id", myProfile.id);
+    } else {
+      await supabase.from("status_likes").insert({ status_id: status.id, user_id: myProfile.id });
+      if (status.user_id !== myProfile.id) {
+        sendPushNotification({ userId: status.user_id, title: myProfile.display_name, body: "❤️ liked your status", url: "/" });
+      }
+    }
+    if (statusViewersOpen) openStatusViewersList(status.id);
+  }
+
+  async function openStatusViewersList(statusId: string) {
+    setStatusViewersOpen(true);
+    setStatusViewersLoading(true);
+    setStatusPaused(true); statusPausedRef.current = true;
+    const [{ data: views }, { data: likes }] = await Promise.all([
+      supabase.from("status_views").select("viewer_id, created_at, profile:profiles(*)").eq("status_id", statusId).order("created_at", { ascending: false }),
+      supabase.from("status_likes").select("user_id").eq("status_id", statusId),
+    ]);
+    const likedSet = new Set((likes ?? []).map((l: any) => l.user_id));
+    setStatusViewersList(
+      (views ?? []).map((v: any) => ({ viewer_id: v.viewer_id, created_at: v.created_at, liked: likedSet.has(v.viewer_id), profile: v.profile as Profile }))
+    );
+    setStatusViewersLoading(false);
+  }
+
+  function closeStatusViewersList() {
+    setStatusViewersOpen(false);
+    setStatusViewersList([]);
+    setStatusPaused(false); statusPausedRef.current = false;
+  }
+
+  async function sendStatusReply(status: Status) {
+    const text = statusReplyText.trim();
+    if (!text || sendingStatusReply) return;
+    setSendingStatusReply(true);
+    const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
+    const myIds = (mine ?? []).map((r: any) => r.conversation_id);
+    let convoId: string | null = null;
+    if (myIds.length > 0) {
+      const { data: theirs } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", status.user_id).in("conversation_id", myIds);
+      if (theirs && theirs.length > 0) convoId = theirs[0].conversation_id;
+    }
+    if (!convoId) {
+      setSendingStatusReply(false);
+      setErrorMsg("You need to be connected with this person to reply to their status.");
+      return;
+    }
+    const content = encodeStatusReply(status, text);
+    const { error } = await supabase.from("messages").insert({ conversation_id: convoId, sender_id: myProfile.id, content, message_type: "text" });
+    if (error) {
+      setSendingStatusReply(false);
+      setErrorMsg("Failed to send reply. Please try again.");
+      return;
+    }
+    sendPushNotification({ userId: status.user_id, title: myProfile.display_name, body: `Replied to your status: ${text}`, url: "/" });
+    setSendingStatusReply(false);
+    setStatusReplyText(""); setShowStatusReplyInput(false);
+    const targetConvoId = convoId;
+    closeStatusViewer();
+    setActiveId(targetConvoId);
+    setMobileTab("chats");
+  }
 
   function advanceStatus(dir: 1 | -1) {
     if (!statusViewerUserId) return;
@@ -1866,15 +2033,51 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setStatusViewerIndex(next);
   }
 
+  function pauseStatusTimer() { setStatusPaused(true); statusPausedRef.current = true; }
+  function resumeStatusTimer() { setStatusPaused(false); statusPausedRef.current = false; }
+
+  // Called once the <video> tag for a video status reports its real duration, so the
+  // progress bar tracks the actual clip length (Instagram-style) instead of the flat 15s default.
+  function handleStatusVideoMeta() {
+    const el = statusVideoRef.current;
+    if (!el || !isFinite(el.duration) || el.duration <= 0) return;
+    const ms = Math.min(el.duration * 1000, STATUS_MAX_VIDEO_MS);
+    statusDurationRef.current = ms;
+    statusElapsedRef.current = 0;
+    statusFrameStartRef.current = performance.now();
+    setStatusProgress(0);
+  }
+
   useEffect(() => {
     if (!statusViewerUserId) return;
     const list = statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? [];
     const current = list[statusViewerIndex];
     if (!current) { closeStatusViewer(); return; }
     markStatusViewed(current.id);
-    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
-    statusTimerRef.current = setTimeout(() => { advanceStatus(1); }, STATUS_DURATION_MS);
-    return () => { if (statusTimerRef.current) clearTimeout(statusTimerRef.current); };
+    setShowStatusReplyInput(false); setStatusReplyText("");
+
+    const isVideo = current.media_type === "video";
+    statusDurationRef.current = isVideo ? STATUS_MAX_VIDEO_MS : STATUS_DURATION_MS;
+    statusElapsedRef.current = 0;
+    statusFrameStartRef.current = performance.now();
+    setStatusProgress(0);
+    setStatusPaused(false); statusPausedRef.current = false;
+
+    if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current);
+    const tick = (now: number) => {
+      if (statusPausedRef.current) {
+        statusFrameStartRef.current = now;
+      } else {
+        statusElapsedRef.current += now - statusFrameStartRef.current;
+        statusFrameStartRef.current = now;
+        const pct = Math.min(100, (statusElapsedRef.current / statusDurationRef.current) * 100);
+        setStatusProgress(pct);
+        if (pct >= 100) { advanceStatus(1); return; }
+      }
+      statusRafRef.current = requestAnimationFrame(tick);
+    };
+    statusRafRef.current = requestAnimationFrame(tick);
+    return () => { if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current); };
   }, [statusViewerUserId, statusViewerIndex, statuses]);
 
   async function startCall() {
@@ -1931,6 +2134,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (m.is_deleted) return "This message was deleted";
     if (m.message_type === "image") return "📷 Photo"; 
     if (m.message_type === "voice") return "🎤 Voice message"; 
+    const statusReply = decodeStatusReply(m.content);
+    if (statusReply) return `↩️ Replied to status: ${statusReply.text}`;
     return m.content; 
   }
 
@@ -2214,7 +2419,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 searchResultsMessages.map(msg => (
                   <div key={msg.id} className="rounded-lg p-3 text-sm hover:bg-white/5">
                     <p className={msg.is_deleted ? 'text-mist italic' : 'text-white'}>
-                      {msg.is_deleted ? 'This message was deleted' : msg.content}
+                      {msg.is_deleted ? 'This message was deleted' : (decodeStatusReply(msg.content)?.text ?? msg.content)}
                     </p>
                     <p className="mt-1 text-xs text-mist">
                       {new Date(msg.created_at).toLocaleString()}
@@ -2419,7 +2624,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           <div className="flex gap-1 px-3 pt-3">
             {activeStatusList.map((s, i) => (
               <div key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/30">
-                <div className="h-full bg-white" style={{ width: i <= statusViewerIndex ? "100%" : "0%" }} />
+                <div
+                  className="h-full bg-white"
+                  style={{
+                    width: i < statusViewerIndex ? "100%" : i > statusViewerIndex ? "0%" : `${statusProgress}%`,
+                  }}
+                />
               </div>
             ))}
           </div>
@@ -2438,15 +2648,124 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <button onClick={closeStatusViewer} className="px-2 text-xl leading-none text-white" aria-label="Close">✕</button>
           </div>
           <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-            <button className="absolute left-0 top-0 z-10 h-full w-1/3" onClick={() => advanceStatus(-1)} aria-label="Previous status" />
-            <button className="absolute right-0 top-0 z-10 h-full w-1/3" onClick={() => advanceStatus(1)} aria-label="Next status" />
-            {activeStatusItem.media_url ? (
+            <button
+              className="absolute left-0 top-0 z-10 h-full w-1/3"
+              onClick={() => advanceStatus(-1)}
+              onPointerDown={pauseStatusTimer}
+              onPointerUp={resumeStatusTimer}
+              onPointerLeave={resumeStatusTimer}
+              aria-label="Previous status"
+            />
+            <button
+              className="absolute right-0 top-0 z-10 h-full w-1/3"
+              onClick={() => advanceStatus(1)}
+              onPointerDown={pauseStatusTimer}
+              onPointerUp={resumeStatusTimer}
+              onPointerLeave={resumeStatusTimer}
+              aria-label="Next status"
+            />
+            {activeStatusItem.media_type === "video" && activeStatusItem.media_url ? (
+              <video
+                ref={statusVideoRef}
+                key={activeStatusItem.id}
+                src={activeStatusItem.media_url}
+                className="max-h-full max-w-full object-contain"
+                autoPlay
+                playsInline
+                muted={false}
+                onLoadedMetadata={handleStatusVideoMeta}
+                onEnded={() => advanceStatus(1)}
+              />
+            ) : activeStatusItem.media_url ? (
               <img src={activeStatusItem.media_url} alt="Status" className="max-h-full max-w-full object-contain" />
             ) : (
               <div className="flex h-full w-full items-center justify-center p-8" style={{ background: activeStatusItem.bg_color ?? "#7C5CFF" }}>
                 <p className="break-words text-center text-2xl font-semibold text-white">{activeStatusItem.text_content}</p>
               </div>
             )}
+          </div>
+
+          {/* Footer: own status → view count; others' status → reply + heart */}
+          {activeStatusItem.user_id === myProfile.id ? (
+            <button
+              onClick={() => openStatusViewersList(activeStatusItem.id)}
+              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-white/80 transition hover:text-white"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
+              {myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 px-4 pb-4 pt-2" onPointerDown={pauseStatusTimer}>
+              {!showStatusReplyInput ? (
+                <button
+                  onClick={() => { setShowStatusReplyInput(true); pauseStatusTimer(); }}
+                  className="flex-1 rounded-full border border-white/30 px-4 py-2.5 text-left text-sm text-white/70"
+                >
+                  Reply to status…
+                </button>
+              ) : (
+                <form
+                  onSubmit={(e) => { e.preventDefault(); sendStatusReply(activeStatusItem); }}
+                  className="flex flex-1 items-center gap-2"
+                >
+                  <input
+                    autoFocus
+                    value={statusReplyText}
+                    onChange={(e) => setStatusReplyText(e.target.value)}
+                    onBlur={() => { if (!statusReplyText.trim()) { setShowStatusReplyInput(false); resumeStatusTimer(); } }}
+                    placeholder="Reply to status…"
+                    className="flex-1 rounded-full border border-white/30 bg-transparent px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!statusReplyText.trim() || sendingStatusReply}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet text-white disabled:opacity-40"
+                    aria-label="Send reply"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 6l6 6-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </button>
+                </form>
+              )}
+              <button
+                onClick={() => toggleStatusLike(activeStatusItem)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl transition active:scale-90"
+                aria-label={myLikedStatusIds.has(activeStatusItem.id) ? "Unlike status" : "Like status"}
+              >
+                {myLikedStatusIds.has(activeStatusItem.id) ? "❤️" : "🤍"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {statusViewersOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60" onClick={closeStatusViewersList}>
+          <div className="w-full max-w-md rounded-t-2xl bg-ink-900 pb-6 pt-3" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
+            <p className="px-5 pb-2 text-sm font-semibold text-white">
+              {statusViewersList.length} {statusViewersList.length === 1 ? "view" : "views"}
+            </p>
+            <div className="max-h-80 overflow-y-auto px-2">
+              {statusViewersLoading ? (
+                <p className="px-3 py-6 text-center text-sm text-mist">Loading…</p>
+              ) : statusViewersList.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-mist">No views yet.</p>
+              ) : (
+                statusViewersList.map((v) => (
+                  <div key={v.viewer_id} className="flex items-center gap-3 rounded-xl px-3 py-2.5">
+                    <Avatar name={v.profile?.display_name ?? "Unknown"} color={v.profile?.avatar_color ?? "#7C5CFF"} avatarUrl={v.profile?.avatar_url} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <p className="flex items-center truncate text-sm font-medium text-white">
+                        <span className="truncate">{v.profile?.display_name ?? "Unknown"}</span>
+                        {isVerified(v.profile?.username) && <VerifiedBadge />}
+                      </p>
+                      <p className="text-xs text-mist">{formatLastSeen(v.created_at)}</p>
+                    </div>
+                    {v.liked && <span className="text-lg" aria-label="Liked">❤️</span>}
+                  </div>
+                ))
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2678,7 +2997,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
           {mobileTab === "status" && (
             <div className="px-2 pb-4">
-              <input ref={statusFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleStatusFilePick} />
+              <input ref={statusFileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleStatusFilePick} />
               <div className="flex items-center gap-3 px-3 py-3">
                 <div className="relative">
                   {myStatuses.length > 0 ? (
@@ -2696,7 +3015,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
                 <button onClick={() => (myStatuses.length > 0 ? openStatusViewer(myProfile.id) : setShowTextStatusComposer(true))} className="flex-1 text-left">
                   <p className="text-base font-semibold text-white">My Status</p>
-                  <p className="text-sm text-mist">{uploadingStatus ? "Uploading…" : myStatuses.length > 0 ? "Tap to view" : "Tap to add a status update"}</p>
+                  <p className="text-sm text-mist">
+                    {uploadingStatus
+                      ? "Uploading…"
+                      : myStatuses.length > 0
+                        ? `Tap to view · 👁 ${myTotalStatusViews} ${myTotalStatusViews === 1 ? "view" : "views"}`
+                        : "Tap to add a status update"}
+                  </p>
                 </button>
                 <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
               </div>
@@ -3037,6 +3362,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const isImage = m.message_type === "image" && !!m.media_url;
                 const isVoice = m.message_type === "voice" && !!m.media_url;
                 const quoted = messageById(m.reply_to_id);
+                const statusReply = !isImage && !isVoice ? decodeStatusReply(m.content) : null;
                 const isSwiping = swipeState?.id === m.id;
                 const translateX = isSwiping ? swipeState!.dx : 0;
                 const prevMsg = messages[idx - 1];
@@ -3119,6 +3445,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
                               </div>
                             )}
+                            {statusReply && (
+                              <div className="mb-1.5 flex items-center gap-2 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1.5 text-xs">
+                                {statusReply.payload.mediaType === "image" && statusReply.payload.mediaUrl ? (
+                                  <img src={statusReply.payload.mediaUrl} alt="Status" className="h-9 w-9 shrink-0 rounded-md object-cover" />
+                                ) : statusReply.payload.mediaType === "video" && statusReply.payload.mediaUrl ? (
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black/40 text-[10px]">▶️</div>
+                                ) : (
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[9px] text-white/90" style={{ background: statusReply.payload.bgColor ?? "#7C5CFF" }}>
+                                    <span className="line-clamp-3 px-0.5 text-center leading-tight">{statusReply.payload.textContent}</span>
+                                  </div>
+                                )}
+                                <p className="text-white/70">↩️ Replied to {mine ? "their" : "your"} status</p>
+                              </div>
+                            )}
                             {isDeleted ? (
                               <p className="text-sm italic text-mist">This message was deleted</p>
                             ) : isImage ? (
@@ -3132,7 +3472,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                               />
                             ) : (
                               <p className="whitespace-pre-wrap break-words text-white">
-                                {linkifyText(m.content)}
+                                {linkifyText(statusReply ? statusReply.text : m.content)}
                                 {m.edited_at && <span className="ml-1 text-[10px] text-mist">(edited)</span>}
                                 {m.is_forwarded && <span className="ml-1 text-[10px] text-mist">↪ forwarded</span>}
                               </p>
