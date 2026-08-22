@@ -580,7 +580,12 @@ function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => voi
 }
 
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
-  const supabase = createClient();
+  // Memoized so the Supabase client keeps a stable identity across re-renders.
+  // Without this, every render created a brand-new client, which made every
+  // effect depending on `supabase` (including presence tracking) tear down
+  // and re-subscribe constantly — the real cause of "Active Status" toggling
+  // off but still showing online a moment later.
+  const supabase = useMemo(() => createClient(), []);
   const router = useRouter();
   useVisualViewportHeight();
 
