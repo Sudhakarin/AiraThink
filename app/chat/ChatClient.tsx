@@ -1042,23 +1042,48 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { supabase.removeChannel(channel); };
   }, [myProfile.id, supabase, loadConversations]);
 
+  const presenceChannelRef = useRef<any>(null);
+  const presenceSubscribedRef = useRef(false);
+
   useEffect(() => {
     const channel = supabase.channel("presence:online", { config: { presence: { key: myProfile.id } } });
+    presenceChannelRef.current = channel;
     channel.on("presence", { event: "sync" }, () => {
       const state = channel.presenceState();
       setOnlineIds(new Set(Object.keys(state)));
-    }).subscribe(async (status) => {
-      if (status === "SUBSCRIBED" && activeStatusOn) await channel.track({ online_at: new Date().toISOString() });
+    }).subscribe(async (status: string) => {
+      if (status === "SUBSCRIBED") {
+        presenceSubscribedRef.current = true;
+        if (activeStatusOn) await channel.track({ online_at: new Date().toISOString() });
+      }
     });
-    return () => { supabase.removeChannel(channel); };
-  }, [myProfile.id, supabase, activeStatusOn]);
+    return () => {
+      presenceSubscribedRef.current = false;
+      supabase.removeChannel(channel);
+      presenceChannelRef.current = null;
+    };
+    // Intentionally NOT depending on activeStatusOn — toggling it should track/untrack on
+    // the existing channel (see effect below), not tear down and recreate the channel,
+    // which caused a race where other users kept seeing us as online after turning it off.
+  }, [myProfile.id, supabase]);
 
   useEffect(() => {
+    const channel = presenceChannelRef.current;
+    if (!channel || !presenceSubscribedRef.current) return;
+    if (activeStatusOn) {
+      channel.track({ online_at: new Date().toISOString() });
+    } else {
+      channel.untrack();
+    }
+  }, [activeStatusOn]);
+
+  useEffect(() => {
+    if (!activeStatusOn) return;
     const update = () => { supabase.from("profiles").update({ last_seen: new Date().toISOString() }).eq("id", myProfile.id).then(() => {}); };
     update();
     const interval = setInterval(update, 20000);
     return () => clearInterval(interval);
-  }, [myProfile.id, supabase]);
+  }, [myProfile.id, supabase, activeStatusOn]);
 
   useEffect(() => {
     const otherId = active?.otherProfile?.id;
