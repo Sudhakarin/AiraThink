@@ -323,7 +323,14 @@ function Avatar({ name, color, size = 40, online = false, avatarUrl }: {
 function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewed: boolean; children: React.ReactNode }) {
   if (!hasStatus) return <>{children}</>;
   return (
-    <div className="rounded-full p-[2px]" style={{ background: viewed ? "#4B5563" : "linear-gradient(45deg, #7C5CFF, #22D3B8)" }}>
+    <div
+      className="rounded-full p-[2.5px] transition-transform duration-150 ease-out active:scale-95"
+      style={{
+        background: viewed
+          ? "#3F4552"
+          : "conic-gradient(from 220deg, #7C5CFF, #22D3B8, #7C5CFF)",
+      }}
+    >
       <div className="rounded-full bg-ink-900 p-[2px]">{children}</div>
     </div>
   );
@@ -721,6 +728,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [statusViewersList, setStatusViewersList] = useState<StatusViewer[]>([]);
   const [statusViewersLoading, setStatusViewersLoading] = useState(false);
   const statusVideoRef = useRef<HTMLVideoElement>(null);
+  const [statusVideoMuted, setStatusVideoMuted] = useState(true);
+  const [statusDragY, setStatusDragY] = useState(0);
+  const statusDragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [statusClosing, setStatusClosing] = useState(false);
+  const [statusEntering, setStatusEntering] = useState(false);
+  const [statusHeartBurst, setStatusHeartBurst] = useState(false);
+  const statusLastTapRef = useRef(0);
+  const [statusMediaLoading, setStatusMediaLoading] = useState(false);
 
   const [callStatus, setCallStatus] = useState<CallStatus>("idle");
   const [callPeer, setCallPeer] = useState<Profile | null>(null);
@@ -1976,14 +1991,59 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     closeStatusViewer(); loadStatuses();
   }
 
-  function openStatusViewer(userId: string) { setStatusViewerUserId(userId); setStatusViewerIndex(0); }
+  function openStatusViewer(userId: string) {
+    setStatusViewerUserId(userId);
+    setStatusViewerIndex(0);
+    setStatusDragY(0);
+    setStatusClosing(false);
+    setStatusEntering(true);
+    requestAnimationFrame(() => requestAnimationFrame(() => setStatusEntering(false)));
+  }
   function closeStatusViewer() {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current);
-    setStatusViewerUserId(null); setStatusViewerIndex(0);
-    setShowStatusReplyInput(false); setStatusReplyText("");
-    setStatusViewersOpen(false); setStatusViewersList([]);
-    setStatusPaused(false); statusPausedRef.current = false;
+    setStatusClosing(true);
+    setTimeout(() => {
+      setStatusViewerUserId(null); setStatusViewerIndex(0);
+      setShowStatusReplyInput(false); setStatusReplyText("");
+      setStatusViewersOpen(false); setStatusViewersList([]);
+      setStatusPaused(false); statusPausedRef.current = false;
+      setStatusDragY(0); setStatusClosing(false); statusDragStartRef.current = null;
+    }, 180);
+  }
+
+  function onStatusDragStart(e: React.PointerEvent) {
+    if (statusViewersOpen || showStatusReplyInput) return;
+    statusDragStartRef.current = { x: e.clientX, y: e.clientY };
+    pauseStatusTimer();
+  }
+  function onStatusDragMove(e: React.PointerEvent) {
+    const start = statusDragStartRef.current;
+    if (!start) return;
+    const dy = e.clientY - start.y;
+    const dx = e.clientX - start.x;
+    if (dy > 0 && dy > Math.abs(dx)) setStatusDragY(Math.min(dy, 220));
+  }
+  function onStatusDragEnd() {
+    const start = statusDragStartRef.current;
+    statusDragStartRef.current = null;
+    if (!start) return;
+    if (statusDragY > 90) {
+      closeStatusViewer();
+    } else {
+      setStatusDragY(0);
+      if (!showStatusReplyInput) resumeStatusTimer();
+    }
+  }
+
+  function onStatusMediaTap() {
+    const now = Date.now();
+    if (now - statusLastTapRef.current < 280) {
+      if (activeStatusItem && !myLikedStatusIds.has(activeStatusItem.id)) toggleStatusLike(activeStatusItem);
+      setStatusHeartBurst(true);
+      setTimeout(() => setStatusHeartBurst(false), 700);
+    }
+    statusLastTapRef.current = now;
   }
 
   async function toggleStatusLike(status: Status) {
@@ -2313,6 +2373,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .animate-floatSlow { animation: floatSlow 4s ease-in-out infinite; }
+        @keyframes statusFadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .status-fade-in { animation: statusFadeIn 160ms ease-out; }
+        @keyframes statusHeartPop {
+          0% { opacity: 0; transform: scale(0.4); }
+          25% { opacity: 1; transform: scale(1.15); }
+          40% { transform: scale(0.98); }
+          80% { opacity: 1; transform: scale(1); }
+          100% { opacity: 0; transform: scale(1); }
+        }
+        .status-heart-pop { display: inline-block; animation: statusHeartPop 700ms cubic-bezier(0.2, 0.9, 0.3, 1); filter: drop-shadow(0 4px 16px rgba(0,0,0,0.4)); }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
@@ -2732,7 +2802,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       )}
 
       {statusViewerUserId && activeStatusItem && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-black">
+        <div
+          className="fixed inset-0 z-50 flex flex-col bg-black transition-[opacity,transform] duration-200 ease-out"
+          style={{
+            opacity: statusClosing ? 0 : statusEntering ? 0 : Math.max(0.25, 1 - statusDragY / 260),
+            transform: statusEntering
+              ? "scale(0.94)"
+              : statusClosing
+                ? "scale(0.96)"
+                : `translateY(${statusDragY}px) scale(${1 - Math.min(statusDragY, 220) / 2200})`,
+          }}
+          onPointerDown={onStatusDragStart}
+          onPointerMove={onStatusDragMove}
+          onPointerUp={onStatusDragEnd}
+          onPointerCancel={onStatusDragEnd}
+        >
           <div className="flex gap-1 px-3 pt-3">
             {activeStatusList.map((s, i) => (
               <div key={s.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/30">
@@ -2740,6 +2824,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   className="h-full bg-white"
                   style={{
                     width: i < statusViewerIndex ? "100%" : i > statusViewerIndex ? "0%" : `${statusProgress}%`,
+                    transition: i === statusViewerIndex ? "none" : "width 150ms ease-out",
                   }}
                 />
               </div>
@@ -2754,50 +2839,80 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </p>
               <p className="text-xs text-white/60">{formatLastSeen(activeStatusItem.created_at)}</p>
             </div>
-            {activeStatusItem.user_id === myProfile.id && (
-              <button onClick={() => deleteStatus(activeStatusItem.id)} className="text-xs font-medium text-white/70 hover:text-white">Delete</button>
+            {activeStatusItem.media_type === "video" && activeStatusItem.media_url && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setStatusVideoMuted((v) => !v); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex h-8 w-8 items-center justify-center rounded-full text-white/85 transition hover:bg-white/10"
+                aria-label={statusVideoMuted ? "Unmute" : "Mute"}
+              >
+                {statusVideoMuted ? (
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5Z" fill="currentColor" /><path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                ) : (
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M11 5 6 9H3v6h3l5 4V5Z" fill="currentColor" /><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                )}
+              </button>
             )}
-            <button onClick={closeStatusViewer} className="px-2 text-xl leading-none text-white" aria-label="Close">✕</button>
+            {activeStatusItem.user_id === myProfile.id && (
+              <button onClick={(e) => { e.stopPropagation(); deleteStatus(activeStatusItem.id); }} onPointerDown={(e) => e.stopPropagation()} className="text-xs font-medium text-white/70 hover:text-white">Delete</button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); closeStatusViewer(); }} onPointerDown={(e) => e.stopPropagation()} className="px-2 text-xl leading-none text-white" aria-label="Close">✕</button>
           </div>
-          <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+          <div className="relative flex flex-1 items-center justify-center overflow-hidden" onClick={onStatusMediaTap}>
             <button
-              className="absolute left-0 top-0 z-10 h-full w-1/3"
-              onClick={() => advanceStatus(-1)}
-              onPointerDown={pauseStatusTimer}
-              onPointerUp={resumeStatusTimer}
-              onPointerLeave={resumeStatusTimer}
+              className="absolute left-0 top-0 z-10 h-full w-[28%]"
+              onClick={(e) => { e.stopPropagation(); advanceStatus(-1); }}
               aria-label="Previous status"
             />
             <button
-              className="absolute right-0 top-0 z-10 h-full w-1/3"
-              onClick={() => advanceStatus(1)}
-              onPointerDown={pauseStatusTimer}
-              onPointerUp={resumeStatusTimer}
-              onPointerLeave={resumeStatusTimer}
+              className="absolute right-0 top-0 z-10 h-full w-[28%]"
+              onClick={(e) => { e.stopPropagation(); advanceStatus(1); }}
               aria-label="Next status"
             />
-            {activeStatusItem.media_type === "video" && activeStatusItem.media_url ? (
-              <video
-                ref={statusVideoRef}
-                key={activeStatusItem.id}
-                src={activeStatusItem.media_url}
-                className="max-h-full max-w-full object-contain"
-                autoPlay
-                playsInline
-                muted={false}
-                onLoadedMetadata={handleStatusVideoMeta}
-                onEnded={() => advanceStatus(1)}
-              />
-            ) : activeStatusItem.media_url ? (
-              <img src={activeStatusItem.media_url} alt="Status" className="max-h-full max-w-full object-contain" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center p-8" style={{ background: activeStatusItem.bg_color ?? "#7C5CFF" }}>
-                <p className="break-words text-center text-2xl font-semibold text-white">{activeStatusItem.text_content}</p>
+            {statusMediaLoading && (
+              <div className="absolute inset-0 z-[5] flex items-center justify-center">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white" />
               </div>
             )}
+            {statusHeartBurst && (
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                <span className="text-7xl status-heart-pop">❤️</span>
+              </div>
+            )}
+            <div
+              key={activeStatusItem.id}
+              className="flex h-full w-full items-center justify-center status-fade-in"
+            >
+              {activeStatusItem.media_type === "video" && activeStatusItem.media_url ? (
+                <video
+                  ref={statusVideoRef}
+                  src={activeStatusItem.media_url}
+                  className="max-h-full max-w-full object-contain"
+                  autoPlay
+                  playsInline
+                  muted={statusVideoMuted}
+                  onLoadStart={() => setStatusMediaLoading(true)}
+                  onLoadedMetadata={handleStatusVideoMeta}
+                  onCanPlay={() => setStatusMediaLoading(false)}
+                  onEnded={() => advanceStatus(1)}
+                />
+              ) : activeStatusItem.media_url ? (
+                <img
+                  src={activeStatusItem.media_url}
+                  alt="Status"
+                  className="max-h-full max-w-full object-contain"
+                  onLoad={() => setStatusMediaLoading(false)}
+                  onLoadStart={() => setStatusMediaLoading(true)}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center p-8" style={{ background: activeStatusItem.bg_color ?? "#7C5CFF" }}>
+                  <p className="break-words text-center text-2xl font-semibold text-white">{activeStatusItem.text_content}</p>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ===== FIXED: Footer with proper connection check ===== */}
+          {/* Footer with proper connection check */}
           {activeStatusItem.user_id === myProfile.id ? (
             <button
               onClick={() => openStatusViewersList(activeStatusItem.id)}
@@ -3160,26 +3275,44 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </button>
                 <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
               </div>
-              {Object.keys(otherStatusesGrouped).length > 0 && (
-                <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Recent updates</p>
-              )}
-              {Object.entries(otherStatusesGrouped).map(([userId, list]) => {
-                const p = list[0].profile; const latest = list[list.length - 1]; const ring = statusRingPropsFor(userId);
+              {(() => {
+                const entries = Object.entries(otherStatusesGrouped);
+                const recent = entries.filter(([userId]) => !statusRingPropsFor(userId).viewed);
+                const viewed = entries.filter(([userId]) => statusRingPropsFor(userId).viewed);
+                const renderRow = ([userId, list]: [string, Status[]]) => {
+                  const p = list[0].profile; const latest = list[list.length - 1]; const ring = statusRingPropsFor(userId);
+                  return (
+                    <button key={userId} onClick={() => openStatusViewer(userId)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] hover:bg-black/5 dark:hover:bg-white/5">
+                      <StatusRing {...ring}>
+                        <Avatar name={p?.display_name ?? "Unknown"} color={p?.avatar_color ?? "#7C5CFF"} avatarUrl={p?.avatar_url} size={64} />
+                      </StatusRing>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center truncate text-base font-semibold text-white">
+                          <span className="truncate">{p?.display_name ?? "Unknown"}</span>
+                          {isVerified(p?.username) && <VerifiedBadge />}
+                        </p>
+                        <p className="text-sm text-mist">{list.length > 1 ? `${list.length} updates · ` : ""}{formatLastSeen(latest.created_at)}</p>
+                      </div>
+                    </button>
+                  );
+                };
                 return (
-                  <button key={userId} onClick={() => openStatusViewer(userId)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
-                    <StatusRing {...ring}>
-                      <Avatar name={p?.display_name ?? "Unknown"} color={p?.avatar_color ?? "#7C5CFF"} avatarUrl={p?.avatar_url} size={64} />
-                    </StatusRing>
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-base font-semibold text-white">
-                        <span className="truncate">{p?.display_name ?? "Unknown"}</span>
-                        {isVerified(p?.username) && <VerifiedBadge />}
-                      </p>
-                      <p className="text-sm text-mist">{formatLastSeen(latest.created_at)}</p>
-                    </div>
-                  </button>
+                  <>
+                    {recent.length > 0 && (
+                      <>
+                        <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Recent updates</p>
+                        {recent.map(renderRow)}
+                      </>
+                    )}
+                    {viewed.length > 0 && (
+                      <>
+                        <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Viewed updates</p>
+                        {viewed.map(renderRow)}
+                      </>
+                    )}
+                  </>
                 );
-              })}
+              })()}
               {Object.keys(otherStatusesGrouped).length === 0 && myStatuses.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-mist">No status updates yet.</p>
               )}
