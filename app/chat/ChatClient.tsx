@@ -112,6 +112,14 @@ const CHAT_MEDIA_BUCKET = "chat-media";
 const STATUS_MEDIA_BUCKET = "status-media";
 const NEWS_MEDIA_BUCKET = "news-media";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const PHOTO_FILTERS: { id: string; label: string; css: string }[] = [
+  { id: "normal", label: "Normal", css: "" },
+  { id: "vivid", label: "Vivid", css: "saturate(1.45) contrast(1.12) brightness(1.02)" },
+  { id: "bw", label: "B&W", css: "grayscale(1) contrast(1.1)" },
+  { id: "warm", label: "Warm", css: "sepia(0.28) saturate(1.3) brightness(1.04) hue-rotate(-6deg)" },
+  { id: "cool", label: "Cool", css: "saturate(1.15) hue-rotate(12deg) brightness(1.02) contrast(1.05)" },
+  { id: "fade", label: "Fade", css: "contrast(0.88) brightness(1.1) saturate(0.78) sepia(0.14)" },
+];
 const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
 const SWIPE_REPLY_MAX = 64;
@@ -707,6 +715,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [statusViewerUserId, setStatusViewerUserId] = useState<string | null>(null);
   const [statusViewerIndex, setStatusViewerIndex] = useState(0);
   const [uploadingStatus, setUploadingStatus] = useState(false);
+  const [photoEditorFile, setPhotoEditorFile] = useState<File | null>(null);
+  const [photoEditorTarget, setPhotoEditorTarget] = useState<"status" | "chat" | null>(null);
+  const [photoEditorPreviewUrl, setPhotoEditorPreviewUrl] = useState<string | null>(null);
+  const [photoEditorFilterId, setPhotoEditorFilterId] = useState("normal");
+  const [photoEditorBusy, setPhotoEditorBusy] = useState(false);
   const [showTextStatusComposer, setShowTextStatusComposer] = useState(false);
   const [textStatusDraft, setTextStatusDraft] = useState("");
   const [textStatusColor, setTextStatusColor] = useState(STATUS_COLORS[0]);
@@ -1783,18 +1796,89 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setErrorMsg("Image is too large. Maximum size is 8 MB.");
       return;
     }
-    setUploadingMedia(true);
-    const ext = file.name.split(".").pop() ?? "jpg";
-    const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", upsert: false, contentType: file.type || undefined });
-    if (uploadError) {
-      setUploadingMedia(false);
-      setErrorMsg("Upload failed. Please try again.");
-      return;
+    openPhotoEditor(file, "chat");
+  }
+
+  function openPhotoEditor(file: File, target: "status" | "chat") {
+    const url = URL.createObjectURL(file);
+    setPhotoEditorFile(file);
+    setPhotoEditorTarget(target);
+    setPhotoEditorPreviewUrl(url);
+    setPhotoEditorFilterId("normal");
+  }
+
+  function closePhotoEditor() {
+    if (photoEditorPreviewUrl) URL.revokeObjectURL(photoEditorPreviewUrl);
+    setPhotoEditorFile(null);
+    setPhotoEditorTarget(null);
+    setPhotoEditorPreviewUrl(null);
+    setPhotoEditorFilterId("normal");
+    setPhotoEditorBusy(false);
+  }
+
+  function bakeFilteredImage(file: File, filterCss: string): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const objUrl = URL.createObjectURL(file);
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { URL.revokeObjectURL(objUrl); reject(new Error("no ctx")); return; }
+        ctx.filter = filterCss || "none";
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(objUrl);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob); else reject(new Error("toBlob failed"));
+        }, file.type === "image/png" ? "image/png" : "image/jpeg", 0.92);
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error("image load failed")); };
+      img.src = objUrl;
+    });
+  }
+
+  async function confirmPhotoFilter() {
+    if (!photoEditorFile || !photoEditorTarget) return;
+    setPhotoEditorBusy(true);
+    const filter = PHOTO_FILTERS.find((f) => f.id === photoEditorFilterId);
+    let blob: Blob;
+    try {
+      blob = filter && filter.css ? await bakeFilteredImage(photoEditorFile, filter.css) : photoEditorFile;
+    } catch {
+      blob = photoEditorFile;
     }
-    const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
-    await sendMediaMessage({ type: "image", url: publicUrlData.publicUrl });
-    setUploadingMedia(false);
+    const ext = photoEditorFile.type === "image/png" ? "png" : "jpg";
+    const mime = blob.type || photoEditorFile.type || "image/jpeg";
+    const target = photoEditorTarget;
+    closePhotoEditor();
+
+    if (target === "status") {
+      setUploadingStatus(true);
+      const path = `${myProfile.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, blob, { cacheControl: "3600", contentType: mime });
+      if (uploadError) {
+        setUploadingStatus(false);
+        setErrorMsg("Status upload failed. Please try again.");
+        return;
+      }
+      const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
+      const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl, media_type: "image" });
+      if (error) { setErrorMsg("Failed to post status. Please try again."); }
+      setUploadingStatus(false); loadStatuses();
+    } else if (target === "chat" && activeId) {
+      setUploadingMedia(true);
+      const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from(CHAT_MEDIA_BUCKET).upload(path, blob, { cacheControl: "3600", upsert: false, contentType: mime });
+      if (uploadError) {
+        setUploadingMedia(false);
+        setErrorMsg("Upload failed. Please try again.");
+        return;
+      }
+      const { data: publicUrlData } = supabase.storage.from(CHAT_MEDIA_BUCKET).getPublicUrl(path);
+      await sendMediaMessage({ type: "image", url: publicUrlData.publicUrl });
+      setUploadingMedia(false);
+    }
   }
 
   async function startRecording() {
@@ -1964,8 +2048,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setErrorMsg(isVideo ? "Video is too large. Maximum size is 32 MB." : "Image is too large. Maximum size is 8 MB.");
       return;
     }
+    if (!isVideo) {
+      openPhotoEditor(file, "status");
+      return;
+    }
     setUploadingStatus(true);
-    const ext = file.name.split(".").pop() ?? (isVideo ? "mp4" : "jpg");
+    const ext = file.name.split(".").pop() ?? "mp4";
     const path = `${myProfile.id}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage.from(STATUS_MEDIA_BUCKET).upload(path, file, { cacheControl: "3600", contentType: file.type || undefined });
     if (uploadError) {
@@ -1974,7 +2062,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return;
     }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl, media_type: isVideo ? "video" : "image" });
+    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl, media_type: "video" });
     if (error) { setErrorMsg("Failed to post status. Please try again."); }
     setUploadingStatus(false); loadStatuses();
   }
@@ -3036,6 +3124,56 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           <div className="flex justify-center gap-3 pb-8">
             {STATUS_COLORS.map((c) => (
               <button key={c} onClick={() => setTextStatusColor(c)} className={`h-8 w-8 rounded-full transition ${textStatusColor === c ? "ring-2 ring-white ring-offset-2 ring-offset-black/20" : ""}`} style={{ background: c }} aria-label={`Choose color ${c}`} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {photoEditorFile && photoEditorPreviewUrl && (
+        <div className="fixed inset-0 z-[70] flex flex-col bg-black status-fade-in">
+          <div className="flex items-center justify-between px-4 py-4">
+            <button onClick={closePhotoEditor} disabled={photoEditorBusy} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg text-white disabled:opacity-40" aria-label="Cancel">✕</button>
+            <p className="text-sm font-semibold text-white/80">Choose a filter</p>
+            <button
+              onClick={confirmPhotoFilter}
+              disabled={photoEditorBusy}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+              aria-label={photoEditorTarget === "status" ? "Post status" : "Send photo"}
+            >
+              {photoEditorBusy ? (
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 6l6 6-6 6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              )}
+            </button>
+          </div>
+
+          <div className="flex flex-1 items-center justify-center overflow-hidden px-4">
+            <img
+              src={photoEditorPreviewUrl}
+              alt="Preview"
+              className="max-h-full max-w-full rounded-lg object-contain transition-[filter] duration-150"
+              style={{ filter: PHOTO_FILTERS.find((f) => f.id === photoEditorFilterId)?.css || "none" }}
+            />
+          </div>
+
+          <div className="flex gap-3 overflow-x-auto px-4 pb-8 pt-3 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {PHOTO_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setPhotoEditorFilterId(f.id)}
+                className="flex shrink-0 flex-col items-center gap-1.5"
+              >
+                <span
+                  className="h-14 w-14 overflow-hidden rounded-xl transition"
+                  style={{
+                    boxShadow: photoEditorFilterId === f.id ? "0 0 0 2px #fff" : "0 0 0 1px rgba(255,255,255,0.15)",
+                  }}
+                >
+                  <img src={photoEditorPreviewUrl} alt={f.label} className="h-full w-full object-cover" style={{ filter: f.css || "none" }} />
+                </span>
+                <span className={`text-[11px] font-medium ${photoEditorFilterId === f.id ? "text-white" : "text-white/55"}`}>{f.label}</span>
+              </button>
             ))}
           </div>
         </div>
