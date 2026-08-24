@@ -1776,16 +1776,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [grantingVerification, setGrantingVerification] = useState(false);
   async function grantVerification(target: Profile) {
     setGrantingVerification(true);
-    const { error } = await supabase.from("profiles").update({ verified: true }).eq("id", target.id);
+    const { error } = await supabase.rpc("grant_verification", { target_user_id: target.id });
     if (error) { setErrorMsg("Failed to grant verification. Please try again."); setGrantingVerification(false); return; }
     await supabase.from("app_notifications").insert({
       user_id: target.id,
       type: "verified",
-      title: "You're verified! ✅",
-      body: "Congratulations! You are verified on Airalance!",
+      title: "You're verified",
+      body: "Congratulations — your account has been verified on Airalance.",
       actor_id: myProfile.id,
     });
-    sendPushNotification({ userId: target.id, title: "You're verified! ✅", body: "Congratulations! You are verified on Airalance!", url: "/" });
+    sendPushNotification({ userId: target.id, title: "You're verified", body: "Congratulations — your account has been verified on Airalance.", url: "/" });
     setProfileView((prev) => (prev && prev.id === target.id ? { ...prev, verified: true } : prev));
     setGrantingVerification(false);
   }
@@ -3408,7 +3408,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     {appNotifications.map((n) => (
                       <div key={n.id} className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
                         {n.type === "verified" ? (
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet/15 text-base">✅</span>
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet/15">
+                            <VerifiedBadge size={20} />
+                          </span>
                         ) : n.type === "request_accepted" ? (
                           <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#22D3B8"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
                         ) : (
