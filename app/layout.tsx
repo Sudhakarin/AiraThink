@@ -13,6 +13,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
+  themeColor: "#0A0C12",
 };
 
 export const metadata: Metadata = {
@@ -20,14 +21,16 @@ export const metadata: Metadata = {
   description: "A premium, real-time chat experience. Fast, private, beautifully simple.",
   appleWebApp: {
     capable: true,
+    statusBarStyle: "black-translucent",
     title: "Airalance",
+    startupImage: "/splash.PNG",
   },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${poppins.variable} ${inter.variable} ${jbmono.variable}`} suppressHydrationWarning>
-      <body>
+      <body style={{ backgroundColor: "#0A0C12" }}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           {children}
         </ThemeProvider>
