@@ -4291,8 +4291,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           <img
             src={imageViewerUrl}
             alt="Photo"
-            className="max-h-[90vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
+            className="no-callout max-h-[90vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
+            style={{ WebkitTouchCallout: "none" } as React.CSSProperties}
             onClick={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
           />
         </div>,
         document.body
@@ -4316,8 +4318,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <img
               src={avatarViewer.url}
               alt={avatarViewer.name}
-              className="h-[min(80vw,360px)] w-[min(80vw,360px)] rounded-full object-cover shadow-2xl ring-1 ring-white/10"
-              style={{ animation: "scrollBtnPop 0.2s ease-out" }}
+              onTouchEnd={(e) => e.preventDefault()}
+              className="no-callout h-[min(80vw,360px)] w-[min(80vw,360px)] rounded-full object-cover shadow-2xl ring-1 ring-white/10"
+              style={{ animation: "scrollBtnPop 0.2s ease-out", WebkitTouchCallout: "none" } as React.CSSProperties}
+              onContextMenu={(e) => e.preventDefault()}
             />
             <p className="font-display text-base font-semibold text-white">{avatarViewer.name}</p>
           </div>
