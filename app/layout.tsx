@@ -13,32 +13,21 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  colorScheme: "dark",
-  themeColor: "#0A0C12",
 };
 
 export const metadata: Metadata = {
   title: "Airalance — Where Privacy Matters!",
   description: "A premium, real-time chat experience. Fast, private, beautifully simple.",
+  appleWebApp: {
+    capable: true,
+    title: "Airalance",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${poppins.variable} ${inter.variable} ${jbmono.variable}`}
-      suppressHydrationWarning
-      style={{ backgroundColor: "#0A0C12", colorScheme: "dark" } as React.CSSProperties}
-    >
-      <body
-        style={{
-          fontFamily: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
-          WebkitTextSizeAdjust: "100%",
-          textSizeAdjust: "100%",
-          colorScheme: "dark",
-          backgroundColor: "#0A0C12",
-        } as React.CSSProperties}
-      >
+    <html lang="en" className={`${poppins.variable} ${inter.variable} ${jbmono.variable}`} suppressHydrationWarning>
+      <body>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
           {children}
         </ThemeProvider>
