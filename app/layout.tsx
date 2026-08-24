@@ -23,7 +23,6 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Airalance",
-    startupImage: "/splash.PNG",
   },
 };
 
