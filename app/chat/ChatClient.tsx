@@ -1774,19 +1774,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   const [grantingVerification, setGrantingVerification] = useState(false);
-  async function grantVerification(target: Profile) {
+  async function setVerification(target: Profile, makeVerified: boolean) {
     setGrantingVerification(true);
-    const { error } = await supabase.rpc("grant_verification", { target_user_id: target.id });
-    if (error) { setErrorMsg("Failed to grant verification. Please try again."); setGrantingVerification(false); return; }
-    await supabase.from("app_notifications").insert({
-      user_id: target.id,
-      type: "verified",
-      title: "You're verified",
-      body: "Congratulations — your account has been verified on Airalance.",
-      actor_id: myProfile.id,
-    });
-    sendPushNotification({ userId: target.id, title: "You're verified", body: "Congratulations — your account has been verified on Airalance.", url: "/" });
-    setProfileView((prev) => (prev && prev.id === target.id ? { ...prev, verified: true } : prev));
+    const { error } = await supabase.rpc("set_verification", { target_user_id: target.id, should_verify: makeVerified });
+    if (error) { setErrorMsg(makeVerified ? "Failed to grant verification. Please try again." : "Failed to remove verification. Please try again."); setGrantingVerification(false); return; }
+    if (makeVerified) {
+      await supabase.from("app_notifications").insert({
+        user_id: target.id,
+        type: "verified",
+        title: "You're verified",
+        body: "Congratulations — your account has been verified on Airalance.",
+        actor_id: myProfile.id,
+      });
+      sendPushNotification({ userId: target.id, title: "You're verified", body: "Congratulations — your account has been verified on Airalance.", url: "/" });
+    }
+    setProfileView((prev) => (prev && prev.id === target.id ? { ...prev, verified: makeVerified } : prev));
     setGrantingVerification(false);
   }
 
@@ -2967,15 +2969,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Message</button>
             )}
           </div>
-          {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && !isVerified(profileView.username, profileView.verified) && (
+          {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
             <div className="relative z-10 px-6 pb-8">
-              <button
-                onClick={() => grantVerification(profileView)}
-                disabled={grantingVerification}
-                className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
-              >
-                {grantingVerification ? "Verifying…" : "Grant Verification ✅"}
-              </button>
+              {isVerified(profileView.username, false) ? (
+                <p className="text-center text-[11px] text-mist">This account is verified by default and can't be changed here.</p>
+              ) : profileView.verified ? (
+                <button
+                  onClick={() => setVerification(profileView, false)}
+                  disabled={grantingVerification}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400 disabled:opacity-50"
+                >
+                  {grantingVerification ? "Updating…" : "Remove Verification"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setVerification(profileView, true)}
+                  disabled={grantingVerification}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
+                >
+                  {grantingVerification ? "Verifying…" : "Grant Verification"}
+                </button>
+              )}
             </div>
           )}
         </div>
