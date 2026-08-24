@@ -24,7 +24,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${poppins.variable} ${inter.variable} ${jbmono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${poppins.variable} ${inter.variable} ${jbmono.variable}`}
+      suppressHydrationWarning
+      style={{ backgroundColor: "#0A0C12", colorScheme: "dark" } as React.CSSProperties}
+    >
       <body
         style={{
           fontFamily: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
