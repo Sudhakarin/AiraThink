@@ -660,6 +660,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
   const realtimeConnectedRef = useRef(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [newMessagesCount, setNewMessagesCount] = useState(0);
+  const prevMessagesInfoRef = useRef<{ lastId: string; len: number }>({ lastId: "", len: 0 });
 
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -1413,15 +1416,60 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadReactionsFor(messages.map((m) => m.id));
   }
 
+  const isInitialLoadRef = useRef(true);
+
+  // Reset the jump-to-latest state and initial-load flag whenever the open conversation changes.
+  useEffect(() => {
+    setShowScrollToBottom(false);
+    setNewMessagesCount(0);
+    prevMessagesInfoRef.current = { lastId: "", len: 0 };
+    isInitialLoadRef.current = true;
+  }, [activeId]);
+
   useEffect(() => {
     if (isPrependingRef.current) { isPrependingRef.current = false; return; }
     const el = scrollRef.current;
     if (!el) return;
-    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
-    if (isNearBottom) {
-      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+
+    const prevInfo = prevMessagesInfoRef.current;
+    const lastMsg = messages[messages.length - 1];
+    prevMessagesInfoRef.current = { lastId: lastMsg?.id ?? "", len: messages.length };
+    if (!lastMsg) return;
+
+    if (isInitialLoadRef.current) {
+      // First paint of this conversation: jump straight to the latest message, no button, no badge.
+      isInitialLoadRef.current = false;
+      el.scrollTo({ top: el.scrollHeight, behavior: "auto" });
+      setNewMessagesCount(0);
+      setShowScrollToBottom(false);
+      return;
     }
-  }, [messages]);
+
+    const isNewMessage = lastMsg.id !== prevInfo.lastId;
+    if (!isNewMessage) return;
+
+    const isMine = lastMsg.sender_id === myProfile.id;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 150;
+
+    if (isMine || isNearBottom) {
+      // My own message, or the person is already at the bottom — snap to the latest, WhatsApp-style.
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+      setNewMessagesCount(0);
+      setShowScrollToBottom(false);
+    } else {
+      // Scrolled up reading old chat — don't yank them down, just surface the jump-to-latest pill.
+      setNewMessagesCount((n) => n + 1);
+      setShowScrollToBottom(true);
+    }
+  }, [messages, myProfile.id]);
+
+  const scrollToLatest = useCallback((smooth: boolean = true) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+    setNewMessagesCount(0);
+    setShowScrollToBottom(false);
+  }, []);
 
   useEffect(() => {
     if (!peerTyping) return;
@@ -1457,6 +1505,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollTop < 60) loadMoreMessages();
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 80) {
+      if (showScrollToBottom) setShowScrollToBottom(false);
+      if (newMessagesCount) setNewMessagesCount(0);
+    } else if (distanceFromBottom > 200) {
+      if (!showScrollToBottom) setShowScrollToBottom(true);
+    }
   }
 
   useEffect(() => {
@@ -2471,6 +2526,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           100% { opacity: 0; transform: scale(1); }
         }
         .status-heart-pop { display: inline-block; animation: statusHeartPop 700ms cubic-bezier(0.2, 0.9, 0.3, 1); filter: drop-shadow(0 4px 16px rgba(0,0,0,0.4)); }
+        @keyframes scrollBtnPop { from { opacity: 0; transform: translateY(6px) scale(0.85); } to { opacity: 1; transform: translateY(0) scale(1); } }
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
@@ -3909,6 +3965,25 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               )}
               {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
             </div>
+
+            {showScrollToBottom && (
+              <button
+                type="button"
+                onClick={() => scrollToLatest(true)}
+                aria-label="Scroll to latest messages"
+                className="absolute bottom-24 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-ink-800/90 text-white shadow-lg shadow-black/30 ring-1 ring-white/10 backdrop-blur-sm transition-transform hover:scale-105 active:scale-95"
+                style={{ animation: "scrollBtnPop 0.18s ease-out" }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {newMessagesCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1 text-[10px] font-bold text-ink-900 shadow">
+                    {newMessagesCount > 99 ? "99+" : newMessagesCount}
+                  </span>
+                )}
+              </button>
+            )}
 
             {replyingTo && (
               <div className="relative z-10 flex items-center justify-between border-t border-black/5 dark:border-white/5 bg-ink-800/60 px-6 py-2">
