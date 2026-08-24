@@ -15,6 +15,7 @@ type Profile = {
   last_seen?: string;
   avatar_url?: string | null;
   bio?: string | null;
+  verified?: boolean | null;
 };
 
 type MessageType = "text" | "image" | "voice";
@@ -80,6 +81,18 @@ type ConnectionRequest = {
   status: string;
   created_at: string;
   from_profile?: Profile;
+};
+
+type AppNotification = {
+  id: string;
+  user_id: string;
+  type: "request_accepted" | "request_declined" | "verified";
+  title: string;
+  body: string;
+  actor_id?: string | null;
+  read?: boolean;
+  created_at: string;
+  actor_profile?: Profile;
 };
 
 type NewsArticle = {
@@ -282,7 +295,8 @@ function linkifyText(text: string): React.ReactNode[] {
   return nodes;
 }
 
-function isVerified(username?: string) {
+function isVerified(username?: string, verifiedFlag?: boolean | null) {
+  if (verifiedFlag) return true;
   return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
 
@@ -686,6 +700,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const lastMessageCreatedAtRef = useRef<string | null>(null);
 
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
+  const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
 
   const [connectPopupTarget, setConnectPopupTarget] = useState<Profile | null>(null);
@@ -1008,6 +1023,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .eq("status", "pending")
       .order("created_at", { ascending: false });
     setNotifications((data ?? []) as any);
+    const { data: appData } = await supabase
+      .from("app_notifications")
+      .select("*, actor_profile:profiles!app_notifications_actor_id_fkey(*)")
+      .eq("user_id", myProfile.id)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    setAppNotifications((appData ?? []) as any);
   }, [myProfile.id, supabase]);
 
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
@@ -1023,6 +1045,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const channel = supabase
       .channel("connection-requests-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "connection_requests", filter: `to_user_id=eq.${myProfile.id}` }, () => {
+        loadNotifications();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [myProfile.id, supabase, loadNotifications]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("app-notifications-realtime")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "app_notifications", filter: `user_id=eq.${myProfile.id}` }, () => {
         loadNotifications();
       })
       .subscribe();
@@ -1060,6 +1092,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         { conversation_id: convoId, user_id: req.from_user_id },
       ]);
     }
+    await supabase.from("app_notifications").insert({
+      user_id: req.from_user_id,
+      type: "request_accepted",
+      title: myProfile.display_name,
+      body: `${myProfile.display_name} accepted your connect request!`,
+      actor_id: myProfile.id,
+    });
+    sendPushNotification({ userId: req.from_user_id, title: myProfile.display_name, body: `${myProfile.display_name} accepted your connect request!`, url: "/" });
     await loadConversations();
     setActiveId(convoId);
     setMobileTab("chats");
@@ -1069,6 +1109,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function declineRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "declined" }).eq("id", req.id);
+    await supabase.from("app_notifications").insert({
+      user_id: req.from_user_id,
+      type: "request_declined",
+      title: myProfile.display_name,
+      body: `${myProfile.display_name} declined your connect request`,
+      actor_id: myProfile.id,
+    });
     loadNotifications();
   }
 
@@ -1724,6 +1771,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setActiveId(profileViewConvoId);
     setMobileTab("chats");
     closeProfileView();
+  }
+
+  const [grantingVerification, setGrantingVerification] = useState(false);
+  async function grantVerification(target: Profile) {
+    setGrantingVerification(true);
+    const { error } = await supabase.from("profiles").update({ verified: true }).eq("id", target.id);
+    if (error) { setErrorMsg("Failed to grant verification. Please try again."); setGrantingVerification(false); return; }
+    await supabase.from("app_notifications").insert({
+      user_id: target.id,
+      type: "verified",
+      title: "You're verified! ✅",
+      body: "Congratulations! You are verified on Airalance!",
+      actor_id: myProfile.id,
+    });
+    sendPushNotification({ userId: target.id, title: "You're verified! ✅", body: "Congratulations! You are verified on Airalance!", url: "/" });
+    setProfileView((prev) => (prev && prev.id === target.id ? { ...prev, verified: true } : prev));
+    setGrantingVerification(false);
   }
 
   async function confirmConnect() {
@@ -2836,7 +2900,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
             <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white tx1">
               {profileView.display_name}
-              {isVerified(profileView.username) && <VerifiedBadge size={18} />}
+              {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={18} />}
             </h2>
             <p className="text-sm text-white/40 tx2">@{profileView.username}</p>
             <div
@@ -2903,6 +2967,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Message</button>
             )}
           </div>
+          {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && !isVerified(profileView.username, profileView.verified) && (
+            <div className="relative z-10 px-6 pb-8">
+              <button
+                onClick={() => grantVerification(profileView)}
+                disabled={grantingVerification}
+                className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
+              >
+                {grantingVerification ? "Verifying…" : "Grant Verification ✅"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -2914,7 +2989,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <div className="text-center">
                 <p className="flex items-center justify-center font-display text-lg font-bold text-white">
                   {connectPopupTarget.display_name}
-                  {isVerified(connectPopupTarget.username) && <VerifiedBadge size={16} />}
+                  {isVerified(connectPopupTarget.username, connectPopupTarget.verified) && <VerifiedBadge size={16} />}
                 </p>
                 <p className="text-sm text-mist">@{connectPopupTarget.username}</p>
               </div>
@@ -2959,7 +3034,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
             <Avatar name={callPeer.display_name} color={callPeer.avatar_color} size={120} avatarUrl={callPeer.avatar_url} />
             <p className="mt-5 flex items-center font-display text-xl font-bold text-white">
-              {callPeer.display_name}{isVerified(callPeer.username) && <VerifiedBadge size={18} />}
+              {callPeer.display_name}{isVerified(callPeer.username, callPeer.verified) && <VerifiedBadge size={18} />}
             </p>
             <p className="mt-2 text-sm text-mist">
               {callStatus === "outgoing" && "Calling…"}
@@ -3027,7 +3102,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div className="min-w-0 flex-1">
               <p className="flex items-center text-sm font-semibold text-white">
                 <span className="truncate">{activeStatusProfile?.display_name}</span>
-                {isVerified(activeStatusProfile?.username) && <VerifiedBadge />}
+                {isVerified(activeStatusProfile?.username, activeStatusProfile?.verified) && <VerifiedBadge />}
               </p>
               <p className="text-xs text-white/60">{formatLastSeen(activeStatusItem.created_at)}</p>
             </div>
@@ -3203,7 +3278,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center truncate text-sm font-medium text-white">
                         <span className="truncate">{v.profile?.display_name ?? "Unknown"}</span>
-                        {isVerified(v.profile?.username) && <VerifiedBadge />}
+                        {isVerified(v.profile?.username, v.profile?.verified) && <VerifiedBadge />}
                       </p>
                       <p className="text-xs text-mist">{formatLastSeen(v.created_at)}</p>
                     </div>
@@ -3299,9 +3374,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              {notifications.length > 0 && (
+              {(notifications.length + appNotifications.length) > 0 && (
                 <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {notifications.length > 9 ? "9+" : notifications.length}
+                  {(notifications.length + appNotifications.length) > 9 ? "9+" : notifications.length + appNotifications.length}
                 </span>
               )}
             </button>
@@ -3311,7 +3386,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <p className="text-sm font-semibold text-white">Notifications</p>
                   <button onClick={() => setShowNotifications(false)} className="text-mist hover:text-white">✕</button>
                 </div>
-                {notifications.length === 0 ? (
+                {notifications.length === 0 && appNotifications.length === 0 ? (
                   <p className="px-4 py-6 text-center text-xs text-mist">No new notifications</p>
                 ) : (
                   <div className="max-h-96 overflow-y-auto">
@@ -3327,6 +3402,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         <div className="mt-2.5 flex gap-2">
                           <button onClick={() => acceptRequest(req)} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-1.5 text-xs font-semibold text-white">Accept</button>
                           <button onClick={() => declineRequest(req)} className="flex-1 rounded-full border border-white/10 py-1.5 text-xs font-semibold text-mist hover:text-white">Leave</button>
+                        </div>
+                      </div>
+                    ))}
+                    {appNotifications.map((n) => (
+                      <div key={n.id} className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
+                        {n.type === "verified" ? (
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet/15 text-base">✅</span>
+                        ) : n.type === "request_accepted" ? (
+                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#22D3B8"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                        ) : (
+                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-white tx1">{n.body}</p>
+                          <p className="mt-0.5 text-[10px] text-mist">{formatLastSeen(n.created_at)}</p>
                         </div>
                       </div>
                     ))}
@@ -3531,7 +3621,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center truncate text-base font-semibold text-white">
                           <span className="truncate">{p?.display_name ?? "Unknown"}</span>
-                          {isVerified(p?.username) && <VerifiedBadge />}
+                          {isVerified(p?.username, p?.verified) && <VerifiedBadge />}
                         </p>
                         <p className="text-sm text-mist">{list.length > 1 ? `${list.length} updates · ` : ""}{formatLastSeen(latest.created_at)}</p>
                       </div>
@@ -3580,7 +3670,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center truncate text-lg font-semibold text-white">
                         <span className="truncate">{name}</span>
-                        {isVerified(c.otherProfile?.username) && <VerifiedBadge size={16} />}
+                        {isVerified(c.otherProfile?.username, c.otherProfile?.verified) && <VerifiedBadge size={16} />}
                       </p>
                       <p className="truncate text-sm text-mist">{c.lastMessage}</p>
                     </div>
@@ -3617,7 +3707,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         </button>
                         <button onClick={() => openProfileView(s)} className="min-w-0 flex-1 text-left">
                           <p className="flex items-center truncate text-sm font-semibold text-white">
-                            {s.display_name}{isVerified(s.username) && <VerifiedBadge />}
+                            {s.display_name}{isVerified(s.username, s.verified) && <VerifiedBadge />}
                           </p>
                           <p className="truncate text-xs text-mist">@{s.username}</p>
                         </button>
@@ -3637,7 +3727,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <button key={r.id} onClick={() => openProfileView(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
                     <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center font-semibold text-white">{r.display_name}{isVerified(r.username) && <VerifiedBadge />}</p>
+                      <p className="flex items-center font-semibold text-white">{r.display_name}{isVerified(r.username, r.verified) && <VerifiedBadge />}</p>
                       <p className="text-xs text-mist">@{r.username}</p>
                     </div>
                   </button>
@@ -3692,7 +3782,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <span className="text-xs font-medium text-mist">Username</span>
-                  <span className="inline-flex items-center text-sm text-white">@{myProfile.username}{isVerified(myProfile.username) && <VerifiedBadge />}</span>
+                  <span className="inline-flex items-center text-sm text-white">@{myProfile.username}{isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge />}</span>
                 </div>
                 <button onClick={handleLogout} className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
                   <span className="text-xs font-medium text-mist">Account</span>
@@ -3782,7 +3872,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
               <h2 className="flex items-center font-display text-xl font-bold text-white tx1">
                 {active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
-                {isVerified(otherDisplayProfile?.username) && <VerifiedBadge size={18} />}
+                {isVerified(otherDisplayProfile?.username, otherDisplayProfile?.verified) && <VerifiedBadge size={18} />}
               </h2>
               {!active.is_group && <p className="mt-1 text-sm text-white/45 tx2">@{otherDisplayProfile?.username}</p>}
               {!active.is_group && (
@@ -3849,7 +3939,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center text-sm font-semibold text-white">
                     <span className="truncate">{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
-                    {isVerified(active.otherProfile?.username) && <VerifiedBadge />}
+                    {isVerified(active.otherProfile?.username, active.otherProfile?.verified) && <VerifiedBadge />}
                   </p>
                   {!active.is_group && (
                     <p className="truncate text-xs text-mist">
