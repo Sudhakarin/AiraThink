@@ -633,6 +633,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
   const [mobileTab, setMobileTab] = useState<MobileTab>("home");
+  useEffect(() => {
+    mobileTabScrollRef.current?.scrollTo({ top: 0 });
+    (document.activeElement as HTMLElement | null)?.blur?.();
+  }, [mobileTab]);
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [loadingNews, setLoadingNews] = useState(true);
   const [selectedNewsCategory, setSelectedNewsCategory] = useState("For you");
@@ -660,6 +664,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressFiredRef = useRef(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mobileTabScrollRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isPrependingRef = useRef(false);
@@ -2130,6 +2135,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
     const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor, media_type: "text" });
     if (error) { setErrorMsg("Failed to post status. Please try again."); return; }
+    (document.activeElement as HTMLElement | null)?.blur?.();
     setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses();
   }
 
@@ -2538,6 +2544,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         * {
           -webkit-tap-highlight-color: transparent;
+        }
+        input, textarea {
+          -webkit-appearance: none;
+          appearance: none;
         }
         .no-callout {
           -webkit-touch-callout: none;
@@ -3209,7 +3219,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {showTextStatusComposer && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: textStatusColor }}>
           <div className="flex items-center justify-between px-4 py-4">
-            <button onClick={() => { setShowTextStatusComposer(false); setTextStatusDraft(""); }} className="text-xl text-white" aria-label="Cancel">✕</button>
+            <button onClick={() => { (document.activeElement as HTMLElement | null)?.blur?.(); setShowTextStatusComposer(false); setTextStatusDraft(""); }} className="text-xl text-white" aria-label="Cancel">✕</button>
             <button onClick={postTextStatus} disabled={!textStatusDraft.trim()} className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">Post</button>
           </div>
           <div className="flex flex-1 items-center justify-center px-8">
@@ -3327,7 +3337,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div ref={mobileTabScrollRef} className="flex-1 overflow-y-auto">
           {mobileTab === "home" && (
             <div className="flex h-full flex-col overflow-y-auto pb-10">
               <div className="flex flex-col items-center px-8 pt-10 text-center">
