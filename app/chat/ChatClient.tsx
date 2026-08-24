@@ -620,6 +620,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [myProfile, setMyProfile] = useState<Profile>(initialProfile);
   const [myEmail, setMyEmail] = useState<string>("");
   const [conversations, setConversations] = useState<ConversationRow[]>([]);
+  const [longPressedConvId, setLongPressedConvId] = useState<string | null>(null);
+  const longPressTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
   const [sending, setSending] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1619,6 +1622,54 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (q.trim().length < 2) { setSearchResults([]); return; }
     const { data } = await supabase.from("profiles").select("*").ilike("username", `%${q.trim()}%`).neq("id", myProfile.id).limit(8);
     setSearchResults(data ?? []);
+  }
+
+  function handleConvLongPressStart(e: React.TouchEvent, convId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    longPressStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    longPressTimeoutRef.current = setTimeout(() => {
+      setLongPressedConvId(convId);
+    }, 500);
+  }
+
+  function handleConvLongPressEnd(e: React.TouchEvent, convId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    const start = longPressStartRef.current;
+    if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
+    
+    if (start && e.changedTouches[0]) {
+      const dx = Math.abs(e.changedTouches[0].clientX - start.x);
+      const dy = Math.abs(e.changedTouches[0].clientY - start.y);
+      if (dx > 20 || dy > 20) {
+        longPressStartRef.current = null;
+        return;
+      }
+    }
+    
+    if (longPressedConvId === convId) {
+      handleDeleteConversation(convId);
+      setLongPressedConvId(null);
+    }
+    longPressStartRef.current = null;
+  }
+
+  function handleConvTouchMove(e: React.TouchEvent) {
+    if (!longPressStartRef.current || !longPressTimeoutRef.current) return;
+    const dx = Math.abs(e.touches[0].clientX - longPressStartRef.current.x);
+    const dy = Math.abs(e.touches[0].clientY - longPressStartRef.current.y);
+    if (dx > 20 || dy > 20) {
+      if (longPressTimeoutRef.current) clearTimeout(longPressTimeoutRef.current);
+      setLongPressedConvId(null);
+      longPressStartRef.current = null;
+    }
+  }
+
+  async function handleDeleteConversation(convId: string) {
+    await supabase.from("conversation_participants").delete().eq("conversation_id", convId).eq("user_id", myProfile.id);
+    setLongPressedConvId(null);
+    loadConversations();
   }
 
   async function loadSuggestedProfiles() {
@@ -3562,21 +3613,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
                 const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
+                const isActive = activeId === c.id;
+                const isLongPressed = longPressedConvId === c.id;
                 return (
-                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
+                  <button
+                    key={c.id}
+                    onTouchStart={(e) => handleConvLongPressStart(e, c.id)}
+                    onTouchEnd={(e) => handleConvLongPressEnd(e, c.id)}
+                    onTouchMove={handleConvTouchMove}
+                    onClick={(e) => {
+                      if (longPressedConvId === c.id) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      setActiveId(c.id);
+                      setMobileTab("chats");
+                    }}
+                    className={`select-none mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${isLongPressed ? "bg-red-500/20 ring-1 ring-red-500/50" : isActive ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"} active:bg-black/10 dark:active:bg-white/10`}
+                    style={{ WebkitUserSelect: "none", WebkitTouchCallout: "none" } as React.CSSProperties}
+                  >
                     <StatusRing {...ring}>
                       <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
                     </StatusRing>
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 pointer-events-none select-none">
                       <p className="flex items-center truncate text-lg font-semibold text-white">
                         <span className="truncate">{name}</span>
                         {isVerified(c.otherProfile?.username) && <VerifiedBadge size={16} />}
                       </p>
                       <p className="truncate text-sm text-mist">{c.lastMessage}</p>
                     </div>
-                    {c.unreadCount > 0 && (
+                    {c.unreadCount > 0 && !isLongPressed && (
                       <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0C12]">
                         {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                      </span>
+                    )}
+                    {isLongPressed && (
+                      <span className="flex items-center gap-1 text-xs font-semibold text-red-400">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M5 6v12a2 2 0 002 2h10a2 2 0 002-2V6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                        Delete
                       </span>
                     )}
                   </button>
