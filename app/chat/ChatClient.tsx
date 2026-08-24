@@ -135,14 +135,6 @@ const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airalance-active-status";
 const EDIT_TIMEOUT_MS = 300000;
 
-const HOME_FEATURES = [
-  { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
-  { icon: "⚡", title: "Realtime chat", desc: "Messages arrive instantly, no delay." },
-  { icon: "⏳", title: "24 hours disappearing", desc: "Status updates vanish after a day." },
-  { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
-  { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
-];
-
 type StatusReplyPayload = {
   statusId: string;
   mediaUrl: string | null;
@@ -735,7 +727,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [myLikedStatusIds, setMyLikedStatusIds] = useState<Set<string>>(new Set());
   const [myStatusViewCounts, setMyStatusViewCounts] = useState<Record<string, number>>({});
   const [statusProgress, setStatusProgress] = useState(0);
-  const [statusPaused, setStatusPaused] = useState(false);
   const statusPausedRef = useRef(false);
   const statusDurationRef = useRef(STATUS_DURATION_MS);
   const statusElapsedRef = useRef(0);
@@ -2182,7 +2173,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       setStatusViewerUserId(null); setStatusViewerIndex(0);
       setShowStatusReplyInput(false); setStatusReplyText("");
       setStatusViewersOpen(false); setStatusViewersList([]);
-      setStatusPaused(false); statusPausedRef.current = false;
+      statusPausedRef.current = false;
       setStatusDragY(0); setStatusClosing(false); statusDragStartRef.current = null;
     }, 180);
   }
@@ -2253,7 +2244,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function openStatusViewersList(statusId: string) {
     setStatusViewersOpen(true);
     setStatusViewersLoading(true);
-    setStatusPaused(true); statusPausedRef.current = true;
+    statusPausedRef.current = true;
     await fetchStatusViewers(statusId);
     setStatusViewersLoading(false);
   }
@@ -2275,7 +2266,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   function closeStatusViewersList() {
     setStatusViewersOpen(false);
     setStatusViewersList([]);
-    setStatusPaused(false); statusPausedRef.current = false;
+    statusPausedRef.current = false;
   }
 
   // ===== FIXED: sendStatusReply with proper connection check =====
@@ -2378,8 +2369,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setStatusViewerIndex(next);
   }
 
-  function pauseStatusTimer() { setStatusPaused(true); statusPausedRef.current = true; }
-  function resumeStatusTimer() { setStatusPaused(false); statusPausedRef.current = false; }
+  function pauseStatusTimer() { statusPausedRef.current = true; }
+  function resumeStatusTimer() { statusPausedRef.current = false; }
 
   function handleStatusVideoMeta() {
     const el = statusVideoRef.current;
@@ -2404,7 +2395,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     statusElapsedRef.current = 0;
     statusFrameStartRef.current = performance.now();
     setStatusProgress(0);
-    setStatusPaused(false); statusPausedRef.current = false;
+    statusPausedRef.current = false;
 
     if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current);
     const tick = (now: number) => {
