@@ -2500,6 +2500,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    setAvatarViewer(null);
   }, []);
 
   const handleAvatarClick = useCallback((e: React.MouseEvent | React.TouchEvent, onShortClick?: () => void) => {
@@ -3978,7 +3979,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 isDeleted={isDeleted}
                               />
                             ) : (
-                              <p className="whitespace-pre-wrap break-words text-white">
+                              <p className="no-callout whitespace-pre-wrap break-words text-white">
                                 {linkifyText(statusReply ? statusReply.text : m.content)}
                                 {m.edited_at && <span className="ml-1 text-[10px] text-mist">(edited)</span>}
                                 {m.is_forwarded && <span className="ml-1 text-[10px] text-mist">↪ forwarded</span>}
