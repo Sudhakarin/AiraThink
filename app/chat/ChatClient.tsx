@@ -663,6 +663,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [newMessagesCount, setNewMessagesCount] = useState(0);
   const prevMessagesInfoRef = useRef<{ lastId: string; len: number }>({ lastId: "", len: 0 });
+  const [imageViewerUrl, setImageViewerUrl] = useState<string | null>(null);
+  const [avatarViewer, setAvatarViewer] = useState<{ url: string; name: string; color: string } | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFiredRef = useRef(false);
 
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const [editContent, setEditContent] = useState("");
@@ -1469,6 +1473,34 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
     setNewMessagesCount(0);
     setShowScrollToBottom(false);
+  }, []);
+
+  const startAvatarLongPress = useCallback((avatar: { url?: string | null; name: string; color: string }) => {
+    if (!avatar.url) return;
+    longPressFiredRef.current = false;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = setTimeout(() => {
+      longPressFiredRef.current = true;
+      setAvatarViewer({ url: avatar.url as string, name: avatar.name, color: avatar.color });
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, 450);
+  }, []);
+
+  const cancelAvatarLongPress = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleAvatarClick = useCallback((e: React.MouseEvent | React.TouchEvent, onShortClick?: () => void) => {
+    if (longPressFiredRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      longPressFiredRef.current = false;
+      return;
+    }
+    onShortClick?.();
   }, []);
 
   useEffect(() => {
@@ -3787,7 +3819,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button onClick={() => setActiveId(null)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white md:hidden" aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
-              <button onClick={() => setShowContactInfo(true)} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
+              <button
+                onClick={(e) => handleAvatarClick(e, () => setShowContactInfo(true))}
+                onMouseDown={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
+                onMouseUp={cancelAvatarLongPress}
+                onMouseLeave={cancelAvatarLongPress}
+                onTouchStart={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
+                onTouchEnd={(e) => { cancelAvatarLongPress(); if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; } }}
+                onContextMenu={(e) => e.preventDefault()}
+                className="flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
+              >
                 <Avatar name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"} color={active.otherProfile?.avatar_color ?? "#7C5CFF"} online={otherIsOnline} avatarUrl={active.otherProfile?.avatar_url} />
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center text-sm font-semibold text-white">
@@ -3923,7 +3964,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             {isDeleted ? (
                               <p className="text-sm italic text-mist">This message was deleted</p>
                             ) : isImage ? (
-                              <img src={m.media_url!} alt="Shared photo" className="max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => window.open(m.media_url!, "_blank")} />
+                              <img src={m.media_url!} alt="Shared photo" className="max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => setImageViewerUrl(m.media_url!)} />
                             ) : isVoice ? (
                               <VoiceMessage 
                                 url={m.media_url!} 
@@ -4223,6 +4264,57 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 {deletingArticle ? "Deleting…" : "Delete"}
               </button>
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {imageViewerUrl && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95"
+          style={{ height: "100dvh", animation: "statusFadeIn 140ms ease-out" }}
+          onClick={() => setImageViewerUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setImageViewerUrl(null)}
+            aria-label="Close photo"
+            className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+          </button>
+          <img
+            src={imageViewerUrl}
+            alt="Photo"
+            className="max-h-[90vh] max-w-[94vw] rounded-lg object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>,
+        document.body
+      )}
+
+      {avatarViewer && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95"
+          style={{ height: "100dvh", animation: "statusFadeIn 140ms ease-out" }}
+          onClick={() => setAvatarViewer(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setAvatarViewer(null)}
+            aria-label="Close profile photo"
+            className="absolute right-4 top-[max(1rem,env(safe-area-inset-top))] z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+          </button>
+          <div className="flex flex-col items-center gap-4 px-6" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={avatarViewer.url}
+              alt={avatarViewer.name}
+              className="h-[min(80vw,360px)] w-[min(80vw,360px)] rounded-full object-cover shadow-2xl ring-1 ring-white/10"
+              style={{ animation: "scrollBtnPop 0.2s ease-out" }}
+            />
+            <p className="font-display text-base font-semibold text-white">{avatarViewer.name}</p>
           </div>
         </div>,
         document.body
