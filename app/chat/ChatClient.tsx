@@ -2528,6 +2528,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         * {
           -webkit-tap-highlight-color: transparent;
+          -webkit-touch-callout: none;
+          -webkit-user-select: none;
+          user-select: none;
+        }
+        input, textarea, [contenteditable="true"] {
+          -webkit-touch-callout: default;
+          -webkit-user-select: text;
+          user-select: text;
         }
         svg {
           shape-rendering: geometricPrecision;
