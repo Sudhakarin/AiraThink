@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     const url =
       `${JAMENDO_BASE}/?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=${limit}` +
-      `&search=${encodeURIComponent(query)}&audioformat=mp31&include=musicinfo`;
+      `&namesearch=${encodeURIComponent(query)}&audioformat=mp31&include=musicinfo`;
 
     const upstream = await fetch(url, { cache: "no-store" });
 
