@@ -14,6 +14,7 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [trimTrack, setTrimTrack] = useState<MusicTrack | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -23,6 +24,7 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
     if (!open) return;
     setQuery("");
     setTracks([]);
+    setError(null);
     setTrimTrack(null);
     return () => {
       audioRef.current?.pause();
@@ -34,16 +36,22 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
       setTracks([]);
+      setError(null);
       return;
     }
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+      setError(null);
       try {
         const res = await fetch(`/api/music/search?q=${encodeURIComponent(query)}`);
-        const json = await res.json();
-        setTracks(json.tracks ?? []);
-      } catch {
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(json?.error || `Search failed (${res.status})`);
+        }
+        setTracks(json?.tracks ?? []);
+      } catch (err) {
         setTracks([]);
+        setError(err instanceof Error ? err.message : "Search failed");
       } finally {
         setLoading(false);
       }
@@ -111,7 +119,10 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
             {loading && <p className="px-2 text-xs text-mist">Search ho raha hai…</p>}
-            {!loading && query && tracks.length === 0 && (
+            {!loading && error && (
+              <p className="px-2 text-xs text-red-400">Error: {error}</p>
+            )}
+            {!loading && !error && query && tracks.length === 0 && (
               <p className="px-2 text-xs text-mist">Kuch nahi mila. Doosra naam try karein.</p>
             )}
 
