@@ -21,17 +21,43 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ tracks: [] });
   }
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
   try {
     const upstream = await fetch(
       `${SAAVN_BASE}/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`,
-      { headers: { accept: "application/json" }, cache: "no-store" }
+      {
+        headers: {
+          accept: "application/json",
+          "user-agent":
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+        },
+        cache: "no-store",
+        signal: controller.signal,
+      }
     );
+    clearTimeout(timeout);
+
+    const rawText = await upstream.text();
 
     if (!upstream.ok) {
-      return NextResponse.json({ tracks: [], error: "upstream_unavailable" }, { status: 502 });
+      return NextResponse.json(
+        { tracks: [], error: "upstream_unavailable", status: upstream.status, body: rawText.slice(0, 300) },
+        { status: 502 }
+      );
     }
 
-    const json = await upstream.json();
+    let json: any;
+    try {
+      json = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json(
+        { tracks: [], error: "upstream_not_json", body: rawText.slice(0, 300) },
+        { status: 502 }
+      );
+    }
+
     const results = json?.data?.results ?? [];
 
     const tracks: MusicTrack[] = results.map((r: any) => {
@@ -59,9 +85,13 @@ export async function GET(req: NextRequest) {
     });
 
     return NextResponse.json({ tracks });
-  } catch (err) {
+  } catch (err: any) {
+    clearTimeout(timeout);
     console.error("music search failed", err);
-    return NextResponse.json({ tracks: [], error: "search_failed" }, { status: 500 });
+    return NextResponse.json(
+      { tracks: [], error: "search_failed", detail: String(err?.message ?? err) },
+      { status: 500 }
+    );
   }
 }
 
