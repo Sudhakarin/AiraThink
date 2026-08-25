@@ -760,7 +760,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [textStatusDraft, setTextStatusDraft] = useState("");
   const [textStatusColor, setTextStatusColor] = useState(STATUS_COLORS[0]);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
-  const [pendingMusic, setPendingMusic] = useState<MusicTrack | null>(null);
+  const [pendingMusic, setPendingMusic] = useState<(MusicTrack & { startSec: number; clipDurationSec: number }) | null>(null);
   const statusMusicAudioRef = useRef<HTMLAudioElement | null>(null);
   const statusFileInputRef = useRef<HTMLInputElement>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2014,7 +2014,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         music_artist: pendingMusic?.artist ?? null,
         music_thumbnail: pendingMusic?.thumbnail ?? null,
         music_stream_url: pendingMusic?.streamUrl ?? null,
-        music_duration_sec: pendingMusic?.durationSec ?? null,
+        music_start_sec: pendingMusic?.startSec ?? null,
+        music_duration_sec: pendingMusic?.clipDurationSec ?? null,
       });
       if (error) { setErrorMsg("Failed to post status. Please try again."); }
       setUploadingStatus(false); setPendingMusic(null); loadStatuses();
@@ -2223,7 +2224,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       music_artist: pendingMusic?.artist ?? null,
       music_thumbnail: pendingMusic?.thumbnail ?? null,
       music_stream_url: pendingMusic?.streamUrl ?? null,
-      music_duration_sec: pendingMusic?.durationSec ?? null,
+      music_start_sec: pendingMusic?.startSec ?? null,
+      music_duration_sec: pendingMusic?.clipDurationSec ?? null,
     });
     if (error) { setErrorMsg("Failed to post status. Please try again."); }
     setUploadingStatus(false); setPendingMusic(null); loadStatuses();
@@ -2241,7 +2243,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       music_artist: pendingMusic?.artist ?? null,
       music_thumbnail: pendingMusic?.thumbnail ?? null,
       music_stream_url: pendingMusic?.streamUrl ?? null,
-      music_duration_sec: pendingMusic?.durationSec ?? null,
+      music_start_sec: pendingMusic?.startSec ?? null,
+      music_duration_sec: pendingMusic?.clipDurationSec ?? null,
     });
     if (error) { setErrorMsg("Failed to post status. Please try again."); return; }
     (document.activeElement as HTMLElement | null)?.blur?.();
@@ -2599,14 +2602,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (!statusMusicAudioRef.current) statusMusicAudioRef.current = new Audio();
     const audio = statusMusicAudioRef.current;
     if (activeStatusItem?.music_stream_url) {
+      const clipStart = activeStatusItem.music_start_sec ? Number(activeStatusItem.music_start_sec) : 0;
+      const clipLen = activeStatusItem.music_duration_sec ? Number(activeStatusItem.music_duration_sec) : null;
       audio.src = activeStatusItem.music_stream_url;
-      audio.currentTime = activeStatusItem.music_start_sec ? Number(activeStatusItem.music_start_sec) : 0;
-      audio.loop = activeStatusItem.media_type === "text" || activeStatusItem.media_type === "image";
+      audio.currentTime = clipStart;
+      audio.loop = clipLen ? false : (activeStatusItem.media_type === "text" || activeStatusItem.media_type === "image");
       audio.play().catch(() => {});
+      const onTimeUpdate = () => {
+        if (clipLen && audio.currentTime >= clipStart + clipLen) {
+          if (activeStatusItem.media_type === "text" || activeStatusItem.media_type === "image") {
+            audio.currentTime = clipStart;
+          } else {
+            audio.pause();
+          }
+        }
+      };
+      audio.addEventListener("timeupdate", onTimeUpdate);
+      return () => { audio.pause(); audio.removeEventListener("timeupdate", onTimeUpdate); };
     } else {
       audio.pause();
+      return () => { audio.pause(); };
     }
-    return () => { audio.pause(); };
   }, [activeStatusItem?.id, activeStatusItem?.music_stream_url]);
 
   useEffect(() => {
@@ -3411,7 +3427,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       <MusicPicker
         open={showMusicPicker}
         onClose={() => setShowMusicPicker(false)}
-        onSelect={(track) => { setPendingMusic(track); setShowMusicPicker(false); }}
+        onSelect={(track, startSec, clipDurationSec) => {
+          setPendingMusic({ ...track, startSec, clipDurationSec });
+          setShowMusicPicker(false);
+        }}
       />
 
       {photoEditorFile && photoEditorPreviewUrl && (
