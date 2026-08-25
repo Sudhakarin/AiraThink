@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Unofficial JioSaavn API — no auth needed, community-maintained wrapper.
-// Docs/source: https://docs.saavn.me
-const SAAVN_BASE = "https://saavn.me";
+// Apple's official iTunes Search API — free, no auth, no key needed, never rate-limited/blocked.
+// Docs: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
+const ITUNES_BASE = "https://itunes.apple.com/search";
 
 export type MusicTrack = {
   id: string;
@@ -10,7 +10,7 @@ export type MusicTrack = {
   artist: string;
   thumbnail: string;
   durationSec: number;
-  streamUrl: string; // best-available quality direct link
+  streamUrl: string; // 30-second preview clip (Apple only provides previews via this API)
 };
 
 export async function GET(req: NextRequest) {
@@ -21,83 +21,37 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ tracks: [] });
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
   try {
     const upstream = await fetch(
-      `${SAAVN_BASE}/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`,
-      {
-        headers: {
-          accept: "application/json",
-          "user-agent":
-            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
-        },
-        cache: "no-store",
-        signal: controller.signal,
-      }
+      `${ITUNES_BASE}?term=${encodeURIComponent(query)}&media=music&entity=song&limit=${limit}&country=IN`,
+      { cache: "no-store" }
     );
-    clearTimeout(timeout);
-
-    const rawText = await upstream.text();
 
     if (!upstream.ok) {
-      return NextResponse.json(
-        { tracks: [], error: "upstream_unavailable", status: upstream.status, body: rawText.slice(0, 300) },
-        { status: 502 }
-      );
+      return NextResponse.json({ tracks: [], error: "upstream_unavailable" }, { status: 502 });
     }
 
-    let json: any;
-    try {
-      json = JSON.parse(rawText);
-    } catch {
-      return NextResponse.json(
-        { tracks: [], error: "upstream_not_json", body: rawText.slice(0, 300) },
-        { status: 502 }
-      );
-    }
+    const json = await upstream.json();
+    const results = json?.results ?? [];
 
-    const results = json?.data?.results ?? [];
-
-    const tracks: MusicTrack[] = results.map((r: any) => {
-      // downloadUrl / image are arrays of { quality, link } — pick the highest available
-      const downloadUrl: { quality: string; link: string }[] = r.downloadUrl ?? [];
-      const best =
-        downloadUrl.find((d) => d.quality === "320kbps") ??
-        downloadUrl[downloadUrl.length - 1] ??
-        null;
-      const images: { quality: string; link: string }[] = r.image ?? [];
-
-      const artistNames =
-        r.primaryArtists ||
-        (r.artists?.primary ?? []).map((a: any) => a.name).join(", ") ||
-        "Unknown artist";
-
-      return {
-        id: r.id,
-        title: decodeHtml(r.name ?? "Unknown"),
-        artist: decodeHtml(artistNames),
-        thumbnail: images[images.length - 1]?.link ?? "",
-        durationSec: Number(r.duration ?? 0),
-        streamUrl: best?.link ?? "",
-      };
-    });
+    const tracks: MusicTrack[] = results
+      .filter((r: any) => r.previewUrl)
+      .map((r: any) => ({
+        id: String(r.trackId),
+        title: r.trackName ?? "Unknown",
+        artist: r.artistName ?? "Unknown artist",
+        // bump the default 100x100 artwork up to 300x300
+        thumbnail: (r.artworkUrl100 ?? "").replace("100x100", "300x300"),
+        durationSec: Math.round((r.trackTimeMillis ?? 0) / 1000),
+        streamUrl: r.previewUrl,
+      }));
 
     return NextResponse.json({ tracks });
   } catch (err: any) {
-    clearTimeout(timeout);
     console.error("music search failed", err);
     return NextResponse.json(
       { tracks: [], error: "search_failed", detail: String(err?.message ?? err) },
       { status: 500 }
     );
   }
-}
-
-function decodeHtml(s: string) {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&#039;/g, "'")
-    .replace(/&quot;/g, '"');
 }
