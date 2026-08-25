@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Apple's official iTunes Search API — free, no auth, no key needed, never rate-limited/blocked.
-// Docs: https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/iTuneSearchAPI/
-const ITUNES_BASE = "https://itunes.apple.com/search";
+// Jamendo — legal, royalty-free, full-length music library. Free for commercial use.
+// Docs: https://developer.jamendo.com
+const JAMENDO_CLIENT_ID = "0108e756";
+const JAMENDO_BASE = "https://api.jamendo.com/v3.0/tracks";
 
 export type MusicTrack = {
   id: string;
@@ -10,7 +11,7 @@ export type MusicTrack = {
   artist: string;
   thumbnail: string;
   durationSec: number;
-  streamUrl: string; // 30-second preview clip (Apple only provides previews via this API)
+  streamUrl: string; // full-length track, royalty-free
 };
 
 export async function GET(req: NextRequest) {
@@ -22,10 +23,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const upstream = await fetch(
-      `${ITUNES_BASE}?term=${encodeURIComponent(query)}&media=music&entity=song&limit=${limit}&country=IN`,
-      { cache: "no-store" }
-    );
+    const url =
+      `${JAMENDO_BASE}/?client_id=${JAMENDO_CLIENT_ID}&format=json&limit=${limit}` +
+      `&search=${encodeURIComponent(query)}&audioformat=mp31&include=musicinfo`;
+
+    const upstream = await fetch(url, { cache: "no-store" });
 
     if (!upstream.ok) {
       return NextResponse.json({ tracks: [], error: "upstream_unavailable" }, { status: 502 });
@@ -35,15 +37,14 @@ export async function GET(req: NextRequest) {
     const results = json?.results ?? [];
 
     const tracks: MusicTrack[] = results
-      .filter((r: any) => r.previewUrl)
+      .filter((r: any) => r.audio)
       .map((r: any) => ({
-        id: String(r.trackId),
-        title: r.trackName ?? "Unknown",
-        artist: r.artistName ?? "Unknown artist",
-        // bump the default 100x100 artwork up to 300x300
-        thumbnail: (r.artworkUrl100 ?? "").replace("100x100", "300x300"),
-        durationSec: Math.round((r.trackTimeMillis ?? 0) / 1000),
-        streamUrl: r.previewUrl,
+        id: String(r.id),
+        title: r.name ?? "Unknown",
+        artist: r.artist_name ?? "Unknown artist",
+        thumbnail: r.album_image ?? r.image ?? "",
+        durationSec: Number(r.duration ?? 0),
+        streamUrl: r.audio,
       }));
 
     return NextResponse.json({ tracks });
