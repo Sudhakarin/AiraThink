@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 // Unofficial JioSaavn API — no auth needed, community-maintained wrapper.
-// Docs/source: https://saavn.dev
-const SAAVN_BASE = "https://saavn.dev/api";
+// Docs/source: https://docs.saavn.me
+const SAAVN_BASE = "https://saavn.me";
 
 export type MusicTrack = {
   id: string;
@@ -23,8 +23,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const upstream = await fetch(
-      `${SAAVN_BASE}/search/songs?query=${encodeURIComponent(query)}&limit=${limit}`,
-      { next: { revalidate: 60 } } // light caching, upstream is a free community API — be gentle
+      `${SAAVN_BASE}/search/songs?query=${encodeURIComponent(query)}&page=1&limit=${limit}`,
+      { headers: { accept: "application/json" }, cache: "no-store" }
     );
 
     if (!upstream.ok) {
@@ -35,22 +35,26 @@ export async function GET(req: NextRequest) {
     const results = json?.data?.results ?? [];
 
     const tracks: MusicTrack[] = results.map((r: any) => {
-      // downloadUrl is an array of { quality, url } — pick the highest available
-      const downloadUrl: { quality: string; url: string }[] = r.downloadUrl ?? [];
+      // downloadUrl / image are arrays of { quality, link } — pick the highest available
+      const downloadUrl: { quality: string; link: string }[] = r.downloadUrl ?? [];
       const best =
         downloadUrl.find((d) => d.quality === "320kbps") ??
         downloadUrl[downloadUrl.length - 1] ??
         null;
+      const images: { quality: string; link: string }[] = r.image ?? [];
+
+      const artistNames =
+        r.primaryArtists ||
+        (r.artists?.primary ?? []).map((a: any) => a.name).join(", ") ||
+        "Unknown artist";
 
       return {
         id: r.id,
         title: decodeHtml(r.name ?? "Unknown"),
-        artist: decodeHtml(
-          (r.artists?.primary ?? []).map((a: any) => a.name).join(", ") || "Unknown artist"
-        ),
-        thumbnail: (r.image ?? []).slice(-1)[0]?.url ?? "",
+        artist: decodeHtml(artistNames),
+        thumbnail: images[images.length - 1]?.link ?? "",
         durationSec: Number(r.duration ?? 0),
-        streamUrl: best?.url ?? "",
+        streamUrl: best?.link ?? "",
       };
     });
 
