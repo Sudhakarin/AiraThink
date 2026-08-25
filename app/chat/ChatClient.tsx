@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { subscribeToPush } from "@/lib/push";
+import MusicPicker from "@/components/MusicPicker";
+import type { MusicTrack } from "@/app/api/music/search/route";
 
 type Profile = {
   id: string;
@@ -55,6 +57,13 @@ type Status = {
   created_at: string;
   expires_at: string;
   profile?: Profile;
+  music_track_id?: string | null;
+  music_title?: string | null;
+  music_artist?: string | null;
+  music_thumbnail?: string | null;
+  music_stream_url?: string | null;
+  music_duration_sec?: number | null;
+  music_start_sec?: number | null;
 };
 
 type StatusViewer = {
@@ -750,6 +759,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [showTextStatusComposer, setShowTextStatusComposer] = useState(false);
   const [textStatusDraft, setTextStatusDraft] = useState("");
   const [textStatusColor, setTextStatusColor] = useState(STATUS_COLORS[0]);
+  const [showMusicPicker, setShowMusicPicker] = useState(false);
+  const [pendingMusic, setPendingMusic] = useState<MusicTrack | null>(null);
+  const statusMusicAudioRef = useRef<HTMLAudioElement | null>(null);
   const statusFileInputRef = useRef<HTMLInputElement>(null);
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [myLikedStatusIds, setMyLikedStatusIds] = useState<Set<string>>(new Set());
@@ -1993,9 +2005,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         return;
       }
       const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-      const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl, media_type: "image" });
+      const { error } = await supabase.from("statuses").insert({
+        user_id: myProfile.id,
+        media_url: publicUrlData.publicUrl,
+        media_type: "image",
+        music_track_id: pendingMusic?.id ?? null,
+        music_title: pendingMusic?.title ?? null,
+        music_artist: pendingMusic?.artist ?? null,
+        music_thumbnail: pendingMusic?.thumbnail ?? null,
+        music_stream_url: pendingMusic?.streamUrl ?? null,
+        music_duration_sec: pendingMusic?.durationSec ?? null,
+      });
       if (error) { setErrorMsg("Failed to post status. Please try again."); }
-      setUploadingStatus(false); loadStatuses();
+      setUploadingStatus(false); setPendingMusic(null); loadStatuses();
     } else if (target === "chat" && activeId) {
       setUploadingMedia(true);
       const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
@@ -2192,17 +2214,38 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return;
     }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, media_url: publicUrlData.publicUrl, media_type: "video" });
+    const { error } = await supabase.from("statuses").insert({
+      user_id: myProfile.id,
+      media_url: publicUrlData.publicUrl,
+      media_type: "video",
+      music_track_id: pendingMusic?.id ?? null,
+      music_title: pendingMusic?.title ?? null,
+      music_artist: pendingMusic?.artist ?? null,
+      music_thumbnail: pendingMusic?.thumbnail ?? null,
+      music_stream_url: pendingMusic?.streamUrl ?? null,
+      music_duration_sec: pendingMusic?.durationSec ?? null,
+    });
     if (error) { setErrorMsg("Failed to post status. Please try again."); }
-    setUploadingStatus(false); loadStatuses();
+    setUploadingStatus(false); setPendingMusic(null); loadStatuses();
   }
 
   async function postTextStatus() {
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
-    const { error } = await supabase.from("statuses").insert({ user_id: myProfile.id, text_content: trimmed, bg_color: textStatusColor, media_type: "text" });
+    const { error } = await supabase.from("statuses").insert({
+      user_id: myProfile.id,
+      text_content: trimmed,
+      bg_color: textStatusColor,
+      media_type: "text",
+      music_track_id: pendingMusic?.id ?? null,
+      music_title: pendingMusic?.title ?? null,
+      music_artist: pendingMusic?.artist ?? null,
+      music_thumbnail: pendingMusic?.thumbnail ?? null,
+      music_stream_url: pendingMusic?.streamUrl ?? null,
+      music_duration_sec: pendingMusic?.durationSec ?? null,
+    });
     if (error) { setErrorMsg("Failed to post status. Please try again."); return; }
     (document.activeElement as HTMLElement | null)?.blur?.();
-    setTextStatusDraft(""); setShowTextStatusComposer(false); loadStatuses();
+    setTextStatusDraft(""); setShowTextStatusComposer(false); setPendingMusic(null); loadStatuses();
   }
 
   async function deleteStatus(id: string) {
@@ -2221,6 +2264,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   function closeStatusViewer() {
     if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
     if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current);
+    statusMusicAudioRef.current?.pause();
     setStatusClosing(true);
     setTimeout(() => {
       setStatusViewerUserId(null); setStatusViewerIndex(0);
@@ -2550,6 +2594,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const activeStatusList = statusViewerUserId ? (statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? []) : [];
   const activeStatusItem = activeStatusList[statusViewerIndex] ?? null;
   const activeStatusProfile = activeStatusItem?.profile ?? (statusViewerUserId === myProfile.id ? myProfile : active?.otherProfile) ?? null;
+
+  useEffect(() => {
+    if (!statusMusicAudioRef.current) statusMusicAudioRef.current = new Audio();
+    const audio = statusMusicAudioRef.current;
+    if (activeStatusItem?.music_stream_url) {
+      audio.src = activeStatusItem.music_stream_url;
+      audio.currentTime = activeStatusItem.music_start_sec ? Number(activeStatusItem.music_start_sec) : 0;
+      audio.loop = activeStatusItem.media_type === "text" || activeStatusItem.media_type === "image";
+      audio.play().catch(() => {});
+    } else {
+      audio.pause();
+    }
+    return () => { audio.pause(); };
+  }, [activeStatusItem?.id, activeStatusItem?.music_stream_url]);
+
+  useEffect(() => {
+    const audio = statusMusicAudioRef.current;
+    if (!audio) return;
+    if (statusPaused) audio.pause();
+    else if (activeStatusItem?.music_stream_url) audio.play().catch(() => {});
+  }, [statusPaused, activeStatusItem?.music_stream_url]);
 
   // Helper function to check if current user is connected to a specific user
   const isConnectedTo = useCallback((userId: string) => {
@@ -3120,6 +3185,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </p>
               <p className="text-xs text-white/60">{formatLastSeen(activeStatusItem.created_at)}</p>
             </div>
+            {activeStatusItem.music_title && (
+              <div className="flex max-w-[38%] items-center gap-1.5 rounded-full bg-black/30 px-2.5 py-1 backdrop-blur-sm">
+                <span className="text-xs">🎵</span>
+                <div className="min-w-0 overflow-hidden">
+                  <p className="truncate text-[11px] font-medium text-white">{activeStatusItem.music_title}</p>
+                </div>
+              </div>
+            )}
             {activeStatusItem.media_type === "video" && activeStatusItem.media_url && (
               <button
                 onClick={(e) => { e.stopPropagation(); setStatusVideoMuted((v) => !v); }}
@@ -3309,11 +3382,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: textStatusColor }}>
           <div className="flex items-center justify-between px-4 py-4">
             <button onClick={() => { (document.activeElement as HTMLElement | null)?.blur?.(); setShowTextStatusComposer(false); setTextStatusDraft(""); }} className="text-xl text-white" aria-label="Cancel">✕</button>
+            <button onClick={() => setShowMusicPicker(true)} className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-semibold text-white" aria-label="Add music">🎵</button>
             <button onClick={postTextStatus} disabled={!textStatusDraft.trim()} className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">Post</button>
           </div>
           <div className="flex flex-1 items-center justify-center px-8">
             <textarea autoFocus value={textStatusDraft} onChange={(e) => setTextStatusDraft(e.target.value.slice(0, 200))} placeholder="Type a status…" rows={4} className="w-full resize-none bg-transparent text-center text-2xl font-semibold text-white placeholder:text-white/60 outline-none" />
           </div>
+          {pendingMusic && (
+            <div className="mx-8 mb-3 flex items-center gap-2 rounded-xl bg-black/20 px-3 py-2">
+              {pendingMusic.thumbnail && (
+                <img src={pendingMusic.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-semibold text-white">{pendingMusic.title}</p>
+                <p className="truncate text-[11px] text-white/70">{pendingMusic.artist}</p>
+              </div>
+              <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-white/70 hover:text-white" aria-label="Remove music">✕</button>
+            </div>
+          )}
           <div className="flex justify-center gap-3 pb-8">
             {STATUS_COLORS.map((c) => (
               <button key={c} onClick={() => setTextStatusColor(c)} className={`h-8 w-8 rounded-full transition ${textStatusColor === c ? "ring-2 ring-white ring-offset-2 ring-offset-black/20" : ""}`} style={{ background: c }} aria-label={`Choose color ${c}`} />
@@ -3321,6 +3407,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         </div>
       )}
+
+      <MusicPicker
+        open={showMusicPicker}
+        onClose={() => setShowMusicPicker(false)}
+        onSelect={(track) => { setPendingMusic(track); setShowMusicPicker(false); }}
+      />
 
       {photoEditorFile && photoEditorPreviewUrl && (
         <div className="fixed inset-0 z-[70] flex flex-col bg-black status-fade-in">
@@ -3621,8 +3713,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         : "Tap to add a status update"}
                   </p>
                 </button>
+                <button onClick={() => setShowMusicPicker(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Add music to status">🎵</button>
                 <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
               </div>
+              {pendingMusic && (
+                <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl bg-violet/10 px-3 py-2">
+                  {pendingMusic.thumbnail && (
+                    <img src={pendingMusic.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-semibold text-white">{pendingMusic.title}</p>
+                    <p className="truncate text-[11px] text-mist">{pendingMusic.artist} · Agli status pe lagega</p>
+                  </div>
+                  <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-mist hover:text-white" aria-label="Remove music">✕</button>
+                </div>
+              )}
               {(() => {
                 const entries = Object.entries(otherStatusesGrouped);
                 const recent = entries.filter(([userId]) => !statusRingPropsFor(userId).viewed);
