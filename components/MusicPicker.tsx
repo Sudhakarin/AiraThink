@@ -14,7 +14,6 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
   const [query, setQuery] = useState("");
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [trimTrack, setTrimTrack] = useState<MusicTrack | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -24,7 +23,6 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
     if (!open) return;
     setQuery("");
     setTracks([]);
-    setError(null);
     setTrimTrack(null);
     return () => {
       audioRef.current?.pause();
@@ -36,22 +34,16 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
       setTracks([]);
-      setError(null);
       return;
     }
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      setError(null);
       try {
         const res = await fetch(`/api/music/search?q=${encodeURIComponent(query)}`);
-        const json = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(json?.error || `Search failed (${res.status})`);
-        }
-        setTracks(json?.tracks ?? []);
-      } catch (err) {
+        const json = await res.json();
+        setTracks(json.tracks ?? []);
+      } catch {
         setTracks([]);
-        setError(err instanceof Error ? err.message : "Search failed");
       } finally {
         setLoading(false);
       }
@@ -119,10 +111,7 @@ export default function MusicPicker({ open, onClose, onSelect }: Props) {
 
           <div className="flex-1 overflow-y-auto px-3 py-3">
             {loading && <p className="px-2 text-xs text-mist">Search ho raha hai…</p>}
-            {!loading && error && (
-              <p className="px-2 text-xs text-red-400">Error: {error}</p>
-            )}
-            {!loading && !error && query && tracks.length === 0 && (
+            {!loading && query && tracks.length === 0 && (
               <p className="px-2 text-xs text-mist">Kuch nahi mila. Doosra naam try karein.</p>
             )}
 
@@ -196,7 +185,6 @@ function TrimScreen({
   const [totalDuration, setTotalDuration] = useState(30);
   const [start, setStart] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [bars] = useState<number[]>(() => makeWaveform(track.id));
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
@@ -296,52 +284,27 @@ function TrimScreen({
           <img src={track.thumbnail} alt="" className="h-40 w-40 rounded-2xl object-cover shadow-lg" />
         )}
 
+        <button
+          type="button"
+          onClick={togglePlay}
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-ink-900"
+          aria-label={isPlaying ? "Pause" : "Play"}
+        >
+          {isPlaying ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" />
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          )}
+        </button>
+
         <div className="w-full">
-          <p className="mb-3 text-center text-xs text-mist">
+          <p className="mb-2 text-center text-xs text-mist">
             Timeline pe khiska kar apna {clipLength}-second hissa chuno
           </p>
-
-          {/* length toggle + scrub line + play/pause, like the reference UI */}
-          <div className="mb-3 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setClipLength((len) => (len === 15 ? 30 : 15))}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/30 text-[11px] font-semibold text-white"
-              aria-label="Toggle clip length"
-            >
-              {clipLength}
-            </button>
-
-            <div className="relative h-[2px] flex-1 rounded-full bg-white/20">
-              <div
-                className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white"
-                style={{ left: `${leftPercent}%` }}
-              />
-              <div
-                className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-white/60"
-                style={{ left: `${Math.min(100, leftPercent + windowPercent)}%` }}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={togglePlay}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-ink-900"
-              aria-label={isPlaying ? "Pause" : "Play"}
-            >
-              {isPlaying ? (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" />
-                </svg>
-              ) : (
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-              )}
-            </button>
-          </div>
-
-          {/* waveform with draggable gradient selection window */}
           <div
             ref={trackRef}
             onPointerDown={(e) => {
@@ -355,46 +318,30 @@ function TrimScreen({
             onPointerUp={() => {
               draggingRef.current = false;
             }}
-            className="relative flex h-16 w-full touch-none items-center gap-[2px] overflow-hidden rounded-xl px-0.5"
+            className="relative h-12 w-full cursor-pointer touch-none rounded-full bg-white/10"
           >
-            {bars.map((h, i) => {
-              const barPercent = ((i + 0.5) / bars.length) * 100;
-              const selected =
-                barPercent >= leftPercent && barPercent <= leftPercent + windowPercent;
-              return (
-                <div
-                  key={i}
-                  className={`w-[3px] shrink-0 rounded-full transition-colors ${
-                    selected ? "bg-white" : "bg-white/15"
-                  }`}
-                  style={{ height: `${h}%` }}
-                />
-              );
-            })}
-
             <div
-              className="pointer-events-none absolute top-0 h-full rounded-lg border-2 border-white/90 bg-gradient-to-r from-amber-400/30 via-fuchsia-500/30 to-violet/30"
+              className="absolute top-0 h-full rounded-full bg-gradient-to-r from-violet to-violet-light"
               style={{ left: `${leftPercent}%`, width: `${windowPercent}%` }}
-            >
-              <div className="absolute inset-y-0 -right-[3px] w-[6px] rounded-full bg-white" />
-              <div className="absolute inset-y-0 -left-[3px] w-[6px] rounded-full bg-white" />
-            </div>
+            />
           </div>
+        </div>
+
+        <div className="flex gap-2">
+          {[15, 30].map((len) => (
+            <button
+              key={len}
+              type="button"
+              onClick={() => setClipLength(len as 15 | 30)}
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold ${
+                clipLength === len ? "bg-white text-ink-900" : "bg-white/10 text-white"
+              }`}
+            >
+              {len}s
+            </button>
+          ))}
         </div>
       </div>
     </div>
   );
-}
-
-/** Deterministic pseudo-random waveform so the shape stays stable per track. */
-function makeWaveform(seed: string, count = 70): number[] {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  const bars: number[] = [];
-  for (let i = 0; i < count; i++) {
-    h = (h * 1103515245 + 12345) >>> 0;
-    const rand = (h >>> 8) / 0xffffff;
-    bars.push(24 + rand * 76); // 24%–100% tall
-  }
-  return bars;
 }
