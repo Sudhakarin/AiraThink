@@ -728,10 +728,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
-  const bubbleLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const bubbleLongPressFiredRef = useRef(false);
-  const lastTapRef = useRef<{ id: string; time: number } | null>(null);
-  const reactionInFlightRef = useRef<Set<string>>(new Set());
 
   const [peerTyping, setPeerTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1470,47 +1466,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data } = await supabase.from("message_reactions").select("*").in("message_id", messageIds);
     const grouped: Record<string, Reaction[]> = {};
     (data ?? []).forEach((r: Reaction) => { grouped[r.message_id] = [...(grouped[r.message_id] ?? []), r]; });
-    // Merge into existing state instead of replacing it wholesale — otherwise
-    // loading reactions for a subset of messages (e.g. pagination, a single
-    // toggle) would wipe out reactions already loaded for every other message.
-    setReactionsByMsg((prev) => {
-      const next = { ...prev };
-      messageIds.forEach((id) => { next[id] = grouped[id] ?? []; });
-      return next;
-    });
+    setReactionsByMsg(grouped);
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
     setReactionPickerFor(null);
-    const key = `${messageId}:${emoji}`;
-    // Guard against double-fire (fast double-tap, dblclick + contextmenu, etc.)
-    // sending duplicate insert/delete requests before the first one resolves.
-    if (reactionInFlightRef.current.has(key)) return;
-    reactionInFlightRef.current.add(key);
     const existing = reactionsByMsg[messageId]?.find((r) => r.user_id === myProfile.id && r.emoji === emoji);
-    // Optimistic update so the UI reacts instantly on mobile taps, and so a
-    // rapid second tap sees the up-to-date state instead of the stale one.
-    setReactionsByMsg((prev) => {
-      const list = prev[messageId] ?? [];
-      if (existing) {
-        return { ...prev, [messageId]: list.filter((r) => !(r.user_id === myProfile.id && r.emoji === emoji)) };
+    if (existing) {
+      await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", myProfile.id).eq("emoji", emoji);
+    } else {
+      await supabase.from("message_reactions").insert({ message_id: messageId, user_id: myProfile.id, emoji });
+      const targetMsg = messages.find((m) => m.id === messageId);
+      if (targetMsg && targetMsg.sender_id !== myProfile.id) {
+        sendPushNotification({ userId: targetMsg.sender_id, title: myProfile.display_name, body: `${emoji} reacted to your message`, url: "/" });
       }
-      return { ...prev, [messageId]: [...list, { id: `temp-${Date.now()}`, message_id: messageId, user_id: myProfile.id, emoji }] };
-    });
-    try {
-      if (existing) {
-        await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", myProfile.id).eq("emoji", emoji);
-      } else {
-        await supabase.from("message_reactions").insert({ message_id: messageId, user_id: myProfile.id, emoji });
-        const targetMsg = messages.find((m) => m.id === messageId);
-        if (targetMsg && targetMsg.sender_id !== myProfile.id) {
-          sendPushNotification({ userId: targetMsg.sender_id, title: myProfile.display_name, body: `${emoji} reacted to your message`, url: "/" });
-        }
-      }
-    } finally {
-      reactionInFlightRef.current.delete(key);
-      loadReactionsFor(messages.map((m) => m.id));
     }
+    loadReactionsFor(messages.map((m) => m.id));
   }
 
   const isInitialLoadRef = useRef(true);
@@ -2602,66 +2573,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return m.content; 
   }
 
-  const BUBBLE_LONG_PRESS_MS = 420;
-  const DOUBLE_TAP_MS = 300;
-  const MOVE_CANCEL_PX = 10;
-
-  function clearBubbleLongPress() {
-    if (bubbleLongPressTimerRef.current) {
-      clearTimeout(bubbleLongPressTimerRef.current);
-      bubbleLongPressTimerRef.current = null;
-    }
-  }
-
-  // Reaction picker used to rely solely on the native "contextmenu" event to
-  // detect a long-press. That event is unreliable on touch devices — on iOS
-  // Safari in particular it can fail to fire at all on elements that have
-  // -webkit-touch-callout disabled (used elsewhere to stop the native
-  // copy/save menu), which is why reactions "sometimes" didn't work. We now
-  // drive long-press and double-tap-to-heart entirely from touch events,
-  // same as the existing swipe-to-reply gesture on this element.
   function onBubbleTouchStart(e: React.TouchEvent, m: Message) {
-    if (reactionPickerFor && reactionPickerFor !== m.id) setReactionPickerFor(null);
+    if (reactionPickerFor) setReactionPickerFor(null);
     swipeStartRef.current = { id: m.id, x: e.touches[0].clientX, y: e.touches[0].clientY };
-    bubbleLongPressFiredRef.current = false;
-    clearBubbleLongPress();
-    bubbleLongPressTimerRef.current = setTimeout(() => {
-      bubbleLongPressFiredRef.current = true;
-      setReactionPickerFor(m.id);
-      if (navigator.vibrate) navigator.vibrate(12);
-    }, BUBBLE_LONG_PRESS_MS);
   }
   function onBubbleTouchMove(e: React.TouchEvent, m: Message) {
     const start = swipeStartRef.current;
     if (!start || start.id !== m.id) return;
     const dx = e.touches[0].clientX - start.x;
     const dy = e.touches[0].clientY - start.y;
-    if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) clearBubbleLongPress();
     if (Math.abs(dy) > Math.abs(dx)) return;
     const clamped = Math.max(0, Math.min(dx, SWIPE_REPLY_MAX));
     setSwipeState({ id: m.id, dx: clamped });
   }
   function onBubbleTouchEnd(m: Message) {
-    clearBubbleLongPress();
     const state = swipeState;
     swipeStartRef.current = null; setSwipeState(null);
-    if (bubbleLongPressFiredRef.current) {
-      // Long press already opened the picker — don't also treat this as a tap.
-      bubbleLongPressFiredRef.current = false;
-      return;
-    }
-    if (state && state.id === m.id && state.dx > SWIPE_REPLY_THRESHOLD) {
-      setReplyingTo(m);
-      return;
-    }
-    const now = Date.now();
-    const last = lastTapRef.current;
-    if (last && last.id === m.id && now - last.time < DOUBLE_TAP_MS) {
-      lastTapRef.current = null;
-      toggleReaction(m.id, "❤️");
-    } else {
-      lastTapRef.current = { id: m.id, time: now };
-    }
+    if (state && state.id === m.id && state.dx > SWIPE_REPLY_THRESHOLD) setReplyingTo(m);
   }
 
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
@@ -4133,7 +4061,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 md:px-6">
+            <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 shadow-sm shadow-black/10 md:px-6">
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/40 to-transparent" />
               <button onClick={() => setActiveId(null)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white md:hidden" aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
@@ -4154,8 +4083,29 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     {isVerified(active.otherProfile?.username, active.otherProfile?.verified) && <VerifiedBadge />}
                   </p>
                   {!active.is_group && (
-                    <p className="truncate text-xs text-mist">
-                      {peerTyping ? <span className="text-teal animate-pulse">typing…</span> : otherIsOnline ? <span className="text-teal">Active now</span> : otherProfileFresh?.last_seen ? `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}` : `@${active.otherProfile?.username}`}
+                    <p className="flex items-center gap-1.5 truncate text-xs text-mist">
+                      {peerTyping ? (
+                        <span className="flex items-center gap-1 text-teal">
+                          <span className="flex gap-0.5">
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-teal" style={{ animationDelay: "0ms" }} />
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-teal" style={{ animationDelay: "120ms" }} />
+                            <span className="h-1 w-1 animate-bounce rounded-full bg-teal" style={{ animationDelay: "240ms" }} />
+                          </span>
+                          typing…
+                        </span>
+                      ) : otherIsOnline ? (
+                        <span className="flex items-center gap-1.5 text-teal">
+                          <span className="relative flex h-1.5 w-1.5">
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal opacity-75" />
+                            <span className="relative h-1.5 w-1.5 rounded-full bg-teal" />
+                          </span>
+                          Active now
+                        </span>
+                      ) : otherProfileFresh?.last_seen ? (
+                        `Last seen ${formatLastSeen(otherProfileFresh.last_seen)}`
+                      ) : (
+                        `@${active.otherProfile?.username}`
+                      )}
                     </p>
                   )}
                 </div>
@@ -4175,8 +4125,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             </header>
 
-            <div ref={scrollRef} onScroll={handleMessagesScroll} className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-6 py-6">
-              {loadingMore && <p className="pb-2 text-center text-xs text-mist">Loading older messages…</p>}
+            <div
+              ref={scrollRef}
+              onScroll={handleMessagesScroll}
+              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-4 py-6 md:px-8"
+              style={{
+                backgroundImage:
+                  "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.055) 1px, transparent 0)",
+                backgroundSize: "22px 22px",
+              }}
+            >
+              {loadingMore && (
+                <p className="pb-2 text-center text-xs text-mist">
+                  <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1">
+                    <span className="h-1.5 w-1.5 animate-spin rounded-full border border-mist border-t-transparent" />
+                    Loading older messages…
+                  </span>
+                </p>
+              )}
               {messages.map((m, idx) => {
                 const mine = m.sender_id === myProfile.id;
                 const isImage = m.message_type === "image" && !!m.media_url;
@@ -4196,8 +4162,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 return (
                   <Fragment key={m.id}>
                     {showDayDivider && (
-                      <div className="my-4 flex items-center justify-center">
-                        <span className="text-[13px] font-medium text-mist">
+                      <div className="my-5 flex items-center justify-center">
+                        <span className="glass rounded-full px-3.5 py-1 text-[11.5px] font-semibold uppercase tracking-wide text-mist shadow-sm shadow-black/10">
                           {formatDayLabel(m.created_at)}
                         </span>
                       </div>
@@ -4258,7 +4224,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           {isPinned && (
                             <div className="absolute -top-3 -right-1 text-xs text-violet-light">📌</div>
                           )}
-                          <div className={`text-[16px] leading-snug ${isImage ? "overflow-hidden rounded-2xl p-1" : "rounded-2xl px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet to-violet-dark"} rounded-br-sm text-white shadow-md shadow-violet/20` : `${isImage ? "" : "glass bubble-received"} rounded-bl-sm text-[color:var(--color-text)]`}`}>
+                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet via-violet to-violet-dark"} rounded-br-md text-white shadow-lg shadow-violet/25` : `${isImage ? "" : "glass bubble-received ring-1 ring-white/[0.06]"} rounded-bl-md text-[color:var(--color-text)] shadow-md shadow-black/10`}`}>
                             {quoted && (
                               <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
                                 <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
@@ -4330,7 +4296,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 type="button"
                 onClick={() => scrollToLatest(true)}
                 aria-label="Scroll to latest messages"
-                className="absolute bottom-24 right-4 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-ink-800/90 text-white shadow-lg shadow-black/30 ring-1 ring-white/10 backdrop-blur-sm transition-transform hover:scale-105 active:scale-95"
+                className="absolute bottom-24 right-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-ink-800/90 text-white shadow-lg shadow-black/30 ring-1 ring-white/10 backdrop-blur-md transition-all hover:scale-110 hover:ring-violet/40 active:scale-95"
                 style={{ animation: "scrollBtnPop 0.18s ease-out" }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -4345,18 +4311,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
 
             {replyingTo && (
-              <div className="relative z-10 flex items-center justify-between border-t border-black/5 dark:border-white/5 bg-ink-800/60 px-6 py-2">
-                <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2">
-                  <p className="text-xs font-medium text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
+              <div className="glass relative z-10 mx-4 mb-1 flex items-center justify-between rounded-2xl px-4 py-2.5 shadow-sm shadow-black/10 md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
+                <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2.5">
+                  <p className="text-xs font-semibold text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
                   <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
                 </div>
-                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 shrink-0 text-mist hover:text-black dark:hover:text-white" aria-label="Cancel reply">✕</button>
+                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/10 hover:text-white" aria-label="Cancel reply">✕</button>
               </div>
             )}
 
             <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              <div className="flex items-center gap-2.5 rounded-2xl border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20">
+              <div className="flex items-center gap-2.5 rounded-full border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20 transition-all duration-200 focus-within:border-violet/40 focus-within:bg-white/[0.07] focus-within:shadow-violet/20">
                 <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
