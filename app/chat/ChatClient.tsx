@@ -728,6 +728,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
+  const bubbleLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bubbleLongPressFiredRef = useRef(false);
+  const lastTapRef = useRef<{ id: string; time: number } | null>(null);
+  const reactionInFlightRef = useRef<Set<string>>(new Set());
 
   const [peerTyping, setPeerTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1466,22 +1470,47 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data } = await supabase.from("message_reactions").select("*").in("message_id", messageIds);
     const grouped: Record<string, Reaction[]> = {};
     (data ?? []).forEach((r: Reaction) => { grouped[r.message_id] = [...(grouped[r.message_id] ?? []), r]; });
-    setReactionsByMsg(grouped);
+    // Merge into existing state instead of replacing it wholesale — otherwise
+    // loading reactions for a subset of messages (e.g. pagination, a single
+    // toggle) would wipe out reactions already loaded for every other message.
+    setReactionsByMsg((prev) => {
+      const next = { ...prev };
+      messageIds.forEach((id) => { next[id] = grouped[id] ?? []; });
+      return next;
+    });
   }
 
   async function toggleReaction(messageId: string, emoji: string) {
     setReactionPickerFor(null);
+    const key = `${messageId}:${emoji}`;
+    // Guard against double-fire (fast double-tap, dblclick + contextmenu, etc.)
+    // sending duplicate insert/delete requests before the first one resolves.
+    if (reactionInFlightRef.current.has(key)) return;
+    reactionInFlightRef.current.add(key);
     const existing = reactionsByMsg[messageId]?.find((r) => r.user_id === myProfile.id && r.emoji === emoji);
-    if (existing) {
-      await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", myProfile.id).eq("emoji", emoji);
-    } else {
-      await supabase.from("message_reactions").insert({ message_id: messageId, user_id: myProfile.id, emoji });
-      const targetMsg = messages.find((m) => m.id === messageId);
-      if (targetMsg && targetMsg.sender_id !== myProfile.id) {
-        sendPushNotification({ userId: targetMsg.sender_id, title: myProfile.display_name, body: `${emoji} reacted to your message`, url: "/" });
+    // Optimistic update so the UI reacts instantly on mobile taps, and so a
+    // rapid second tap sees the up-to-date state instead of the stale one.
+    setReactionsByMsg((prev) => {
+      const list = prev[messageId] ?? [];
+      if (existing) {
+        return { ...prev, [messageId]: list.filter((r) => !(r.user_id === myProfile.id && r.emoji === emoji)) };
       }
+      return { ...prev, [messageId]: [...list, { id: `temp-${Date.now()}`, message_id: messageId, user_id: myProfile.id, emoji }] };
+    });
+    try {
+      if (existing) {
+        await supabase.from("message_reactions").delete().eq("message_id", messageId).eq("user_id", myProfile.id).eq("emoji", emoji);
+      } else {
+        await supabase.from("message_reactions").insert({ message_id: messageId, user_id: myProfile.id, emoji });
+        const targetMsg = messages.find((m) => m.id === messageId);
+        if (targetMsg && targetMsg.sender_id !== myProfile.id) {
+          sendPushNotification({ userId: targetMsg.sender_id, title: myProfile.display_name, body: `${emoji} reacted to your message`, url: "/" });
+        }
+      }
+    } finally {
+      reactionInFlightRef.current.delete(key);
+      loadReactionsFor(messages.map((m) => m.id));
     }
-    loadReactionsFor(messages.map((m) => m.id));
   }
 
   const isInitialLoadRef = useRef(true);
@@ -2573,23 +2602,66 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return m.content; 
   }
 
+  const BUBBLE_LONG_PRESS_MS = 420;
+  const DOUBLE_TAP_MS = 300;
+  const MOVE_CANCEL_PX = 10;
+
+  function clearBubbleLongPress() {
+    if (bubbleLongPressTimerRef.current) {
+      clearTimeout(bubbleLongPressTimerRef.current);
+      bubbleLongPressTimerRef.current = null;
+    }
+  }
+
+  // Reaction picker used to rely solely on the native "contextmenu" event to
+  // detect a long-press. That event is unreliable on touch devices — on iOS
+  // Safari in particular it can fail to fire at all on elements that have
+  // -webkit-touch-callout disabled (used elsewhere to stop the native
+  // copy/save menu), which is why reactions "sometimes" didn't work. We now
+  // drive long-press and double-tap-to-heart entirely from touch events,
+  // same as the existing swipe-to-reply gesture on this element.
   function onBubbleTouchStart(e: React.TouchEvent, m: Message) {
-    if (reactionPickerFor) setReactionPickerFor(null);
+    if (reactionPickerFor && reactionPickerFor !== m.id) setReactionPickerFor(null);
     swipeStartRef.current = { id: m.id, x: e.touches[0].clientX, y: e.touches[0].clientY };
+    bubbleLongPressFiredRef.current = false;
+    clearBubbleLongPress();
+    bubbleLongPressTimerRef.current = setTimeout(() => {
+      bubbleLongPressFiredRef.current = true;
+      setReactionPickerFor(m.id);
+      if (navigator.vibrate) navigator.vibrate(12);
+    }, BUBBLE_LONG_PRESS_MS);
   }
   function onBubbleTouchMove(e: React.TouchEvent, m: Message) {
     const start = swipeStartRef.current;
     if (!start || start.id !== m.id) return;
     const dx = e.touches[0].clientX - start.x;
     const dy = e.touches[0].clientY - start.y;
+    if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) clearBubbleLongPress();
     if (Math.abs(dy) > Math.abs(dx)) return;
     const clamped = Math.max(0, Math.min(dx, SWIPE_REPLY_MAX));
     setSwipeState({ id: m.id, dx: clamped });
   }
   function onBubbleTouchEnd(m: Message) {
+    clearBubbleLongPress();
     const state = swipeState;
     swipeStartRef.current = null; setSwipeState(null);
-    if (state && state.id === m.id && state.dx > SWIPE_REPLY_THRESHOLD) setReplyingTo(m);
+    if (bubbleLongPressFiredRef.current) {
+      // Long press already opened the picker — don't also treat this as a tap.
+      bubbleLongPressFiredRef.current = false;
+      return;
+    }
+    if (state && state.id === m.id && state.dx > SWIPE_REPLY_THRESHOLD) {
+      setReplyingTo(m);
+      return;
+    }
+    const now = Date.now();
+    const last = lastTapRef.current;
+    if (last && last.id === m.id && now - last.time < DOUBLE_TAP_MS) {
+      lastTapRef.current = null;
+      toggleReaction(m.id, "❤️");
+    } else {
+      lastTapRef.current = { id: m.id, time: now };
+    }
   }
 
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
