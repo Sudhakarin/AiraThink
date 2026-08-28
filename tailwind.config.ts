@@ -48,11 +48,16 @@ const config: Config = {
           "0%": { opacity: "0", transform: "translateY(8px)" },
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
+        logoPulse: {
+          "0%,100%": { transform: "scale(1)", opacity: "1" },
+          "50%": { transform: "scale(1.08)", opacity: "0.75" },
+        },
       },
       animation: {
         pulseRing: "pulseRing 2.2s cubic-bezier(0.4,0,0.6,1) infinite",
         floatSlow: "floatSlow 6s ease-in-out infinite",
         fadeUp: "fadeUp 0.4s ease-out both",
+        logoPulse: "logoPulse 1.1s ease-in-out infinite",
       },
     },
   },
