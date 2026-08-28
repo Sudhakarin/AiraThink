@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Poppins, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
+import Splash from "./splash";
 
 const poppins = Poppins({ subsets: ["latin"], variable: "--font-poppins", weight: ["400", "500", "600", "700"] });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", weight: ["400", "500", "600"] });
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         } as React.CSSProperties}
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <Splash />
           {children}
         </ThemeProvider>
       </body>
