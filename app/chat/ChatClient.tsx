@@ -896,6 +896,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   const fetchNews = useCallback(async () => {
     setLoadingNews(true);
+
+    try {
+      const cached = localStorage.getItem("cache_news");
+      if (cached) {
+        setNewsArticles(JSON.parse(cached));
+        setLoadingNews(false);
+      }
+    } catch {}
+
     const { data, error } = await supabase
       .from("news_articles")
       .select("*")
@@ -908,8 +917,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return;
     }
 
-    setNewsArticles((data ?? []) as NewsArticle[]);
+    const fresh = (data ?? []) as NewsArticle[];
+    setNewsArticles(fresh);
     setLoadingNews(false);
+    try { localStorage.setItem("cache_news", JSON.stringify(fresh)); } catch {}
   }, [supabase]);
 
   useEffect(() => { fetchNews(); }, [fetchNews]);
@@ -1366,6 +1377,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     lastMessageIdRef.current = null;
 
     (async () => {
+      try {
+        const cached = localStorage.getItem(`cache_msgs_${activeId}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setMessages(parsed);
+          if (parsed.length > 0) {
+            lastMessageCreatedAtRef.current = parsed[parsed.length - 1].created_at;
+            lastMessageIdRef.current = parsed[parsed.length - 1].id;
+          }
+        }
+      } catch {}
+
       const { data } = await supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: false }).limit(PAGE_SIZE);
       if (cancelled) return;
       const ordered = (data ?? []).slice().reverse();
@@ -1376,6 +1399,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         lastMessageIdRef.current = ordered[ordered.length - 1].id;
       }
       loadReactionsFor(ordered.map((m) => m.id));
+      try { localStorage.setItem(`cache_msgs_${activeId}`, JSON.stringify(ordered)); } catch {}
     })();
 
     const channel = supabase.channel(`messages:${activeId}`)
