@@ -25,9 +25,6 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${poppins.variable} ${inter.variable} ${jbmono.variable}`} suppressHydrationWarning>
-      <head>
-        <link rel="apple-touch-startup-image" href="/apple-splash.PNG" />
-      </head>
       <body
         style={{
           fontFamily: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
