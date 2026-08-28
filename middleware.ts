@@ -6,43 +6,56 @@ export async function middleware(request: NextRequest) {
     request: { headers: request.headers },
   });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value;
+  try {
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            // SAME response object pe set karo, naya mat banao
+            response.cookies.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            response.cookies.set({ name, value: "", ...options });
+          },
         },
-        set(name: string, value: string, options: CookieOptions) {
-          // SAME response object pe set karo, naya mat banao
-          response.cookies.set({ name, value, ...options });
-        },
-        remove(name: string, options: CookieOptions) {
-          response.cookies.set({ name, value: "", ...options });
-        },
-      },
+      }
+    );
+
+    // Agar Supabase 5 second mein respond na kare, to timeout maan ke aage badho
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Supabase auth check timed out")), 5000)
+    );
+
+    const {
+      data: { user },
+    } = await Promise.race([supabase.auth.getUser(), timeoutPromise]) as Awaited<
+      ReturnType<typeof supabase.auth.getUser>
+    >;
+
+    const isAuthRoute =
+      request.nextUrl.pathname.startsWith("/login") ||
+      request.nextUrl.pathname.startsWith("/signup");
+    const isChatRoute = request.nextUrl.pathname.startsWith("/chat");
+
+    if (!user && isChatRoute) {
+      return NextResponse.redirect(new URL("/login", request.url));
     }
-  );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    if (user && isAuthRoute) {
+      return NextResponse.redirect(new URL("/chat", request.url));
+    }
 
-  const isAuthRoute =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/signup");
-  const isChatRoute = request.nextUrl.pathname.startsWith("/chat");
-
-  if (!user && isChatRoute) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return response;
+  } catch (error) {
+    // Supabase down/timeout ho to site crash na ho, request ko normally aage jaane do
+    console.error("Middleware auth check failed:", error);
+    return response;
   }
-
-  if (user && isAuthRoute) {
-    return NextResponse.redirect(new URL("/chat", request.url));
-  }
-
-  return response;
 }
 
 export const config = {
