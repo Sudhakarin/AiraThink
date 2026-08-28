@@ -1,8 +1,0 @@
-[{
-  "relation": ["delegate_permission/common.handle_all_urls"],
-  "target": {
-    "namespace": "android_app",
-    "package_name": "com.airalance.airathink",
-    "sha256_cert_fingerprints": ["7C:00:0C:9A:82:41:D8:D9:EB:F3:87:D1:43:2D:65:E8:D7:7D:59:4D:FB:77:3E:72:12:BF:B6:47:AE:68:35:2D"]
-  }
-}]
