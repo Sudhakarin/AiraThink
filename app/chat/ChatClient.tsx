@@ -721,8 +721,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [profileViewConvoId, setProfileViewConvoId] = useState<string | null>(null);
   const [profileViewConnCount, setProfileViewConnCount] = useState<number | null>(null);
   const [profileViewAnimCount, setProfileViewAnimCount] = useState(0);
-  const [profileViewUpdatesCount, setProfileViewUpdatesCount] = useState<number | null>(null);
-  const [profileViewUpdatesAnimCount, setProfileViewUpdatesAnimCount] = useState(0);
   const [profileViewMutuals, setProfileViewMutuals] = useState<{ profiles: Profile[]; count: number }>({ profiles: [], count: 0 });
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -1637,23 +1635,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => cancelAnimationFrame(raf);
   }, [profileViewConnCount]);
 
-  useEffect(() => {
-    if (profileViewUpdatesCount === null || profileViewUpdatesCount === 0) { setProfileViewUpdatesAnimCount(0); return; }
-    let raf: number;
-    const target = profileViewUpdatesCount;
-    const start = performance.now();
-    const duration = 650;
-    function step(now: number) {
-      const p = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setProfileViewUpdatesAnimCount(Math.floor(eased * target));
-      if (p < 1) raf = requestAnimationFrame(step);
-      else setProfileViewUpdatesAnimCount(target);
-    }
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [profileViewUpdatesCount]);
-
   async function sendToUser(targetId: string, event: string, payload: any) {
     const channel = supabase.channel(`calls:${targetId}`);
     await new Promise<void>((resolve) => { channel.subscribe((status) => { if (status === "SUBSCRIBED") resolve(); }); });
@@ -1756,8 +1737,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewConvoId(null);
     setProfileViewConnCount(null);
     setProfileViewAnimCount(0);
-    setProfileViewUpdatesCount(null);
-    setProfileViewUpdatesAnimCount(0);
     setProfileViewMutuals({ profiles: [], count: 0 });
 
     fetchAcceptedConnectionIds(other.id).then(async (theirIds) => {
@@ -1769,14 +1748,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         setProfileViewMutuals({ profiles: (mutualProfiles ?? []) as Profile[], count: mutualIds.length });
       }
     });
-
-    // Real all-time status count — counts every update ever posted by this user,
-    // not just the ones still active in the last 24h (statuses state only holds those).
-    supabase
-      .from("statuses")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", other.id)
-      .then(({ count }) => setProfileViewUpdatesCount(count ?? 0));
 
     const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
     const myConvoIds = (mine ?? []).map((r) => r.conversation_id);
@@ -1803,9 +1774,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewStatus(null);
     setProfileViewConvoId(null);
     setProfileViewConnCount(null);
-    setProfileViewAnimCount(0);
-    setProfileViewUpdatesCount(null);
-    setProfileViewUpdatesAnimCount(0);
     setProfileViewMutuals({ profiles: [], count: 0 });
   }
 
@@ -2992,7 +2960,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {profileView && (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
           <div
-            className="pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full opacity-25 blur-2xl"
+            className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
             style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
           />
           <header className="relative z-10 flex items-center justify-between px-4 py-4">
@@ -3002,33 +2970,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
             <span className="h-9 w-9" />
           </header>
-          <div className="relative z-10 flex flex-col items-center px-6 pt-1 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
+          <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
             <div className="relative">
-              <div
-                className="rounded-full p-[3px] shadow-lg"
-                style={{
-                  background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)",
-                  boxShadow: onlineIds.has(profileView.id) ? "0 0 24px -4px rgba(124,92,255,0.45)" : "none",
-                }}
-              >
+              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
                 <div className="rounded-full bg-ink-900 p-[3px]">
-                  <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={100} />
+                  <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={104} />
                 </div>
               </div>
               {onlineIds.has(profileView.id) && (
                 <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />
               )}
             </div>
-            <h2 className="mt-3.5 flex items-center gap-1 font-display text-lg font-bold text-white tx1">
+            <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white tx1">
               {profileView.display_name}
-              {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={17} />}
+              {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={18} />}
             </h2>
-            {profileView.bio ? (
-              <p className="mt-1 max-w-[19rem] whitespace-pre-wrap text-[13px] leading-snug text-white/45 tx2">{profileView.bio}</p>
-            ) : (
-              <p className="mt-1 text-[13px] text-white/30 tx2">@{profileView.username}</p>
-            )}
-
+            <p className="text-sm text-white/40 tx2">@{profileView.username}</p>
             <div
               className="mt-3 flex items-center gap-1.5 rounded-full border px-3 py-1"
               style={{
@@ -3046,21 +3003,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 {onlineIds.has(profileView.id) ? "Active now" : profileView.last_seen ? `Last seen ${formatLastSeen(profileView.last_seen)}` : "Offline"}
               </span>
             </div>
-
-            <div className="mt-5 flex items-center gap-7">
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[19px] font-bold text-white tx1 tabular-nums leading-none">{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
-                <span className="text-[11px] font-medium text-white/40 tx2">Connection{profileViewConnCount === 1 ? "" : "s"}</span>
+            <div className="mt-5 flex items-center gap-8">
+              <div className="flex flex-col items-center">
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Connection{profileViewConnCount === 1 ? "" : "s"}</span>
               </div>
-              <div className="h-9 w-px bg-white/10" />
-              <div className="flex flex-col items-center gap-0.5">
-                <span className="text-[19px] font-bold text-white tx1 tabular-nums leading-none">{profileViewUpdatesCount === null ? "—" : profileViewUpdatesAnimCount}</span>
-                <span className="text-[11px] font-medium text-white/40 tx2">Updates</span>
+              <div className="h-8 w-px bg-white/8" />
+              <div className="flex flex-col items-center">
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Updates</span>
               </div>
             </div>
-
+            {profileView.bio && (
+              <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{profileView.bio}</p>
+            )}
             {profileViewMutuals.count > 0 && (
-              <div className="mt-4 flex items-center gap-2 rounded-full bg-white/[0.03] px-3 py-1.5">
+              <div className="mt-4 flex items-center gap-2">
                 <div className="flex -space-x-2">
                   {profileViewMutuals.profiles.map((p) => (
                     <div key={p.id} className="rounded-full border-2 border-ink-900">
@@ -3074,33 +3032,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </p>
               </div>
             )}
-
-            <div className="mt-6 flex w-full max-w-xs gap-3">
-              {profileViewStatus === "loading" && (
-                <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
-              )}
-              {profileViewStatus === "none" && (
-                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
-                  Connect
-                </button>
-              )}
-              {profileViewStatus === "pending" && (
-                <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
-              )}
-              {profileViewStatus === "declined" && (
-                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
-              )}
-              {profileViewStatus === "connected" && (
-                <button onClick={goToProfileChat} className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  Message
-                </button>
-              )}
-            </div>
+          </div>
+          <div className="relative z-10 flex gap-3 px-6 pb-8">
+            {profileViewStatus === "loading" && (
+              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
+            )}
+            {profileViewStatus === "none" && (
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
+            )}
+            {profileViewStatus === "pending" && (
+              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
+            )}
+            {profileViewStatus === "declined" && (
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
+            )}
+            {profileViewStatus === "connected" && (
+              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Message</button>
+            )}
           </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
-            <div className="relative z-10 px-6 pb-6">
+            <div className="relative z-10 px-6 pb-8">
               {isVerified(profileView.username, false) ? (
                 <p className="text-center text-[11px] text-mist">This account is verified by default and can't be changed here.</p>
               ) : profileView.verified ? (
@@ -3120,41 +3071,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   {grantingVerification ? "Verifying…" : "Grant Verification"}
                 </button>
               )}
-            </div>
-          )}
-
-          {statuses.filter((s) => s.user_id === profileView.id).length > 0 && (
-            <div className="relative z-10 pb-10">
-              <div className="mb-2 flex items-center gap-2 px-5">
-                <div className="h-px flex-1 bg-white/8" />
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-white/35 tx2">Recent updates</p>
-                <div className="h-px flex-1 bg-white/8" />
-              </div>
-              <div className="grid grid-cols-3 gap-[3px] px-[3px]">
-                {statuses.filter((s) => s.user_id === profileView.id).map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => openStatusViewer(profileView.id)}
-                    className="relative aspect-square overflow-hidden bg-white/5"
-                  >
-                    {s.media_url && s.media_type === "video" ? (
-                      <video src={s.media_url} className="h-full w-full object-cover" muted playsInline />
-                    ) : s.media_url ? (
-                      <img src={s.media_url} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center p-2" style={{ background: s.bg_color || "#7C5CFF" }}>
-                        <p className="line-clamp-4 text-center text-[10px] font-semibold leading-snug text-white/90">{s.text_content}</p>
-                      </div>
-                    )}
-                    {s.media_type === "video" && (
-                      <span className="absolute right-1.5 top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/50">
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z" /></svg>
-                      </span>
-                    )}
-                  </button>
-                ))}
-              </div>
             </div>
           )}
         </div>
