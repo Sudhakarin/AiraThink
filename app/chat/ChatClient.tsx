@@ -3124,37 +3124,55 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       )}
 
       {callStatus !== "idle" && callPeer && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-[#0A0C12]">
+        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#07080D]">
           <div className="pointer-events-none absolute inset-0 bg-aurora" />
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage:
+                "radial-gradient(ellipse 70% 50% at 50% 8%, rgba(124,92,255,0.22), transparent 60%), radial-gradient(ellipse 60% 45% at 85% 95%, rgba(34,211,184,0.10), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0)",
+              backgroundSize: "auto, auto, 26px 26px",
+            }}
+          />
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 text-center">
-            <Avatar name={callPeer.display_name} color={callPeer.avatar_color} size={120} avatarUrl={callPeer.avatar_url} />
-            <p className="mt-5 flex items-center font-display text-xl font-bold text-white">
+            <div className="relative flex items-center justify-center">
+              {callStatus !== "connected" && (
+                <>
+                  <span className="absolute h-[150px] w-[150px] animate-ping rounded-full bg-violet/15" style={{ animationDuration: "2.2s" }} />
+                  <span className="absolute h-[150px] w-[150px] rounded-full ring-1 ring-violet/25" />
+                </>
+              )}
+              <div className={`rounded-full ${callStatus === "connected" ? "shadow-[0_0_0_3px_rgba(34,211,184,0.25),0_0_40px_-6px_rgba(34,211,184,0.35)]" : "shadow-[0_0_0_3px_rgba(124,92,255,0.3),0_0_50px_-4px_rgba(124,92,255,0.45)]"}`}>
+                <Avatar name={callPeer.display_name} color={callPeer.avatar_color} size={120} avatarUrl={callPeer.avatar_url} />
+              </div>
+            </div>
+            <p className="mt-6 flex items-center gap-1 font-display text-xl font-bold tracking-[-0.01em] text-white">
               {callPeer.display_name}{isVerified(callPeer.username, callPeer.verified) && <VerifiedBadge size={18} />}
             </p>
-            <p className="mt-2 text-sm text-mist">
+            <p className={`mt-2 text-sm ${callStatus === "connected" ? "font-medium text-teal" : "text-mist"}`}>
               {callStatus === "outgoing" && "Calling…"}
               {callStatus === "incoming" && "Incoming call…"}
               {callStatus === "connected" && formatCallTime(callSeconds)}
             </p>
           </div>
-          <div className="relative z-10 flex items-center justify-center gap-6 pb-12">
+          <div className="relative z-10 flex items-center justify-center gap-6 pb-14">
             {callStatus === "incoming" ? (
               <>
-                <button onClick={declineCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg" aria-label="Decline">
+                <button onClick={declineCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_4px_24px_-4px_rgba(239,68,68,0.6)] ring-1 ring-white/10 transition-transform hover:scale-105 active:scale-95" aria-label="Decline">
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="white" strokeWidth="2.2" strokeLinecap="round" /></svg>
                 </button>
-                <button onClick={acceptCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-teal text-white shadow-lg" aria-label="Accept">
+                <button onClick={acceptCall} className="flex h-16 w-16 items-center justify-center rounded-full bg-teal text-white shadow-[0_4px_24px_-4px_rgba(34,211,184,0.65)] ring-1 ring-white/10 transition-transform hover:scale-105 active:scale-95" aria-label="Accept">
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
                 </button>
               </>
             ) : (
               <>
                 {callStatus === "connected" && (
-                  <button onClick={toggleMic} className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ${micOn ? "bg-white/10" : "bg-white text-ink-900"}`}>
+                  <button onClick={toggleMic} className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-1 ring-white/10 backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 ${micOn ? "bg-white/[0.08] text-white" : "bg-white text-ink-900"}`}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                   </button>
                 )}
-                <button onClick={() => endCall(true)} className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-lg" aria-label="End call">
+                <button onClick={() => endCall(true)} className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500 text-white shadow-[0_4px_24px_-4px_rgba(239,68,68,0.6)] ring-1 ring-white/10 transition-transform hover:scale-105 active:scale-95" aria-label="End call">
                   <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="white" strokeWidth="2.2" strokeLinecap="round" /></svg>
                 </button>
               </>
@@ -4061,9 +4079,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="glass relative z-10 flex items-center gap-3 border-b border-black/5 dark:border-white/5 px-4 py-4 shadow-sm shadow-black/10 md:px-6">
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/40 to-transparent" />
-              <button onClick={() => setActiveId(null)} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white md:hidden" aria-label="Back to conversations">
+            <header className="relative z-10 flex items-center gap-3 border-b border-white/[0.06] bg-[#0B0D14]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-violet/[0.05] via-transparent to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/50 to-transparent" />
+              <button onClick={() => setActiveId(null)} className="relative z-10 mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.06] hover:text-white active:scale-90 md:hidden" aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
               <button
@@ -4074,16 +4093,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 onTouchStart={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
                 onTouchEnd={(e) => { cancelAvatarLongPress(); if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; } }}
                 onContextMenu={(e) => e.preventDefault()}
-                className="no-callout flex min-w-0 flex-1 items-center gap-3 rounded-lg py-1 text-left transition hover:bg-black/5 dark:hover:bg-white/5"
+                className="no-callout relative z-10 flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1.5 pl-1 text-left transition-colors hover:bg-white/[0.05]"
               >
-                <Avatar name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"} color={active.otherProfile?.avatar_color ?? "#7C5CFF"} online={otherIsOnline} avatarUrl={active.otherProfile?.avatar_url} />
+                <span className={`relative shrink-0 rounded-full ${otherIsOnline ? "shadow-[0_0_0_2px_rgba(34,211,184,0.35)]" : ""}`}>
+                  <Avatar name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"} color={active.otherProfile?.avatar_color ?? "#7C5CFF"} online={otherIsOnline} avatarUrl={active.otherProfile?.avatar_url} />
+                </span>
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-center text-sm font-semibold text-white">
+                  <p className="flex items-center text-[15px] font-semibold tracking-[-0.01em] text-white">
                     <span className="truncate">{active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"}</span>
                     {isVerified(active.otherProfile?.username, active.otherProfile?.verified) && <VerifiedBadge />}
                   </p>
                   {!active.is_group && (
-                    <p className="flex items-center gap-1.5 truncate text-xs text-mist">
+                    <p className="flex items-center gap-1.5 truncate text-[12.5px] text-mist">
                       {peerTyping ? (
                         <span className="flex items-center gap-1 text-teal">
                           <span className="flex gap-0.5">
@@ -4110,16 +4131,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   )}
                 </div>
               </button>
-              <div className="flex items-center gap-2">
-                <button onClick={() => setIsSearchOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white" aria-label="Search messages">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <div className="relative z-10 flex items-center gap-1.5">
+                <button onClick={() => setIsSearchOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.06] hover:text-white active:scale-90" aria-label="Search messages">
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
                     <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
                     <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                   </svg>
                 </button>
                 {!active.is_group && (
-                  <button onClick={startCall} disabled={callStatus !== "idle"} className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-40" aria-label="Voice call">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                  <button onClick={startCall} disabled={callStatus !== "idle"} className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-light via-violet to-violet-dark text-white shadow-[0_2px_14px_-2px_rgba(124,92,255,0.55)] ring-1 ring-white/10 transition-all hover:shadow-[0_2px_20px_-2px_rgba(124,92,255,0.75)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100" aria-label="Voice call">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
                   </button>
                 )}
               </div>
@@ -4128,11 +4149,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div
               ref={scrollRef}
               onScroll={handleMessagesScroll}
-              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-4 py-6 md:px-8"
+              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[#0A0C12] px-4 py-6 md:px-8"
               style={{
                 backgroundImage:
-                  "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.055) 1px, transparent 0)",
-                backgroundSize: "22px 22px",
+                  "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
+                backgroundSize: "auto, auto, 22px 22px",
               }}
             >
               {loadingMore && (
@@ -4224,7 +4245,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           {isPinned && (
                             <div className="absolute -top-3 -right-1 text-xs text-violet-light">📌</div>
                           )}
-                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet via-violet to-violet-dark"} rounded-br-md text-white shadow-lg shadow-violet/25` : `${isImage ? "" : "glass bubble-received ring-1 ring-white/[0.06]"} rounded-bl-md text-[color:var(--color-text)] shadow-md shadow-black/10`}`}>
+                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet-light via-violet to-violet-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-4px_rgba(124,92,255,0.5)]"} rounded-br-md text-white` : `${isImage ? "" : "bg-[#171A24] ring-1 ring-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_10px_-4px_rgba(0,0,0,0.4)]"} rounded-bl-md text-[color:var(--color-text)]`}`}>
                             {quoted && (
                               <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
                                 <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
@@ -4311,7 +4332,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
 
             {replyingTo && (
-              <div className="glass relative z-10 mx-4 mb-1 flex items-center justify-between rounded-2xl px-4 py-2.5 shadow-sm shadow-black/10 md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
+              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#171A24] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
                 <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2.5">
                   <p className="text-xs font-semibold text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
                   <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
@@ -4320,10 +4341,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/5 bg-gradient-to-t from-ink-900 via-ink-900/95 to-transparent px-4 py-3">
+            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/[0.06] bg-[#0B0D14] px-3 py-3 md:px-6">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              <div className="flex items-center gap-2.5 rounded-full border border-white/10 bg-white/5 px-1.5 py-1.5 backdrop-blur-xl shadow-lg shadow-black/20 transition-all duration-200 focus-within:border-violet/40 focus-within:bg-white/[0.07] focus-within:shadow-violet/20">
-                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
+              <div className="flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#171A24] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
+                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
                     <circle cx="8" cy="10" r="2" fill="currentColor"/>
@@ -4369,7 +4390,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       onFocus={() => { setTimeout(() => { scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" }); }, 300); }}
                       placeholder={uploadingMedia ? "Sending…" : replyingTo ? "Reply…" : "Message"}
                       disabled={uploadingMedia}
-                      className="min-w-0 flex-1 bg-transparent px-2 py-2.5 text-base text-white placeholder:text-white/25 msg-input-tx outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
+                      className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-base text-white placeholder:text-white/30 msg-input-tx outline-none ring-0 focus:ring-0 focus:outline-none focus:border-none disabled:opacity-40"
                       style={{ fontSize: 16 }}
                     />
                     {input.trim() ? (
@@ -4378,16 +4399,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         disabled={sending}
                         onMouseDown={(e) => e.preventDefault()}
                         onTouchStart={(e) => e.preventDefault()}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-light via-violet to-violet-dark text-white shadow-[0_2px_16px_-2px_rgba(124,92,255,0.65)] ring-1 ring-white/15 transition-all hover:shadow-[0_2px_22px_-2px_rgba(124,92,255,0.85)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
                         aria-label="Send message"
                       >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
                           <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                           <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </button>
                     ) : (
-                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition-all hover:bg-white/10 hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Record voice note">
+                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Record voice note">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                           <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8"/>
                           <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
