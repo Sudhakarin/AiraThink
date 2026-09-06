@@ -148,7 +148,7 @@ const SWIPE_REPLY_MAX = 64;
 const MAX_BIO_LENGTH = 160;
 const STATUS_DURATION_MS = 15000;
 const STATUS_MAX_VIDEO_MS = 30000;
-const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
+const STATUS_COLORS = ["#2F6FED", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
 const STATUS_REPLY_PREFIX = "\u27E6STATUS_REPLY\u27E7";
 const TYPING_IDLE_MS = 3000;
 const TYPING_THROTTLE_MS = 2000;
@@ -345,7 +345,7 @@ function Avatar({ name, color, size = 40, online = false, avatarUrl }: {
         </div>
       )}
       {online && (
-        <span className="absolute bottom-0 right-0 rounded-full border-2 border-ink-900 bg-teal" style={{ width: size * 0.3, height: size * 0.3 }} />
+        <span className="absolute bottom-0 right-0 rounded-full border-2 border-[#0A0F1C] bg-teal" style={{ width: size * 0.3, height: size * 0.3 }} />
       )}
     </div>
   );
@@ -359,10 +359,10 @@ function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewe
       style={{
         background: viewed
           ? "#3F4552"
-          : "conic-gradient(from 220deg, #7C5CFF, #22D3B8, #7C5CFF)",
+          : "conic-gradient(from 220deg, #2F6FED, #22D3B8, #2F6FED)",
       }}
     >
-      <div className="rounded-full bg-ink-900 p-[2px]">{children}</div>
+      <div className="rounded-full bg-[#0A0F1C] p-[2px]">{children}</div>
     </div>
   );
 }
@@ -479,7 +479,7 @@ function VoiceMessage({ url, duration, mine, onDelete, isDeleted }: {
   if (isDeleted) {
     return (
       <div className="flex min-w-[190px] items-center gap-2.5 py-0.5 opacity-50">
-        <span className="text-sm text-mist">This message was deleted</span>
+        <span className="text-sm text-[#93A4BE]">This message was deleted</span>
       </div>
     );
   }
@@ -487,7 +487,7 @@ function VoiceMessage({ url, duration, mine, onDelete, isDeleted }: {
   return (
     <div className="flex min-w-[190px] items-center gap-2.5 py-0.5">
       <audio ref={audioRef} src={url} preload="metadata" className="hidden" />
-      <button type="button" onClick={toggle} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${mine ? "bg-white/20 hover:bg-white/30" : "bg-violet/20 hover:bg-violet/30"}`} aria-label={playing ? "Pause" : "Play"}>
+      <button type="button" onClick={toggle} className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${mine ? "bg-white/20 hover:bg-white/30" : "bg-[#2F6FED]/20 hover:bg-[#2F6FED]/30"}`} aria-label={playing ? "Pause" : "Play"}>
         {playing ? (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1" /><rect x="14" y="4" width="5" height="16" rx="1" /></svg>
         ) : (
@@ -496,24 +496,24 @@ function VoiceMessage({ url, duration, mine, onDelete, isDeleted }: {
       </button>
       <div className="flex-1">
         <div className={`h-1 w-full overflow-hidden rounded-full ${mine ? "bg-white/25" : "bg-black/15 dark:bg-white/15"}`}>
-          <div className={`h-full rounded-full ${mine ? "bg-white" : "bg-violet-light"}`} style={{ width: `${Math.min(100, progress * 100)}%` }} />
+          <div className={`h-full rounded-full ${mine ? "bg-white" : "bg-[#6FA8FF]"}`} style={{ width: `${Math.min(100, progress * 100)}%` }} />
         </div>
       </div>
       <div className="relative">
         <button 
           type="button" 
           onClick={() => setShowSpeedMenu(!showSpeedMenu)} 
-          className="shrink-0 text-[10px] font-medium tabular-nums text-mist hover:text-white transition"
+          className="shrink-0 text-[10px] font-medium tabular-nums text-[#93A4BE] hover:text-white transition"
         >
           {speed}x
         </button>
         {showSpeedMenu && (
-          <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded-lg bg-ink-800 p-1 shadow-xl">
+          <div className="absolute bottom-full left-1/2 mb-2 -translate-x-1/2 rounded-lg bg-[#121A2B] p-1 shadow-xl">
             {speedOptions.map(s => (
               <button
                 key={s}
                 onClick={() => { setSpeed(s); setShowSpeedMenu(false); }}
-                className={`block w-full px-3 py-1 text-xs text-left hover:bg-white/5 rounded ${speed === s ? 'text-violet-light' : 'text-mist'}`}
+                className={`block w-full px-3 py-1 text-xs text-left hover:bg-white/5 rounded ${speed === s ? 'text-[#6FA8FF]' : 'text-[#93A4BE]'}`}
               >
                 {s}x
               </button>
@@ -521,7 +521,7 @@ function VoiceMessage({ url, duration, mine, onDelete, isDeleted }: {
           </div>
         )}
       </div>
-      <span className={`shrink-0 text-[10px] tabular-nums ${mine ? "text-white/70" : "text-mist"}`}>{formatDuration(liveDuration)}</span>
+      <span className={`shrink-0 text-[10px] tabular-nums ${mine ? "text-white/70" : "text-[#93A4BE]"}`}>{formatDuration(liveDuration)}</span>
     </div>
   );
 }
@@ -558,7 +558,7 @@ function ReactionPills({ msgReactions, myId, onToggle }: { msgReactions: Reactio
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {Object.entries(grouped).map(([emoji, info]) => (
-        <button key={emoji} onClick={() => onToggle(emoji)} className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] transition ${info.mine ? "bg-violet/30 ring-1 ring-violet-light" : "bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"}`}>
+        <button key={emoji} onClick={() => onToggle(emoji)} className={`flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] transition ${info.mine ? "bg-[#2F6FED]/30 ring-1 ring-[#6FA8FF]" : "bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"}`}>
           <span>{emoji}</span>
           {info.count > 1 && <span className="text-[10px] text-[color:var(--color-text)]/70">{info.count}</span>}
         </button>
@@ -571,9 +571,9 @@ function TypingBubble() {
   return (
     <div className="flex justify-start items-end gap-2">
       <div className="glass flex items-center gap-1.5 rounded-2xl rounded-bl-sm px-4 py-3.5 shadow-sm">
-        <span className="h-2 w-2 rounded-full bg-mist/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0s" }} />
-        <span className="h-2 w-2 rounded-full bg-mist/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0.2s" }} />
-        <span className="h-2 w-2 rounded-full bg-mist/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0.4s" }} />
+        <span className="h-2 w-2 rounded-full bg-[#93A4BE]/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0s" }} />
+        <span className="h-2 w-2 rounded-full bg-[#93A4BE]/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0.2s" }} />
+        <span className="h-2 w-2 rounded-full bg-[#93A4BE]/60" style={{ animation: "typingDot 1.4s ease-in-out infinite", animationDelay: "0.4s" }} />
       </div>
     </div>
   );
@@ -2668,7 +2668,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div
-      className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
+      className="relative flex w-full overflow-x-hidden bg-[#0A0F1C] text-white"
       style={{
         position: "fixed",
         top: 0,
@@ -2729,34 +2729,34 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {/* Article Reader Modal - same as before */}
       {activeArticle && (
-        <div className="fixed inset-0 z-[100] flex flex-col bg-ink-900">
+        <div className="fixed inset-0 z-[100] flex flex-col bg-[#0A0F1C]">
           <div className="h-0.5 w-full bg-white/10">
-            <div className="h-full bg-violet-light" style={{ width: `${readerProgress}%` }} />
+            <div className="h-full bg-[#6FA8FF]" style={{ width: `${readerProgress}%` }} />
           </div>
           
-          <header className="flex items-center justify-between px-4 py-3 bg-ink-900/95 border-b border-white/5">
+          <header className="flex items-center justify-between px-4 py-3 bg-[#0A0F1C]/95 border-b border-white/5">
             <button 
               onClick={closeArticle} 
-              className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-[#93A4BE] hover:bg-white/5 hover:text-white"
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                 <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
               </svg>
             </button>
             <div className="flex items-center gap-2">
-              <span className="flex items-center text-xs text-mist">
+              <span className="flex items-center text-xs text-[#93A4BE]">
                 {activeArticle.source}
                 {isAiralanceSource(activeArticle.source) && <VerifiedBadge size={13} />}
               </span>
-              <span className="text-xs text-mist">·</span>
-              <span className="text-xs text-mist">{activeArticle.read_time}</span>
+              <span className="text-xs text-[#93A4BE]">·</span>
+              <span className="text-xs text-[#93A4BE]">{activeArticle.read_time}</span>
             </div>
             <div className="flex items-center gap-1">
               {isAiralanceSource(activeArticle.source) && myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
                 <>
                   <button
                     onClick={() => openEditArticle(activeArticle)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-[#93A4BE] hover:bg-white/5 hover:text-white"
                     aria-label="Edit article"
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -2766,7 +2766,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </button>
                   <button
                     onClick={() => setConfirmDeleteId(activeArticle.id)}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-red-400"
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-[#93A4BE] hover:bg-white/5 hover:text-red-400"
                     aria-label="Delete article"
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -2785,7 +2785,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     });
                   }
                 }}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-mist hover:bg-white/5 hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-[#93A4BE] hover:bg-white/5 hover:text-white"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                   <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -2799,7 +2799,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             onScroll={handleReaderScroll}
           >
             <div className="mx-auto max-w-2xl">
-              <span className="inline-block rounded-full bg-violet/20 px-3 py-1 text-xs font-semibold text-violet-light">
+              <span className="inline-block rounded-full bg-[#2F6FED]/20 px-3 py-1 text-xs font-semibold text-[#6FA8FF]">
                 {activeArticle.category}
               </span>
               
@@ -2807,7 +2807,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 {activeArticle.title}
               </h1>
               
-              <div className="mt-3 flex items-center gap-3 text-sm text-mist">
+              <div className="mt-3 flex items-center gap-3 text-sm text-[#93A4BE]">
                 <span className="flex items-center">
                   {activeArticle.source}
                   {isAiralanceSource(activeArticle.source) && <VerifiedBadge size={14} />}
@@ -2820,7 +2820,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <span className="text-teal">{formatViewCount(seededViewCount(activeArticle.id))}</span>
               </div>
               
-              <div className="mt-6 h-48 w-full rounded-2xl overflow-hidden flex items-center justify-center bg-ink-800">
+              <div className="mt-6 h-48 w-full rounded-2xl overflow-hidden flex items-center justify-center bg-[#121A2B]">
                 {activeArticle.image_url ? (
                   <img 
                     src={activeArticle.image_url} 
@@ -2848,7 +2848,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   href={activeArticle.source_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet to-violet-light px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
+                  className="mt-6 inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30"
                 >
                   Read full story on {activeArticle.source}
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -2864,20 +2864,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {/* Edit Message Modal */}
       {editingMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-ink-800 p-6">
+          <div className="w-full max-w-md rounded-2xl bg-[#121A2B] p-6">
             <h3 className="mb-2 font-semibold text-white">Edit Message</h3>
             <textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-violet"
+              className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#2F6FED]"
               rows={3}
               autoFocus
             />
             <div className="mt-3 flex gap-2">
-              <button onClick={() => setEditingMessage(null)} className="flex-1 rounded-full border border-white/10 py-2 text-sm text-mist hover:bg-white/5">
+              <button onClick={() => setEditingMessage(null)} className="flex-1 rounded-full border border-white/10 py-2 text-sm text-[#93A4BE] hover:bg-white/5">
                 Cancel
               </button>
-              <button onClick={saveEditMessage} className="flex-1 rounded-full bg-violet py-2 text-sm text-white">
+              <button onClick={saveEditMessage} className="flex-1 rounded-full bg-[#2F6FED] py-2 text-sm text-white">
                 Save
               </button>
             </div>
@@ -2888,10 +2888,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {/* Forward Message Modal */}
       {showForwardModal && forwardingMessage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-ink-800 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-[#121A2B] p-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="font-semibold text-white">Forward to</h3>
-              <button onClick={() => { setShowForwardModal(false); setForwardingMessage(null); }} className="text-mist hover:text-white">
+              <button onClick={() => { setShowForwardModal(false); setForwardingMessage(null); }} className="text-[#93A4BE] hover:text-white">
                 ✕
               </button>
             </div>
@@ -2904,14 +2904,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 >
                   <Avatar 
                     name={c.otherProfile?.display_name || 'Unknown'} 
-                    color={c.otherProfile?.avatar_color || '#7C5CFF'} 
+                    color={c.otherProfile?.avatar_color || '#2F6FED'} 
                     size={36}
                   />
                   <span className="text-sm text-white">{c.otherProfile?.display_name || 'Unknown'}</span>
                 </button>
               ))}
               {conversations.filter(c => c.id !== activeId).length === 0 && (
-                <p className="text-center text-sm text-mist">No other conversations to forward to</p>
+                <p className="text-center text-sm text-[#93A4BE]">No other conversations to forward to</p>
               )}
             </div>
           </div>
@@ -2921,10 +2921,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {/* Chat Search Modal */}
       {isSearchOpen && (
         <div className="fixed inset-0 z-50 bg-black/50">
-          <div className="mx-auto max-w-2xl bg-ink-900 p-4">
+          <div className="mx-auto max-w-2xl bg-[#0A0F1C] p-4">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold text-white">Search Messages</h3>
-              <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); setSearchResultsMessages([]); }} className="text-mist hover:text-white">
+              <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); setSearchResultsMessages([]); }} className="text-[#93A4BE] hover:text-white">
                 ✕
               </button>
             </div>
@@ -2933,24 +2933,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               value={searchQuery}
               onChange={(e) => searchMessagesInChat(e.target.value)}
               placeholder="Search in this chat..."
-              className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-violet"
+              className="w-full rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-white placeholder:text-white/25 focus:outline-none focus:ring-2 focus:ring-[#2F6FED]"
             />
             <div className="mt-4 max-h-96 overflow-y-auto">
               {searchResultsMessages.length > 0 ? (
                 searchResultsMessages.map(msg => (
                   <div key={msg.id} className="rounded-lg p-3 text-sm hover:bg-white/5">
-                    <p className={msg.is_deleted ? 'text-mist italic' : 'text-white'}>
+                    <p className={msg.is_deleted ? 'text-[#93A4BE] italic' : 'text-white'}>
                       {msg.is_deleted ? 'This message was deleted' : (decodeStatusReply(msg.content)?.text ?? msg.content)}
                     </p>
-                    <p className="mt-1 text-xs text-mist">
+                    <p className="mt-1 text-xs text-[#93A4BE]">
                       {new Date(msg.created_at).toLocaleString()}
                     </p>
                   </div>
                 ))
               ) : searchQuery.length >= 2 ? (
-                <p className="text-center text-sm text-mist">No messages found</p>
+                <p className="text-center text-sm text-[#93A4BE]">No messages found</p>
               ) : (
-                <p className="text-center text-sm text-mist">Type at least 2 characters to search</p>
+                <p className="text-center text-sm text-[#93A4BE]">Type at least 2 characters to search</p>
               )}
             </div>
           </div>
@@ -2958,13 +2958,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       )}
 
       {profileView && (
-        <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
+        <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-[#0A0F1C]">
           <div
             className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
-            style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
+            style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#2F6FED"} 0%, transparent 70%)` }}
           />
           <header className="relative z-10 flex items-center justify-between px-4 py-4">
-            <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="Back">
+            <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-[#93A4BE] transition hover:bg-white/10 hover:text-white" aria-label="Back">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
@@ -2972,13 +2972,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </header>
           <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
             <div className="relative">
-              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
-                <div className="rounded-full bg-ink-900 p-[3px]">
+              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #2F6FED, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
+                <div className="rounded-full bg-[#0A0F1C] p-[3px]">
                   <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={104} />
                 </div>
               </div>
               {onlineIds.has(profileView.id) && (
-                <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />
+                <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-[#0A0F1C] bg-teal" />
               )}
             </div>
             <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white tx1">
@@ -3021,7 +3021,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <div className="mt-4 flex items-center gap-2">
                 <div className="flex -space-x-2">
                   {profileViewMutuals.profiles.map((p) => (
-                    <div key={p.id} className="rounded-full border-2 border-ink-900">
+                    <div key={p.id} className="rounded-full border-2 border-[#0A0F1C]">
                       <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={24} />
                     </div>
                   ))}
@@ -3035,25 +3035,25 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
           <div className="relative z-10 flex gap-3 px-6 pb-8">
             {profileViewStatus === "loading" && (
-              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
+              <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-[#93A4BE]">Checking…</div>
             )}
             {profileViewStatus === "none" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] py-3 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30 transition hover:shadow-[#2F6FED]/50">Connect</button>
             )}
             {profileViewStatus === "pending" && (
-              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
+              <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-[#93A4BE]">Request Sent</button>
             )}
             {profileViewStatus === "declined" && (
               <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
             )}
             {profileViewStatus === "connected" && (
-              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Message</button>
+              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] py-3 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30 transition hover:shadow-[#2F6FED]/50">Message</button>
             )}
           </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
             <div className="relative z-10 px-6 pb-8">
               {isVerified(profileView.username, false) ? (
-                <p className="text-center text-[11px] text-mist">This account is verified by default and can't be changed here.</p>
+                <p className="text-center text-[11px] text-[#93A4BE]">This account is verified by default and can't be changed here.</p>
               ) : profileView.verified ? (
                 <button
                   onClick={() => setVerification(profileView, false)}
@@ -3066,7 +3066,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <button
                   onClick={() => setVerification(profileView, true)}
                   disabled={grantingVerification}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-[#2F6FED]/30 bg-[#2F6FED]/10 py-3 text-sm font-semibold text-[#6FA8FF] disabled:opacity-50"
                 >
                   {grantingVerification ? "Verifying…" : "Grant Verification"}
                 </button>
@@ -3078,7 +3078,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {connectPopupTarget && connectPopupMode && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}>
-          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#121A2B] p-6 shadow-2xl">
             <div className="flex flex-col items-center gap-3 pb-5">
               <Avatar name={connectPopupTarget.display_name} color={connectPopupTarget.avatar_color} size={72} avatarUrl={connectPopupTarget.avatar_url} />
               <div className="text-center">
@@ -3086,7 +3086,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   {connectPopupTarget.display_name}
                   {isVerified(connectPopupTarget.username, connectPopupTarget.verified) && <VerifiedBadge size={16} />}
                 </p>
-                <p className="text-sm text-mist">@{connectPopupTarget.username}</p>
+                <p className="text-sm text-[#93A4BE]">@{connectPopupTarget.username}</p>
               </div>
             </div>
             <div className="mb-6 h-px w-full bg-white/10" />
@@ -3094,8 +3094,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <>
                 <p className="mb-6 text-center text-sm text-[color:var(--color-text)]/80">Do you want to connect with <span className="font-semibold text-white tx1">{connectPopupTarget.display_name}</span>?</p>
                 <div className="flex gap-3">
-                  <button onClick={closeConnectPopup} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">Cancel</button>
-                  <button onClick={confirmConnect} disabled={connectSending} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-50">
+                  <button onClick={closeConnectPopup} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-[#93A4BE] transition hover:border-white/30 hover:text-white">Cancel</button>
+                  <button onClick={confirmConnect} disabled={connectSending} className="flex-1 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] py-3 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30 transition hover:shadow-[#2F6FED]/50 disabled:opacity-50">
                     {connectSending ? "Sending…" : "Yes, Connect"}
                   </button>
                 </div>
@@ -3104,10 +3104,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             {connectPopupMode === "pending" && (
               <>
                 <div className="mb-6 flex flex-col items-center gap-2">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet/15 text-2xl">⏳</span>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#2F6FED]/15 text-2xl">⏳</span>
                   <p className="text-center text-sm text-[color:var(--color-text)]/80">You already sent a request to <span className="font-semibold text-white tx1">{connectPopupTarget.display_name}</span>. Waiting for them to accept.</p>
                 </div>
-                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
+                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-[#93A4BE] transition hover:border-white/30 hover:text-white">OK</button>
               </>
             )}
             {connectPopupMode === "declined" && (
@@ -3116,7 +3116,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <span className="flex h-12 w-12 items-center justify-center rounded-full bg-red-500/15 text-2xl">😔</span>
                   <p className="text-center text-sm text-[color:var(--color-text)]/80"><span className="font-semibold text-white tx1">{connectPopupTarget.display_name}</span> has declined your request.</p>
                 </div>
-                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
+                <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-[#93A4BE] transition hover:border-white/30 hover:text-white">OK</button>
               </>
             )}
           </div>
@@ -3124,7 +3124,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       )}
 
       {callStatus !== "idle" && callPeer && (
-        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#07080D]">
+        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-[#05070C]">
           <div className="pointer-events-none absolute inset-0 bg-aurora" />
           <div
             className="pointer-events-none absolute inset-0"
@@ -3138,8 +3138,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div className="relative flex items-center justify-center">
               {callStatus !== "connected" && (
                 <>
-                  <span className="absolute h-[150px] w-[150px] animate-ping rounded-full bg-violet/15" style={{ animationDuration: "2.2s" }} />
-                  <span className="absolute h-[150px] w-[150px] rounded-full ring-1 ring-violet/25" />
+                  <span className="absolute h-[150px] w-[150px] animate-ping rounded-full bg-[#2F6FED]/15" style={{ animationDuration: "2.2s" }} />
+                  <span className="absolute h-[150px] w-[150px] rounded-full ring-1 ring-[#2F6FED]/25" />
                 </>
               )}
               <div className={`rounded-full ${callStatus === "connected" ? "shadow-[0_0_0_3px_rgba(34,211,184,0.25),0_0_40px_-6px_rgba(34,211,184,0.35)]" : "shadow-[0_0_0_3px_rgba(124,92,255,0.3),0_0_50px_-4px_rgba(124,92,255,0.45)]"}`}>
@@ -3149,7 +3149,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <p className="mt-6 flex items-center gap-1 font-display text-xl font-bold tracking-[-0.01em] text-white">
               {callPeer.display_name}{isVerified(callPeer.username, callPeer.verified) && <VerifiedBadge size={18} />}
             </p>
-            <p className={`mt-2 text-sm ${callStatus === "connected" ? "font-medium text-teal" : "text-mist"}`}>
+            <p className={`mt-2 text-sm ${callStatus === "connected" ? "font-medium text-teal" : "text-[#93A4BE]"}`}>
               {callStatus === "outgoing" && "Calling…"}
               {callStatus === "incoming" && "Incoming call…"}
               {callStatus === "connected" && formatCallTime(callSeconds)}
@@ -3168,7 +3168,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             ) : (
               <>
                 {callStatus === "connected" && (
-                  <button onClick={toggleMic} className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-1 ring-white/10 backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 ${micOn ? "bg-white/[0.08] text-white" : "bg-white text-ink-900"}`}>
+                  <button onClick={toggleMic} className={`flex h-14 w-14 items-center justify-center rounded-full shadow-lg ring-1 ring-white/10 backdrop-blur-xl transition-transform hover:scale-105 active:scale-95 ${micOn ? "bg-white/[0.08] text-white" : "bg-white text-[#0A0F1C]"}`}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                   </button>
                 )}
@@ -3211,7 +3211,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             ))}
           </div>
           <div className="flex items-center gap-3 px-4 py-3">
-            <Avatar name={activeStatusProfile?.display_name ?? ""} color={activeStatusProfile?.avatar_color ?? "#7C5CFF"} avatarUrl={activeStatusProfile?.avatar_url} size={36} />
+            <Avatar name={activeStatusProfile?.display_name ?? ""} color={activeStatusProfile?.avatar_color ?? "#2F6FED"} avatarUrl={activeStatusProfile?.avatar_url} size={36} />
             <div className="min-w-0 flex-1">
               <p className="flex items-center text-sm font-semibold text-white">
                 <span className="truncate">{activeStatusProfile?.display_name}</span>
@@ -3293,7 +3293,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   onLoadStart={() => setStatusMediaLoading(true)}
                 />
               ) : (
-                <div className="flex h-full w-full items-center justify-center p-8" style={{ background: activeStatusItem.bg_color ?? "#7C5CFF" }}>
+                <div className="flex h-full w-full items-center justify-center p-8" style={{ background: activeStatusItem.bg_color ?? "#2F6FED" }}>
                   <p className="break-words text-center text-2xl font-semibold text-white">{activeStatusItem.text_content}</p>
                 </div>
               )}
@@ -3326,7 +3326,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           setConnectPopupMode("ask");
                         }
                       }}
-                      className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30"
+                      className="flex-1 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30"
                     >
                       Connect to reply
                     </button>
@@ -3358,7 +3358,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         <button
                           type="submit"
                           disabled={!statusReplyText.trim() || sendingStatusReply}
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet text-white disabled:opacity-40"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2F6FED] text-white disabled:opacity-40"
                           aria-label="Send reply"
                         >
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 12h16M13 6l6 6-6 6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -3382,26 +3382,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {statusViewersOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60" onClick={closeStatusViewersList}>
-          <div className="w-full max-w-md rounded-t-2xl bg-ink-900 pb-6 pt-3" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-md rounded-t-2xl bg-[#0A0F1C] pb-6 pt-3" onClick={(e) => e.stopPropagation()}>
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
             <p className="px-5 pb-2 text-sm font-semibold text-white">
               {statusViewersList.length} {statusViewersList.length === 1 ? "view" : "views"}
             </p>
             <div className="max-h-80 overflow-y-auto px-2">
               {statusViewersLoading ? (
-                <p className="px-3 py-6 text-center text-sm text-mist">Loading…</p>
+                <p className="px-3 py-6 text-center text-sm text-[#93A4BE]">Loading…</p>
               ) : statusViewersList.length === 0 ? (
-                <p className="px-3 py-6 text-center text-sm text-mist">No views yet.</p>
+                <p className="px-3 py-6 text-center text-sm text-[#93A4BE]">No views yet.</p>
               ) : (
                 statusViewersList.map((v) => (
                   <div key={v.viewer_id} className="flex items-center gap-3 rounded-xl px-3 py-2.5">
-                    <Avatar name={v.profile?.display_name ?? "Unknown"} color={v.profile?.avatar_color ?? "#7C5CFF"} avatarUrl={v.profile?.avatar_url} size={40} />
+                    <Avatar name={v.profile?.display_name ?? "Unknown"} color={v.profile?.avatar_color ?? "#2F6FED"} avatarUrl={v.profile?.avatar_url} size={40} />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center truncate text-sm font-medium text-white">
                         <span className="truncate">{v.profile?.display_name ?? "Unknown"}</span>
                         {isVerified(v.profile?.username, v.profile?.verified) && <VerifiedBadge />}
                       </p>
-                      <p className="text-xs text-mist">{formatLastSeen(v.created_at)}</p>
+                      <p className="text-xs text-[#93A4BE]">{formatLastSeen(v.created_at)}</p>
                     </div>
                     {v.liked && <span className="text-lg" aria-label="Liked">❤️</span>}
                   </div>
@@ -3459,7 +3459,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <button
               onClick={confirmPhotoFilter}
               disabled={photoEditorBusy}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-[#2F6FED] to-[#6FA8FF] text-white shadow-lg shadow-[#2F6FED]/30 disabled:opacity-50"
               aria-label={photoEditorTarget === "status" ? "Post status" : "Send photo"}
             >
               {photoEditorBusy ? (
@@ -3501,12 +3501,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
-      <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-black/5 dark:border-white/5 bg-ink-800/60`}>
-        <div className="flex items-center justify-between px-5 py-2.5">
-          <span className="font-display text-2xl font-bold text-white">Airalance!</span>
+      <aside className={`${activeId ? "hidden md:flex" : "flex"} w-full md:max-w-xs flex-col border-r border-white/[0.06] bg-[#121A2B]/60`}>
+        <div className="flex items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-[#2F6FED] to-[#FF7A59] shadow-lg shadow-[#2F6FED]/25">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" fill="white" fillOpacity="0.95" /></svg>
+            </span>
+            <span className="font-display text-xl font-bold tracking-tight text-white">Airalance</span>
+          </div>
           <div className="relative flex items-center gap-1.5">
             {activeId && (
-              <button onClick={() => setIsSearchOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
+              <button onClick={() => setIsSearchOpen(true)} className="flex h-8 w-8 items-center justify-center rounded-full text-[#93A4BE] transition hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white" aria-label="Search messages">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
                   <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -3524,44 +3529,44 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               )}
             </button>
             {showNotifications && (
-              <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 bg-ink-800 shadow-2xl">
+              <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 bg-[#121A2B] shadow-2xl">
                 <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                   <p className="text-sm font-semibold text-white">Notifications</p>
-                  <button onClick={() => setShowNotifications(false)} className="text-mist hover:text-white">✕</button>
+                  <button onClick={() => setShowNotifications(false)} className="text-[#93A4BE] hover:text-white">✕</button>
                 </div>
                 {notifications.length === 0 && appNotifications.length === 0 ? (
-                  <p className="px-4 py-6 text-center text-xs text-mist">No new notifications</p>
+                  <p className="px-4 py-6 text-center text-xs text-[#93A4BE]">No new notifications</p>
                 ) : (
                   <div className="max-h-96 overflow-y-auto">
                     {notifications.map((req) => (
                       <div key={req.id} className="border-b border-white/5 px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <Avatar name={req.from_profile?.display_name ?? "User"} color={req.from_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={req.from_profile?.avatar_url} size={36} />
+                          <Avatar name={req.from_profile?.display_name ?? "User"} color={req.from_profile?.avatar_color ?? "#2F6FED"} avatarUrl={req.from_profile?.avatar_url} size={36} />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-white tx1">{req.from_profile?.display_name} wants to connect with you!</p>
-                            <p className="mt-0.5 text-[10px] text-mist">@{req.from_profile?.username}</p>
+                            <p className="mt-0.5 text-[10px] text-[#93A4BE]">@{req.from_profile?.username}</p>
                           </div>
                         </div>
                         <div className="mt-2.5 flex gap-2">
-                          <button onClick={() => acceptRequest(req)} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-1.5 text-xs font-semibold text-white">Accept</button>
-                          <button onClick={() => declineRequest(req)} className="flex-1 rounded-full border border-white/10 py-1.5 text-xs font-semibold text-mist hover:text-white">Leave</button>
+                          <button onClick={() => acceptRequest(req)} className="flex-1 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] py-1.5 text-xs font-semibold text-white">Accept</button>
+                          <button onClick={() => declineRequest(req)} className="flex-1 rounded-full border border-white/10 py-1.5 text-xs font-semibold text-[#93A4BE] hover:text-white">Leave</button>
                         </div>
                       </div>
                     ))}
                     {appNotifications.map((n) => (
                       <div key={n.id} className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
                         {n.type === "verified" ? (
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet/15">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2F6FED]/15">
                             <VerifiedBadge size={20} />
                           </span>
                         ) : n.type === "request_accepted" ? (
                           <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#22D3B8"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
                         ) : (
-                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#2F6FED"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-semibold text-white tx1">{n.body}</p>
-                          <p className="mt-0.5 text-[10px] text-mist">{formatLastSeen(n.created_at)}</p>
+                          <p className="mt-0.5 text-[10px] text-[#93A4BE]">{formatLastSeen(n.created_at)}</p>
                         </div>
                       </div>
                     ))}
@@ -3579,16 +3584,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
                   <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                     <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="url(#homeGrad)" strokeWidth="1.6" strokeLinejoin="round" />
-                    <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#9C82FF" /><stop offset="1" stopColor="#22D3B8" /></linearGradient></defs>
+                    <defs><linearGradient id="homeGrad" x1="3" y1="3" x2="21" y2="21"><stop stopColor="#6FA8FF" /><stop offset="1" stopColor="#FF7A59" /></linearGradient></defs>
                   </svg>
                 </div>
                 <h2 className="font-display text-2xl font-bold text-white">Welcome to Airalance!</h2>
-                <p className="mt-2 text-sm text-mist">Let&apos;s connect. Real conversations, real time.</p>
-                <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-violet to-violet-light px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet/30">
+                <p className="mt-2 text-sm text-[#93A4BE]">Let&apos;s connect. Real conversations, real time.</p>
+                <button onClick={() => setMobileTab("search")} className="mt-6 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30">
                   Start a conversation
                 </button>
                 {conversations.length > 0 && (
-                  <button onClick={() => setMobileTab("chats")} className="mt-3 text-xs font-medium text-mist transition hover:text-black dark:hover:text-white">
+                  <button onClick={() => setMobileTab("chats")} className="mt-3 text-xs font-medium text-[#93A4BE] transition hover:text-black dark:hover:text-white">
                     Or go to your chats →
                   </button>
                 )}
@@ -3602,7 +3607,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <button
                       type="button"
                       onClick={() => { setEditingArticleId(null); setPublishTitle(""); setPublishBody(""); setPublishImageUrl(""); setPublishCategory("India"); setPublishFeatured(true); setShowPublishModal(true); }}
-                      className="rounded-full bg-gradient-to-r from-violet to-violet-dark px-3 py-1 text-[11px] font-semibold text-white"
+                      className="rounded-full bg-gradient-to-r from-[#2F6FED] to-[#1B4FC2] px-3 py-1 text-[11px] font-semibold text-white"
                     >
                       + Write article
                     </button>
@@ -3617,8 +3622,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       onClick={() => setSelectedNewsCategory(label)}
                       className={`shrink-0 whitespace-nowrap rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                         selectedNewsCategory === label
-                          ? "bg-gradient-to-r from-violet to-violet-dark text-white"
-                          : "border border-white/10 bg-white/5 text-mist hover:text-white"
+                          ? "bg-gradient-to-r from-[#2F6FED] to-[#1B4FC2] text-white"
+                          : "border border-white/10 bg-white/5 text-[#93A4BE] hover:text-white"
                       }`}
                     >
                       {label}
@@ -3635,12 +3640,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         );
 
                   if (loadingNews) {
-                    return <p className="px-1 py-6 text-center text-xs text-mist">Loading news…</p>;
+                    return <p className="px-1 py-6 text-center text-xs text-[#93A4BE]">Loading news…</p>;
                   }
 
                   if (filteredNews.length === 0) {
                     return (
-                      <p className="px-1 py-6 text-center text-sm text-mist">
+                      <p className="px-1 py-6 text-center text-sm text-[#93A4BE]">
                         No {selectedNewsCategory === "For you" ? "news" : selectedNewsCategory} articles yet. Check back soon.
                       </p>
                     );
@@ -3664,7 +3669,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             ) : (
                               <div className="absolute inset-0" style={{ background: featured.thumb_gradient }} />
                             )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-ink-900/90 via-ink-900/20 to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0F1C]/90 via-[#0A0F1C]/20 to-transparent" />
                             <div className="relative flex h-full flex-col justify-end p-4">
                               <span className="mb-2 self-start rounded-full bg-white/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white backdrop-blur">
                                 Featured · {featured.category}
@@ -3704,7 +3709,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 <div className="min-w-0 flex-1">
                                   <p className="mb-1 text-[10.5px] font-bold uppercase tracking-wide text-teal">{article.category}</p>
                                   <p className="text-[13.5px] font-semibold leading-snug text-white">{article.title}</p>
-                                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-mist">
+                                  <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#93A4BE]">
                                     {article.source}{isAiralanceSource(article.source) && <VerifiedBadge size={10} />} · {article.read_time}
                                     <span className="ml-1 inline-flex items-center gap-1 text-teal">
                                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
@@ -3736,13 +3741,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   ) : (
                     <Avatar name={myProfile.display_name} color={myProfile.avatar_color} avatarUrl={myProfile.avatar_url} size={64} />
                   )}
-                  <button onClick={() => statusFileInputRef.current?.click()} disabled={uploadingStatus} className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white disabled:opacity-50" aria-label="Add photo status">
+                  <button onClick={() => statusFileInputRef.current?.click()} disabled={uploadingStatus} className="absolute -bottom-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full border-2 border-[#121A2B] bg-[#2F6FED] text-white disabled:opacity-50" aria-label="Add photo status">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" strokeWidth="2.4" strokeLinecap="round" /></svg>
                   </button>
                 </div>
                 <button onClick={() => (myStatuses.length > 0 ? openStatusViewer(myProfile.id) : setShowTextStatusComposer(true))} className="flex-1 text-left">
                   <p className="text-base font-semibold text-white">My Status</p>
-                  <p className="text-sm text-mist">
+                  <p className="text-sm text-[#93A4BE]">
                     {uploadingStatus
                       ? "Uploading…"
                       : myStatuses.length > 0
@@ -3750,19 +3755,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         : "Tap to add a status update"}
                   </p>
                 </button>
-                <button onClick={() => setShowMusicPicker(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Add music to status">🎵</button>
-                <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
+                <button onClick={() => setShowMusicPicker(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-[#6FA8FF] transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Add music to status">🎵</button>
+                <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-[#6FA8FF] transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
               </div>
               {pendingMusic && (
-                <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl bg-violet/10 px-3 py-2">
+                <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl bg-[#2F6FED]/10 px-3 py-2">
                   {pendingMusic.thumbnail && (
                     <img src={pendingMusic.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold text-white">{pendingMusic.title}</p>
-                    <p className="truncate text-[11px] text-mist">{pendingMusic.artist} · Agli status pe lagega</p>
+                    <p className="truncate text-[11px] text-[#93A4BE]">{pendingMusic.artist} · Agli status pe lagega</p>
                   </div>
-                  <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-mist hover:text-white" aria-label="Remove music">✕</button>
+                  <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-[#93A4BE] hover:text-white" aria-label="Remove music">✕</button>
                 </div>
               )}
               {(() => {
@@ -3774,14 +3779,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   return (
                     <button key={userId} onClick={() => openStatusViewer(userId)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition active:scale-[0.99] hover:bg-black/5 dark:hover:bg-white/5">
                       <StatusRing {...ring}>
-                        <Avatar name={p?.display_name ?? "Unknown"} color={p?.avatar_color ?? "#7C5CFF"} avatarUrl={p?.avatar_url} size={64} />
+                        <Avatar name={p?.display_name ?? "Unknown"} color={p?.avatar_color ?? "#2F6FED"} avatarUrl={p?.avatar_url} size={64} />
                       </StatusRing>
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center truncate text-base font-semibold text-white">
                           <span className="truncate">{p?.display_name ?? "Unknown"}</span>
                           {isVerified(p?.username, p?.verified) && <VerifiedBadge />}
                         </p>
-                        <p className="text-sm text-mist">{list.length > 1 ? `${list.length} updates · ` : ""}{formatLastSeen(latest.created_at)}</p>
+                        <p className="text-sm text-[#93A4BE]">{list.length > 1 ? `${list.length} updates · ` : ""}{formatLastSeen(latest.created_at)}</p>
                       </div>
                     </button>
                   );
@@ -3790,13 +3795,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <>
                     {recent.length > 0 && (
                       <>
-                        <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Recent updates</p>
+                        <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-[#93A4BE]/70">Recent updates</p>
                         {recent.map(renderRow)}
                       </>
                     )}
                     {viewed.length > 0 && (
                       <>
-                        <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-mist/70">Viewed updates</p>
+                        <p className="px-3 pb-1 pt-3 text-xs font-medium uppercase tracking-wide text-[#93A4BE]/70">Viewed updates</p>
                         {viewed.map(renderRow)}
                       </>
                     )}
@@ -3804,24 +3809,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 );
               })()}
               {Object.keys(otherStatusesGrouped).length === 0 && myStatuses.length === 0 && (
-                <p className="px-3 py-6 text-center text-sm text-mist">No status updates yet.</p>
+                <p className="px-3 py-6 text-center text-sm text-[#93A4BE]">No status updates yet.</p>
               )}
             </div>
           )}
 
           {mobileTab === "chats" && (
             <div className="px-2 pb-4">
-              {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
+              {loadingConvos && <p className="px-3 py-2 text-xs text-[#93A4BE]">Loading…</p>}
               {!loadingConvos && conversations.length === 0 && (
-                <p className="px-3 py-6 text-center text-sm text-mist">No conversations yet. Tap Search to start one.</p>
+                <p className="px-3 py-6 text-center text-sm text-[#93A4BE]">No conversations yet. Tap Search to start one.</p>
               )}
               {conversations.map((c) => {
                 const name = c.is_group ? c.name ?? "Group" : c.otherProfile?.display_name ?? "Unknown";
-                const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
+                const color = c.otherProfile?.avatar_color ?? "#2F6FED";
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
                 const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
                 return (
-                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
+                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-[#2F6FED]/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
                     <StatusRing {...ring}>
                       <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
                     </StatusRing>
@@ -3830,10 +3835,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         <span className="truncate">{name}</span>
                         {isVerified(c.otherProfile?.username, c.otherProfile?.verified) && <VerifiedBadge size={16} />}
                       </p>
-                      <p className="truncate text-sm text-mist">{c.lastMessage}</p>
+                      <p className="truncate text-sm text-[#93A4BE]">{c.lastMessage}</p>
                     </div>
                     {c.unreadCount > 0 && (
-                      <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0C12]">
+                      <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0F1C]">
                         {c.unreadCount > 99 ? "99+" : c.unreadCount}
                       </span>
                     )}
@@ -3852,11 +3857,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 placeholder="Search by username…"
                 inputMode="search"
                 style={{ fontSize: 16 }}
-                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
+                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-[#121A2B] px-3 py-2 text-white placeholder:text-[#93A4BE]/50 focus:border-[#2F6FED] focus:outline-none"
               />
               {search.trim().length === 0 && suggestedProfiles.length > 0 && (
                 <div className="glass mt-4 rounded-2xl px-4 py-3.5">
-                  <p className="mb-3 text-xs font-semibold text-mist">Suggestions for you</p>
+                  <p className="mb-3 text-xs font-semibold text-[#93A4BE]">Suggestions for you</p>
                   <div className="space-y-1">
                     {suggestedProfiles.map((s) => (
                       <div key={s.id} className="flex items-center gap-3 rounded-xl px-1 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
@@ -3867,11 +3872,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           <p className="flex items-center truncate text-sm font-semibold text-white">
                             {s.display_name}{isVerified(s.username, s.verified) && <VerifiedBadge />}
                           </p>
-                          <p className="truncate text-xs text-mist">@{s.username}</p>
+                          <p className="truncate text-xs text-[#93A4BE]">@{s.username}</p>
                         </button>
                         <button
                           onClick={() => openConnectPopup(s)}
-                          className="shrink-0 rounded-full bg-gradient-to-r from-violet to-violet-light px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-violet/30 transition hover:shadow-violet/50"
+                          className="shrink-0 rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-[#2F6FED]/30 transition hover:shadow-[#2F6FED]/50"
                         >
                           Connect
                         </button>
@@ -3886,12 +3891,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center font-semibold text-white">{r.display_name}{isVerified(r.username, r.verified) && <VerifiedBadge />}</p>
-                      <p className="text-xs text-mist">@{r.username}</p>
+                      <p className="text-xs text-[#93A4BE]">@{r.username}</p>
                     </div>
                   </button>
                 ))}
                 {search.trim().length >= 2 && searchResults.length === 0 && (
-                  <p className="px-2 py-2 text-xs text-mist">No users found.</p>
+                  <p className="px-2 py-2 text-xs text-[#93A4BE]">No users found.</p>
                 )}
               </div>
             </div>
@@ -3904,17 +3909,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
                 <button onClick={() => fileInputRef.current?.click()} className="group relative" disabled={uploading}>
                   <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={96} avatarUrl={myProfile.avatar_url} />
-                  <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
+                  <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#121A2B] bg-[#2F6FED] text-white shadow-lg">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="white" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" /></svg>
                   </span>
                 </button>
-                <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
+                <p className="mt-2 text-xs text-[#93A4BE]">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
               <div className="glass mt-6 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet/15 text-violet-light">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2F6FED]/15 text-[#6FA8FF]">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
                         <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
                         <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.4 5.6l-1.55 1.55M7.15 16.85 5.6 18.4M18.4 18.4l-1.55-1.55M7.15 7.15 5.6 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -3922,7 +3927,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white">Active Status</p>
-                      <p className="text-[11px] text-mist">{activeStatusOn ? "You're visible online" : "You're appearing offline"}</p>
+                      <p className="text-[11px] text-[#93A4BE]">{activeStatusOn ? "You're visible online" : "You're appearing offline"}</p>
                     </div>
                   </div>
                   <ActiveStatusSwitch on={activeStatusOn} onChange={toggleActiveStatus} />
@@ -3931,33 +3936,33 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
               <div className="glass mt-4 divide-y divide-black/5 dark:divide-white/5 overflow-hidden rounded-2xl">
                 <div className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-xs font-medium text-mist">Full name</span>
+                  <span className="text-xs font-medium text-[#93A4BE]">Full name</span>
                   <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} className="w-40 bg-transparent text-right text-sm text-white outline-none" />
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-xs font-medium text-mist">Email</span>
+                  <span className="text-xs font-medium text-[#93A4BE]">Email</span>
                   <span className="truncate text-sm text-white">{myEmail || "—"}</span>
                 </div>
                 <div className="flex items-center justify-between px-4 py-3.5">
-                  <span className="text-xs font-medium text-mist">Username</span>
+                  <span className="text-xs font-medium text-[#93A4BE]">Username</span>
                   <span className="inline-flex items-center text-sm text-white">@{myProfile.username}{isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge />}</span>
                 </div>
                 <button onClick={handleLogout} className="flex w-full items-center justify-between px-4 py-3.5 text-left transition hover:bg-black/5 dark:hover:bg-white/5">
-                  <span className="text-xs font-medium text-mist">Account</span>
+                  <span className="text-xs font-medium text-[#93A4BE]">Account</span>
                   <span className="text-sm font-medium text-red-400">Log out</span>
                 </button>
               </div>
               <div className="glass mt-4 rounded-2xl px-4 py-3.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-mist">Bio</span>
-                  <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
+                  <span className="text-xs font-medium text-[#93A4BE]">Bio</span>
+                  <span className="text-[10px] text-[#93A4BE]/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
                 </div>
-                <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none" />
+                <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-[#93A4BE]/50 outline-none" />
               </div>
               <button
                 onClick={() => { saveDisplayName(); saveBio(); }}
                 disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "")}
-                className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
+                className="mt-6 w-full rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] py-3 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30 disabled:opacity-40"
               >
                 Save Changes
               </button>
@@ -3965,34 +3970,37 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           )}
         </div>
 
-        <div className="grid grid-cols-5 border-t border-black/10 dark:border-white/10 bg-ink-900/95 backdrop-blur-md px-1 pb-[env(safe-area-inset-bottom)]">
-          {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => {
-            const isActive = mobileTab === tab;
-            return (
-              <button
-                key={tab}
-                onClick={() => setMobileTab(tab)}
-                className="flex flex-col items-center justify-center gap-0.5 py-1.5 transition-transform active:scale-90"
-                aria-label={tab}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <span
-                  className={`flex h-7 w-7 items-center justify-center transition-all duration-150 ${
-                    isActive ? "text-violet-light scale-105" : "text-white"
-                  }`}
+        <div className="relative border-t border-white/[0.06] bg-[#0A0F1C]/95 px-2 pt-1.5 backdrop-blur-md pb-[calc(env(safe-area-inset-bottom)+0.375rem)]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#2F6FED]/40 to-transparent" />
+          <div className="grid grid-cols-5 gap-1">
+            {(["home", "status", "chats", "search", "profile"] as MobileTab[]).map((tab) => {
+              const isActive = mobileTab === tab;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setMobileTab(tab)}
+                  className="flex flex-col items-center justify-center gap-0.5 py-1 transition-transform active:scale-90"
+                  aria-label={tab}
+                  aria-current={isActive ? "page" : undefined}
                 >
-                  <TabIcon tab={tab} active={isActive} />
-                </span>
-                <span
-                  className={`text-[9px] font-bold capitalize transition-colors ${
-                    isActive ? "text-violet-light" : "text-white"
-                  }`}
-                >
-                  {tab}
-                </span>
-              </button>
-            );
-          })}
+                  <span
+                    className={`flex h-9 w-11 items-center justify-center rounded-xl transition-all duration-200 ${
+                      isActive ? "bg-[#2F6FED]/18 text-[#6FA8FF]" : "text-[#93A4BE]"
+                    }`}
+                  >
+                    <TabIcon tab={tab} active={isActive} />
+                  </span>
+                  <span
+                    className={`text-[9.5px] font-semibold capitalize tracking-tight transition-colors ${
+                      isActive ? "text-[#6FA8FF]" : "text-[#93A4BE]"
+                    }`}
+                  >
+                    {tab}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </aside>
 
@@ -4002,27 +4010,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         {!active ? (
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
             <div className="glass animate-floatSlow mb-6 flex h-20 w-20 items-center justify-center rounded-3xl">
-              <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="#9C82FF" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="#6FA8FF" strokeWidth="1.6" strokeLinejoin="round" /></svg>
             </div>
             <h2 className="font-display text-xl font-semibold text-white">Pick a conversation</h2>
-            <p className="mt-1 max-w-xs text-sm text-mist">Or start a new one from Search — your messages sync in real time.</p>
+            <p className="mt-1 max-w-xs text-sm text-[#93A4BE]">Or start a new one from Search — your messages sync in real time.</p>
           </div>
         ) : showContactInfo ? (
           <div className="relative z-10 flex flex-1 flex-col overflow-y-auto">
             <div className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-30"
-              style={{ background: `radial-gradient(circle, ${otherDisplayProfile?.avatar_color ?? "#7C5CFF"}55 0%, transparent 70%)` }} />
+              style={{ background: `radial-gradient(circle, ${otherDisplayProfile?.avatar_color ?? "#2F6FED"}55 0%, transparent 70%)` }} />
             <header className="glass relative z-10 flex items-center gap-3 border-b border-white/5 px-4 py-4">
-              <button onClick={() => setShowContactInfo(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-mist transition hover:bg-white/5 hover:text-white" aria-label="Back to chat">
+              <button onClick={() => setShowContactInfo(false)} className="flex h-8 w-8 items-center justify-center rounded-full text-[#93A4BE] transition hover:bg-white/5 hover:text-white" aria-label="Back to chat">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
               <p className="text-sm font-semibold text-white/80 tx2">Contact info</p>
             </header>
             <div className="relative z-10 flex flex-col items-center px-6 pt-8 pb-6 text-center" style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}>
-              <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
-                <div className="rounded-full border-[3px] border-[#0A0C12]">
+              <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #2F6FED, #22D3B8)" }}>
+                <div className="rounded-full border-[3px] border-[#0A0F1C]">
                   <Avatar
                     name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
-                    color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"}
+                    color={otherDisplayProfile?.avatar_color ?? "#2F6FED"}
                     size={100}
                     avatarUrl={otherDisplayProfile?.avatar_url}
                   />
@@ -4079,24 +4087,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="relative z-10 flex items-center gap-3 border-b border-white/[0.06] bg-[#0B0D14]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6">
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-violet/[0.05] via-transparent to-transparent" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/50 to-transparent" />
-              <button onClick={() => setActiveId(null)} className="relative z-10 mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.06] hover:text-white active:scale-90 md:hidden" aria-label="Back to conversations">
+            <header className="relative z-10 flex items-center gap-3 border-b border-white/[0.06] bg-[#0A0F1C]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#2F6FED]/[0.05] via-transparent to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[#2F6FED]/50 to-transparent" />
+              <button onClick={() => setActiveId(null)} className="relative z-10 mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#93A4BE] transition-all hover:bg-white/[0.06] hover:text-white active:scale-90 md:hidden" aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
               <button
                 onClick={(e) => handleAvatarClick(e, () => setShowContactInfo(true))}
-                onMouseDown={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
+                onMouseDown={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#2F6FED" })}
                 onMouseUp={cancelAvatarLongPress}
                 onMouseLeave={cancelAvatarLongPress}
-                onTouchStart={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
+                onTouchStart={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#2F6FED" })}
                 onTouchEnd={(e) => { cancelAvatarLongPress(); if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; } }}
                 onContextMenu={(e) => e.preventDefault()}
                 className="no-callout relative z-10 flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1.5 pl-1 text-left transition-colors hover:bg-white/[0.05]"
               >
                 <span className={`relative shrink-0 rounded-full ${otherIsOnline ? "shadow-[0_0_0_2px_rgba(34,211,184,0.35)]" : ""}`}>
-                  <Avatar name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"} color={active.otherProfile?.avatar_color ?? "#7C5CFF"} online={otherIsOnline} avatarUrl={active.otherProfile?.avatar_url} />
+                  <Avatar name={active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown"} color={active.otherProfile?.avatar_color ?? "#2F6FED"} online={otherIsOnline} avatarUrl={active.otherProfile?.avatar_url} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center text-[15px] font-semibold tracking-[-0.01em] text-white">
@@ -4104,7 +4112,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     {isVerified(active.otherProfile?.username, active.otherProfile?.verified) && <VerifiedBadge />}
                   </p>
                   {!active.is_group && (
-                    <p className="flex items-center gap-1.5 truncate text-[12.5px] text-mist">
+                    <p className="flex items-center gap-1.5 truncate text-[12.5px] text-[#93A4BE]">
                       {peerTyping ? (
                         <span className="flex items-center gap-1 text-teal">
                           <span className="flex gap-0.5">
@@ -4132,14 +4140,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
               </button>
               <div className="relative z-10 flex items-center gap-1.5">
-                <button onClick={() => setIsSearchOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.06] hover:text-white active:scale-90" aria-label="Search messages">
+                <button onClick={() => setIsSearchOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-[#93A4BE] transition-all hover:bg-white/[0.06] hover:text-white active:scale-90" aria-label="Search messages">
                   <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
                     <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" />
                     <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                   </svg>
                 </button>
                 {!active.is_group && (
-                  <button onClick={startCall} disabled={callStatus !== "idle"} className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-violet-light via-violet to-violet-dark text-white shadow-[0_2px_14px_-2px_rgba(124,92,255,0.55)] ring-1 ring-white/10 transition-all hover:shadow-[0_2px_20px_-2px_rgba(124,92,255,0.75)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100" aria-label="Voice call">
+                  <button onClick={startCall} disabled={callStatus !== "idle"} className="relative flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[#6FA8FF] via-[#2F6FED] to-[#1B4FC2] text-white shadow-[0_2px_14px_-2px_rgba(124,92,255,0.55)] ring-1 ring-white/10 transition-all hover:shadow-[0_2px_20px_-2px_rgba(124,92,255,0.75)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:hover:scale-100" aria-label="Voice call">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 5c0-1 1-2 2-2l3 3-1.5 3a13 13 0 0 0 6.5 6.5l3-1.5 3 3c0 1-1 2-2 2C11 19 5 13 4 5Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
                   </button>
                 )}
@@ -4149,7 +4157,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div
               ref={scrollRef}
               onScroll={handleMessagesScroll}
-              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[#0A0C12] px-4 py-6 md:px-8"
+              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[#0A0F1C] px-4 py-6 md:px-8"
               style={{
                 backgroundImage:
                   "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
@@ -4157,9 +4165,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               }}
             >
               {loadingMore && (
-                <p className="pb-2 text-center text-xs text-mist">
+                <p className="pb-2 text-center text-xs text-[#93A4BE]">
                   <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1">
-                    <span className="h-1.5 w-1.5 animate-spin rounded-full border border-mist border-t-transparent" />
+                    <span className="h-1.5 w-1.5 animate-spin rounded-full border border-[#93A4BE] border-t-transparent" />
                     Loading older messages…
                   </span>
                 </p>
@@ -4184,28 +4192,28 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <Fragment key={m.id}>
                     {showDayDivider && (
                       <div className="my-5 flex items-center justify-center">
-                        <span className="glass rounded-full px-3.5 py-1 text-[11.5px] font-semibold uppercase tracking-wide text-mist shadow-sm shadow-black/10">
+                        <span className="glass rounded-full px-3.5 py-1 text-[11.5px] font-semibold uppercase tracking-wide text-[#93A4BE] shadow-sm shadow-black/10">
                           {formatDayLabel(m.created_at)}
                         </span>
                       </div>
                     )}
                     <div className={`relative flex ${mine ? "justify-end" : "justify-start"} ${grouped ? "mt-0.5" : "mt-2.5"}`} onTouchStart={(e) => onBubbleTouchStart(e, m)} onTouchMove={(e) => onBubbleTouchMove(e, m)} onTouchEnd={() => onBubbleTouchEnd(m)}>
                       {isSwiping && translateX > 12 && (
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-violet-light" style={{ opacity: Math.min(1, translateX / SWIPE_REPLY_THRESHOLD) }}>↩</span>
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[#6FA8FF]" style={{ opacity: Math.min(1, translateX / SWIPE_REPLY_THRESHOLD) }}>↩</span>
                       )}
                       <div style={{ transform: `translateX(${translateX}px)`, transition: isSwiping ? "none" : "transform 0.15s ease-out" }} className="max-w-[80%] md:max-w-md" onDoubleClick={() => toggleReaction(m.id, "❤️")} onContextMenu={(e) => { e.preventDefault(); setReactionPickerFor(reactionPickerFor === m.id ? null : m.id); }}>
                         {reactionPickerFor === m.id && (
                           <div className={`mb-1.5 flex flex-col gap-1.5 ${mine ? "items-end" : "items-start"}`}>
-                            <div className="flex gap-1 rounded-full bg-ink-800 px-2 py-1.5 shadow-lg">
+                            <div className="flex gap-1 rounded-full bg-[#121A2B] px-2 py-1.5 shadow-lg">
                               {QUICK_EMOJIS.map((emo) => (
                                 <button key={emo} onClick={() => { toggleReaction(m.id, emo); setReactionPickerFor(null); }} className="text-lg leading-none hover:scale-110 transition">{emo}</button>
                               ))}
                             </div>
                             {!isDeleted && (
-                              <div className="min-w-[168px] overflow-hidden rounded-2xl bg-ink-800 shadow-lg">
+                              <div className="min-w-[168px] overflow-hidden rounded-2xl bg-[#121A2B] shadow-lg">
                                 <button
                                   onClick={() => { togglePinMessage(m.id); setReactionPickerFor(null); }}
-                                  className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition hover:bg-white/5 ${isPinned ? "text-violet-light" : "text-white"}`}
+                                  className={`flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm transition hover:bg-white/5 ${isPinned ? "text-[#6FA8FF]" : "text-white"}`}
                                 >
                                   <span className="text-base">📌</span> {isPinned ? "Unpin" : "Pin"}
                                 </button>
@@ -4243,23 +4251,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         )}
                         <div className={`relative ${isDeleted ? 'opacity-50' : ''}`}>
                           {isPinned && (
-                            <div className="absolute -top-3 -right-1 text-xs text-violet-light">📌</div>
+                            <div className="absolute -top-3 -right-1 text-xs text-[#6FA8FF]">📌</div>
                           )}
-                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet-light via-violet to-violet-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-4px_rgba(124,92,255,0.5)]"} rounded-br-md text-white` : `${isImage ? "" : "bg-[#171A24] ring-1 ring-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_10px_-4px_rgba(0,0,0,0.4)]"} rounded-bl-md text-[color:var(--color-text)]`}`}>
+                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-[#6FA8FF] via-[#2F6FED] to-[#1B4FC2] shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-4px_rgba(124,92,255,0.5)]"} rounded-br-md text-white` : `${isImage ? "" : "bg-[#121A2B] ring-1 ring-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_10px_-4px_rgba(0,0,0,0.4)]"} rounded-bl-md text-[color:var(--color-text)]`}`}>
                             {quoted && (
-                              <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
-                                <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
+                              <div className={`mb-1.5 rounded-lg border-l-2 border-[#6FA8FF] bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
+                                <p className="font-medium text-[#6FA8FF]">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
                                 <p className="truncate text-white/70">{previewForQuote(quoted)}</p>
                               </div>
                             )}
                             {statusReply && (
-                              <div className="mb-1.5 flex items-center gap-2 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1.5 text-xs">
+                              <div className="mb-1.5 flex items-center gap-2 rounded-lg border-l-2 border-[#6FA8FF] bg-black/25 px-2 py-1.5 text-xs">
                                 {statusReply.payload.mediaType === "image" && statusReply.payload.mediaUrl ? (
                                   <img src={statusReply.payload.mediaUrl} alt="Status" className="h-9 w-9 shrink-0 rounded-md object-cover" />
                                 ) : statusReply.payload.mediaType === "video" && statusReply.payload.mediaUrl ? (
                                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-black/40 text-[10px]">▶️</div>
                                 ) : (
-                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[9px] text-white/90" style={{ background: statusReply.payload.bgColor ?? "#7C5CFF" }}>
+                                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-[9px] text-white/90" style={{ background: statusReply.payload.bgColor ?? "#2F6FED" }}>
                                     <span className="line-clamp-3 px-0.5 text-center leading-tight">{statusReply.payload.textContent}</span>
                                   </div>
                                 )}
@@ -4267,7 +4275,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                               </div>
                             )}
                             {isDeleted ? (
-                              <p className="text-sm italic text-mist">This message was deleted</p>
+                              <p className="text-sm italic text-[#93A4BE]">This message was deleted</p>
                             ) : isImage ? (
                               <img src={m.media_url!} alt="Shared photo" className="no-callout max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => setImageViewerUrl(m.media_url!)} />
                             ) : isVoice ? (
@@ -4280,8 +4288,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             ) : (
                               <p className="no-callout whitespace-pre-wrap break-words text-white">
                                 {linkifyText(statusReply ? statusReply.text : m.content)}
-                                {m.edited_at && <span className="ml-1 text-[10px] text-mist">(edited)</span>}
-                                {m.is_forwarded && <span className="ml-1 text-[10px] text-mist">↪ forwarded</span>}
+                                {m.edited_at && <span className="ml-1 text-[10px] text-[#93A4BE]">(edited)</span>}
+                                {m.is_forwarded && <span className="ml-1 text-[10px] text-[#93A4BE]">↪ forwarded</span>}
                               </p>
                             )}
                             {isImage && !isDeleted && (
@@ -4292,9 +4300,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             )}
                           </div>
                           {!isImage && !isDeleted && (
-                            <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] text-mist ${mine ? "justify-end" : "justify-start"}`}>
+                            <p className={`mt-1 flex items-center gap-1 px-1 text-[12px] text-[#93A4BE] ${mine ? "justify-end" : "justify-start"}`}>
                               <span>{new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                              {mine && <Ticks read={!!m.read_at} className={m.read_at ? "text-sky-500" : "text-mist"} />}
+                              {mine && <Ticks read={!!m.read_at} className={m.read_at ? "text-sky-500" : "text-[#93A4BE]"} />}
                             </p>
                           )}
                           <ReactionPills msgReactions={reactionsByMsg[m.id] ?? []} myId={myProfile.id} onToggle={(emoji) => toggleReaction(m.id, emoji)} />
@@ -4309,7 +4317,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <TypingBubble />
                 </div>
               )}
-              {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
+              {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-[#93A4BE]">No messages yet — say hello 👋</p>}
             </div>
 
             {showScrollToBottom && (
@@ -4317,14 +4325,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 type="button"
                 onClick={() => scrollToLatest(true)}
                 aria-label="Scroll to latest messages"
-                className="absolute bottom-24 right-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-ink-800/90 text-white shadow-lg shadow-black/30 ring-1 ring-white/10 backdrop-blur-md transition-all hover:scale-110 hover:ring-violet/40 active:scale-95"
+                className="absolute bottom-24 right-4 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-[#121A2B]/90 text-white shadow-lg shadow-black/30 ring-1 ring-white/10 backdrop-blur-md transition-all hover:scale-110 hover:ring-[#2F6FED]/40 active:scale-95"
                 style={{ animation: "scrollBtnPop 0.18s ease-out" }}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                   <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 {newMessagesCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1 text-[10px] font-bold text-ink-900 shadow">
+                  <span className="absolute -top-1.5 -right-1.5 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-teal px-1 text-[10px] font-bold text-[#0A0F1C] shadow">
                     {newMessagesCount > 99 ? "99+" : newMessagesCount}
                   </span>
                 )}
@@ -4332,19 +4340,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
 
             {replyingTo && (
-              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#171A24] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
-                <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2.5">
-                  <p className="text-xs font-semibold text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
-                  <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
+              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#121A2B] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
+                <div className="min-w-0 flex-1 border-l-2 border-[#6FA8FF] pl-2.5">
+                  <p className="text-xs font-semibold text-[#6FA8FF]">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
+                  <p className="truncate text-xs text-[#93A4BE]">{previewForQuote(replyingTo)}</p>
                 </div>
-                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/10 hover:text-white" aria-label="Cancel reply">✕</button>
+                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[#93A4BE] transition hover:bg-white/10 hover:text-white" aria-label="Cancel reply">✕</button>
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/[0.06] bg-[#0B0D14] px-3 py-3 md:px-6">
+            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/[0.06] bg-[#0A0F1C] px-3 py-3 md:px-6">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              <div className="flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#171A24] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
-                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
+              <div className="flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#121A2B] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-[#2F6FED]/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
+                <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#93A4BE] transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
                     <circle cx="8" cy="10" r="2" fill="currentColor"/>
@@ -4370,11 +4378,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           Pause
                         </button>
                       )}
-                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-mist hover:bg-white/10 hover:text-white transition">
+                      <button type="button" onClick={cancelRecording} className="rounded-full bg-white/5 px-4 py-1.5 text-xs font-semibold text-[#93A4BE] hover:bg-white/10 hover:text-white transition">
                         Cancel
                       </button>
                     </div>
-                    <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:scale-105 active:scale-95" aria-label="Send voice note">
+                    <button type="button" onClick={stopAndSendRecording} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#2F6FED] to-[#6FA8FF] text-white shadow-lg shadow-[#2F6FED]/30 transition-all hover:shadow-[#2F6FED]/50 hover:scale-105 active:scale-95" aria-label="Send voice note">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                         <path d="M22 2L11 13" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
                         <path d="M22 2l-7 20-4-9-9-4 20-7z" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -4399,7 +4407,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         disabled={sending}
                         onMouseDown={(e) => e.preventDefault()}
                         onTouchStart={(e) => e.preventDefault()}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-light via-violet to-violet-dark text-white shadow-[0_2px_16px_-2px_rgba(124,92,255,0.65)] ring-1 ring-white/15 transition-all hover:shadow-[0_2px_22px_-2px_rgba(124,92,255,0.85)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6FA8FF] via-[#2F6FED] to-[#1B4FC2] text-white shadow-[0_2px_16px_-2px_rgba(124,92,255,0.65)] ring-1 ring-white/15 transition-all hover:shadow-[0_2px_22px_-2px_rgba(124,92,255,0.85)] hover:scale-105 active:scale-95 disabled:opacity-40 disabled:scale-100"
                         aria-label="Send message"
                       >
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
@@ -4408,7 +4416,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         </svg>
                       </button>
                     ) : (
-                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Record voice note">
+                      <button type="button" onClick={startRecording} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[#93A4BE] transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Record voice note">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                           <rect x="9" y="3" width="6" height="10" rx="3" stroke="currentColor" strokeWidth="1.8"/>
                           <path d="M5 11a7 7 0 0 0 14 0M12 18v3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
@@ -4425,13 +4433,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {showPublishModal && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" style={{ height: "100dvh" }}>
-          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl">
+          <div className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-[#0A0F1C] p-5 sm:rounded-3xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-display text-lg font-bold text-white">{editingArticleId ? "Edit article" : "Write article"}</h3>
               <button
                 type="button"
                 onClick={() => { setShowPublishModal(false); setPublishError(""); setEditingArticleId(null); }}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-[#93A4BE] hover:text-white"
                 aria-label="Close"
               >
                 ✕
@@ -4440,41 +4448,41 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
             <div className="flex flex-col gap-3">
               <div>
-                <label className="mb-1 block text-xs font-semibold text-mist">Title</label>
+                <label className="mb-1 block text-xs font-semibold text-[#93A4BE]">Title</label>
                 <input
                   value={publishTitle}
                   onChange={(e) => setPublishTitle(e.target.value)}
                   placeholder="Article title"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#2F6FED]"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-mist">Category</label>
+                <label className="mb-1 block text-xs font-semibold text-[#93A4BE]">Category</label>
                 <select
                   value={publishCategory}
                   onChange={(e) => setPublishCategory(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-violet"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-[#2F6FED]"
                 >
                   {["World", "India", "Business", "Education", "Awareness"].map((c) => (
-                    <option key={c} value={c} className="bg-ink-900">{c}</option>
+                    <option key={c} value={c} className="bg-[#0A0F1C]">{c}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-mist">Body</label>
+                <label className="mb-1 block text-xs font-semibold text-[#93A4BE]">Body</label>
                 <textarea
                   value={publishBody}
                   onChange={(e) => setPublishBody(e.target.value)}
                   placeholder="Article content — blank line = new paragraph"
                   rows={8}
-                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#2F6FED]"
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-xs font-semibold text-mist">Image</label>
+                <label className="mb-1 block text-xs font-semibold text-[#93A4BE]">Image</label>
                 {publishImageUrl ? (
                   <div className="relative mb-2 h-36 w-full overflow-hidden rounded-xl">
                     <img src={publishImageUrl} alt="Preview" className="h-full w-full object-cover" />
@@ -4488,7 +4496,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     </button>
                   </div>
                 ) : (
-                  <label className="mb-2 flex h-24 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/5 text-sm text-mist hover:border-violet hover:text-white">
+                  <label className="mb-2 flex h-24 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 bg-white/5 text-sm text-[#93A4BE] hover:border-[#2F6FED] hover:text-white">
                     {uploadingPublishImage ? (
                       "Uploading…"
                     ) : (
@@ -4512,11 +4520,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   value={publishImageUrl}
                   onChange={(e) => setPublishImageUrl(e.target.value)}
                   placeholder="or paste an image URL…"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-[#2F6FED]"
                 />
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-mist">
+              <label className="flex items-center gap-2 text-sm text-[#93A4BE]">
                 <input
                   type="checkbox"
                   checked={publishFeatured}
@@ -4534,7 +4542,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 type="button"
                 onClick={handlePublish}
                 disabled={publishing || uploadingPublishImage}
-                className="mt-1 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+                className="mt-1 w-full rounded-full bg-gradient-to-r from-[#2F6FED] to-[#6FA8FF] py-3 text-sm font-semibold text-white shadow-lg shadow-[#2F6FED]/30 disabled:opacity-50"
               >
                 {publishing ? (editingArticleId ? "Saving…" : "Publishing…") : (editingArticleId ? "Save changes" : "Publish")}
               </button>
@@ -4546,9 +4554,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {confirmDeleteId && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6" style={{ height: "100dvh" }}>
-          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-900 p-5">
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-[#0A0F1C] p-5">
             <h3 className="font-display text-base font-bold text-white">Article delete karein?</h3>
-            <p className="mt-2 text-sm text-mist">Ye action undo nahi ho sakta.</p>
+            <p className="mt-2 text-sm text-[#93A4BE]">Ye action undo nahi ho sakta.</p>
             {publishError && (
               <p className="mt-2 text-xs font-medium text-red-400">{publishError}</p>
             )}
