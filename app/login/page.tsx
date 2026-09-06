@@ -43,6 +43,34 @@ function ChevronLeft() {
     </svg>
   );
 }
+function ArrowRight() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function CheckIcon() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none">
+      <path d="M5 12.5 10 17 19 7" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function GoogleIcon() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24">
+      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.4-1.7 4.1-5.5 4.1-3.3 0-6-2.7-6-6.2s2.7-6.2 6-6.2c1.9 0 3.1.8 3.9 1.5l2.6-2.5C16.9 3.2 14.7 2.2 12 2.2 6.9 2.2 2.7 6.4 2.7 11.5S6.9 20.8 12 20.8c6.9 0 9.3-4.9 9.3-7.4 0-.5-.05-.9-.13-1.2H12Z" />
+    </svg>
+  );
+}
+function AppleIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
+      <path d="M16.5 1.5c.1 1.2-.35 2.35-1 3.2-.7.9-1.85 1.6-2.95 1.5-.15-1.15.4-2.35 1.05-3.1.75-.9 2-1.55 2.9-1.6ZM20.9 17.6c-.55 1.25-.8 1.8-1.5 2.9-1 1.55-2.4 3.45-4.15 3.5-1.55.05-1.95-1-4.05-1s-2.55.95-4.1 1c-1.75.05-3.05-1.75-4.05-3.3C.6 17.05-.5 12.8 1 9.9c1.05-2.05 2.9-3.35 4.9-3.4 1.7-.05 2.85 1.05 4.1 1.05 1.2 0 2.05-1.05 4.15-1 1.4.05 2.9.6 3.95 1.65-3.45 2.05-2.9 6.9.3 8.7-.55 1.4-.5 1.5-1.5 2.7Z" />
+    </svg>
+  );
+}
 function Spinner() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="animate-spin">
@@ -89,33 +117,30 @@ function OtpBoxes({ value, onChange, autoFocus }: { value: string; onChange: (v:
             if (e.key === "Backspace" && !digits[i] && i > 0) refs.current[i - 1]?.focus();
           }}
           style={{ fontSize: 20 }}
-          className="h-14 w-full min-w-0 rounded-2xl border border-white/10 bg-ink-800 text-center font-semibold text-white outline-none transition focus:border-violet focus:ring-2 focus:ring-violet/30"
+          className="h-14 w-full min-w-0 rounded-2xl border border-white/10 bg-white/[0.04] text-center font-semibold text-white outline-none transition focus:border-fuchsia-400 focus:ring-2 focus:ring-fuchsia-400/25"
         />
       ))}
     </div>
   );
 }
 
-/* ---------- shared field wrapper ---------- */
-function Field({
-  label,
+/* ---------- pill-style field used across all modes ---------- */
+function PillField({
   icon,
-  right,
+  showLabel,
+  label,
   children,
 }: {
-  label: string;
   icon?: React.ReactNode;
-  right?: React.ReactNode;
+  showLabel?: string;
+  label: string;
   children: React.ReactNode;
 }) {
   return (
     <div>
-      <div className="mb-1.5 flex items-center justify-between">
-        <label className="text-xs font-medium text-mist-light">{label}</label>
-        {right}
-      </div>
+      {showLabel && <label className="mb-1.5 block pl-1 text-xs font-medium text-white/50">{showLabel}</label>}
       <div className="relative">
-        {icon && <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-mist/70">{icon}</span>}
+        {icon && <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40">{icon}</span>}
         {children}
       </div>
     </div>
@@ -123,7 +148,30 @@ function Field({
 }
 
 const inputBase =
-  "w-full rounded-2xl border border-white/10 bg-ink-800 py-3.5 text-white placeholder:text-mist/40 outline-none transition focus:border-violet focus:ring-2 focus:ring-violet/20";
+  "w-full rounded-full border border-white/10 bg-white/[0.04] py-3.5 text-white placeholder:text-white/35 outline-none transition focus:border-fuchsia-400/60 focus:ring-2 focus:ring-fuchsia-400/20";
+
+/* ---------- custom checkbox to match the reference art ---------- */
+function CheckBox({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      className="flex items-center gap-2 text-xs font-medium text-white/60 transition hover:text-white/85"
+    >
+      <span
+        className={`flex h-4.5 w-4.5 items-center justify-center rounded-md border transition ${
+          checked
+            ? "border-transparent bg-gradient-to-br from-fuchsia-500 via-violet-500 to-blue-500 text-white"
+            : "border-white/25 bg-white/5 text-transparent"
+        }`}
+        style={{ height: 18, width: 18 }}
+      >
+        <CheckIcon />
+      </span>
+      {label}
+    </button>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -139,7 +187,9 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [otp, setOtp] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function resetState() {
@@ -158,10 +208,28 @@ export default function LoginPage() {
     if (err) {
       setError("Incorrect email or password.");
     } else {
+      try {
+        if (rememberMe) localStorage.setItem("airalance-last-email", email);
+        else localStorage.removeItem("airalance-last-email");
+      } catch {}
       router.push("/chat");
       router.refresh();
     }
     setLoading(false);
+  }
+
+  // OAuth login (Google / Facebook / Apple)
+  async function handleOAuth(provider: "google" | "facebook" | "apple") {
+    setOauthLoading(provider);
+    setError(null);
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/chat` },
+    });
+    if (err) {
+      setError(err.message);
+      setOauthLoading(null);
+    }
   }
 
   // Send OTP (login)
@@ -258,19 +326,47 @@ export default function LoginPage() {
     setLoading(false);
   }
 
-  const showBrandHeader = mode === "password";
+  const showBack = mode !== "password";
+  const title =
+    mode === "password"
+      ? "Login"
+      : mode === "otp-email"
+      ? "Log in with OTP"
+      : mode === "otp-verify"
+      ? "Enter your code"
+      : mode === "forgot-email"
+      ? "Reset password"
+      : mode === "forgot-otp"
+      ? "Enter your code"
+      : "Set new password";
+
+  const subtitle =
+    mode === "password"
+      ? "Please sign in to continue"
+      : mode === "otp-email"
+      ? "We'll send a 6-digit code to your email"
+      : mode === "otp-verify" || mode === "forgot-otp"
+      ? `A 6-digit code was sent to ${email || "your email"}`
+      : mode === "forgot-email"
+      ? "Enter your email — we'll send a verification code"
+      : "Choose a strong new password";
 
   return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-900 px-5 py-10">
-      <div className="pointer-events-none absolute inset-0 bg-aurora" />
-      {/* floating gradient orbs for depth */}
-      <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-violet/25 blur-[100px]" />
-      <div className="pointer-events-none absolute -bottom-24 -right-16 h-80 w-80 rounded-full bg-violet-light/20 blur-[110px]" />
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-5 py-10">
+      {/* ambient glow / texture background, echoing the reference art */}
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-32 top-0 h-[26rem] w-[26rem] rounded-full bg-fuchsia-600/20 blur-[110px]" />
+        <div className="absolute -right-28 bottom-0 h-[26rem] w-[26rem] rounded-full bg-blue-600/20 blur-[110px]" />
+        <div className="absolute left-1/2 top-1/2 h-[30rem] w-[30rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-600/10 blur-[130px]" />
+      </div>
 
-      <div className="glass animate-fadeUp relative z-10 w-full max-w-md rounded-[28px] p-8 shadow-2xl">
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          {mode !== "password" ? (
+      {/* card with a conic-gradient ring border, evoking the circular frame */}
+      <div
+        className="animate-fadeUp relative z-10 w-full max-w-md rounded-[40px] p-[1.5px] shadow-2xl"
+        style={{ background: "conic-gradient(from 210deg, #ec4899, #a855f7, #6366f1, #3b82f6, #ec4899)" }}
+      >
+        <div className="rounded-[40px] bg-[#0b0b12]/95 px-7 py-9 backdrop-blur-xl sm:px-9">
+          {showBack && (
             <button
               onClick={() => {
                 resetState();
@@ -280,127 +376,140 @@ export default function LoginPage() {
                 else if (mode === "forgot-email") setMode("password");
                 else if (mode === "forgot-newpass") setMode("forgot-otp");
               }}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white"
+              className="mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-white/60 transition hover:bg-white/10 hover:text-white"
               aria-label="Back"
             >
               <ChevronLeft />
             </button>
-          ) : null}
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-violet to-violet-light shadow-lg shadow-violet/40">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" fill="white" fillOpacity="0.95" />
-              </svg>
-            </span>
-            <span className="font-display text-lg font-bold text-white">
-              Aira<span className="text-gradient">Think!</span>
-            </span>
-          </Link>
-        </div>
+          )}
 
-        {showBrandHeader && (
-          <p className="mt-2 pl-0.5 text-[13px] text-mist/70">Where conversations think ahead ⚡</p>
-        )}
+          {/* centered heading, matching the reference */}
+          <div className="text-center">
+            <h1 className="font-display text-[26px] font-bold text-white">{title}</h1>
+            <p className="mt-1.5 text-[13px] text-white/45">{subtitle}</p>
+          </div>
 
-        {/* PASSWORD LOGIN */}
-        {mode === "password" && (
-          <>
-            <h1 className="mt-7 font-display text-2xl font-bold text-white">Welcome back</h1>
-            <p className="mt-1 text-sm text-mist">Log in to continue chatting.</p>
+          {/* PASSWORD LOGIN */}
+          {mode === "password" && (
+            <>
+              <form onSubmit={handlePasswordLogin} className="mt-7 flex flex-col gap-3.5">
+                <PillField icon={<MailIcon />} label="Username">
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Username"
+                    style={{ fontSize: 16 }}
+                    className={`${inputBase} pl-11 pr-4`}
+                  />
+                </PillField>
 
-            <form onSubmit={handlePasswordLogin} className="mt-7 flex flex-col gap-4">
-              <Field label="Email" icon={<MailIcon />}>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  style={{ fontSize: 16 }}
-                  className={`${inputBase} pl-11 pr-4`}
-                />
-              </Field>
+                <PillField icon={<LockIcon />} label="Password">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Password"
+                    style={{ fontSize: 16 }}
+                    className={`${inputBase} pl-11 pr-11`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 transition hover:text-white"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    <EyeIcon off={showPassword} />
+                  </button>
+                </PillField>
 
-              <Field
-                label="Password"
-                icon={<LockIcon />}
-                right={
+                <div className="mt-0.5 flex items-center justify-between">
+                  <CheckBox checked={rememberMe} onChange={() => setRememberMe((v) => !v)} label="Remember me" />
                   <button
                     type="button"
                     onClick={() => { resetState(); setMode("forgot-email"); }}
-                    className="text-xs font-medium text-violet-light hover:underline"
+                    className="text-xs font-medium text-fuchsia-300 hover:underline"
                   >
                     Forgot password?
                   </button>
-                }
-              >
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  style={{ fontSize: 16 }}
-                  className={`${inputBase} pl-11 pr-11`}
-                />
+                </div>
+
+                {error && (
+                  <p className="rounded-xl bg-red-500/10 px-3.5 py-2.5 text-xs text-red-400">{error}</p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+                >
+                  {loading ? <Spinner /> : (
+                    <>
+                      Login
+                      <ArrowRight />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              <div className="mt-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-white/10" />
+                <span className="text-xs text-white/35">or continue with</span>
+                <div className="h-px flex-1 bg-white/10" />
+              </div>
+
+              <div className="mt-4 flex items-center justify-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-mist/70 transition hover:text-white"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  onClick={() => handleOAuth("google")}
+                  disabled={!!oauthLoading}
+                  aria-label="Continue with Google"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] transition hover:bg-white/[0.08] disabled:opacity-50"
                 >
-                  <EyeIcon off={showPassword} />
+                  {oauthLoading === "google" ? <Spinner /> : <GoogleIcon />}
                 </button>
-              </Field>
-
-              {error && (
-                <p className="rounded-xl bg-red-500/10 px-3.5 py-2.5 text-xs text-red-400">{error}</p>
-              )}
+                <button
+                  type="button"
+                  onClick={() => handleOAuth("facebook")}
+                  disabled={!!oauthLoading}
+                  aria-label="Continue with Facebook"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-[15px] font-bold text-[#1877F2] transition hover:bg-white/[0.08] disabled:opacity-50"
+                >
+                  {oauthLoading === "facebook" ? <Spinner /> : "f"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOAuth("apple")}
+                  disabled={!!oauthLoading}
+                  aria-label="Continue with Apple"
+                  className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] transition hover:bg-white/[0.08] disabled:opacity-50"
+                >
+                  {oauthLoading === "apple" ? <Spinner /> : <AppleIcon />}
+                </button>
+              </div>
 
               <button
-                type="submit"
-                disabled={loading}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+                onClick={() => { resetState(); setMode("otp-email"); }}
+                className="mt-5 block w-full text-center text-xs font-medium text-white/40 hover:text-white/70"
               >
-                {loading && <Spinner />}
-                {loading ? "Logging in…" : "Log in"}
+                Prefer a code instead? Log in with OTP
               </button>
-            </form>
 
-            <div className="mt-6 flex items-center gap-3">
-              <div className="h-px flex-1 bg-white/10" />
-              <span className="text-xs text-mist">or</span>
-              <div className="h-px flex-1 bg-white/10" />
-            </div>
+              <p className="mt-5 text-center text-sm text-white/45">
+                Don&apos;t have an account?{" "}
+                <Link href="/signup" className="font-medium text-fuchsia-300 hover:underline">
+                  Sign up
+                </Link>
+              </p>
+            </>
+          )}
 
-            <button
-              onClick={() => { resetState(); setMode("otp-email"); }}
-              className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] py-3.5 text-sm font-semibold text-white transition hover:bg-white/[0.07] active:scale-[0.98]"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <rect x="3" y="6" width="18" height="12" rx="2.5" stroke="currentColor" strokeWidth="1.6" />
-                <path d="M3 8l9 6 9-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              Log in with OTP
-            </button>
-
-            <p className="mt-7 text-center text-sm text-mist">
-              Don&apos;t have an account?{" "}
-              <Link href="/signup" className="font-medium text-violet-light hover:underline">
-                Sign up
-              </Link>
-            </p>
-          </>
-        )}
-
-        {/* OTP LOGIN - EMAIL */}
-        {mode === "otp-email" && (
-          <>
-            <h1 className="mt-7 font-display text-2xl font-bold text-white">Log in with OTP</h1>
-            <p className="mt-1 text-sm text-mist">We&apos;ll send a 6-digit code to your email.</p>
-
+          {/* OTP LOGIN - EMAIL */}
+          {mode === "otp-email" && (
             <form onSubmit={handleSendOtp} className="mt-7 flex flex-col gap-4">
-              <Field label="Email" icon={<MailIcon />}>
+              <PillField icon={<MailIcon />} label="Email">
                 <input
                   type="email"
                   required
@@ -410,7 +519,7 @@ export default function LoginPage() {
                   style={{ fontSize: 16 }}
                   className={`${inputBase} pl-11 pr-4`}
                 />
-              </Field>
+              </PillField>
 
               {error && (
                 <p className="rounded-xl bg-red-500/10 px-3.5 py-2.5 text-xs text-red-400">{error}</p>
@@ -419,23 +528,16 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 active:scale-[0.98] disabled:opacity-60"
+                className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 active:scale-[0.98] disabled:opacity-60"
               >
                 {loading && <Spinner />}
                 {loading ? "Sending…" : "Send OTP"}
               </button>
             </form>
-          </>
-        )}
+          )}
 
-        {/* OTP LOGIN - VERIFY */}
-        {mode === "otp-verify" && (
-          <>
-            <h1 className="mt-7 font-display text-2xl font-bold text-white">Enter your code</h1>
-            <p className="mt-1 text-sm text-mist">
-              A 6-digit code was sent to <span className="font-medium text-white">{email}</span>.
-            </p>
-
+          {/* OTP LOGIN - VERIFY */}
+          {mode === "otp-verify" && (
             <form onSubmit={handleVerifyOtp} className="mt-7 flex flex-col gap-4">
               <OtpBoxes value={otp} onChange={setOtp} autoFocus />
 
@@ -446,23 +548,18 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 active:scale-[0.98] disabled:opacity-60"
+                className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 active:scale-[0.98] disabled:opacity-60"
               >
                 {loading && <Spinner />}
                 {loading ? "Verifying…" : "Log in"}
               </button>
             </form>
-          </>
-        )}
+          )}
 
-        {/* FORGOT PASSWORD - EMAIL */}
-        {mode === "forgot-email" && (
-          <>
-            <h1 className="mt-7 font-display text-2xl font-bold text-white">Reset password</h1>
-            <p className="mt-1 text-sm text-mist">Enter your email — we&apos;ll send a verification code.</p>
-
+          {/* FORGOT PASSWORD - EMAIL */}
+          {mode === "forgot-email" && (
             <form onSubmit={handleForgotSendOtp} className="mt-7 flex flex-col gap-4">
-              <Field label="Email" icon={<MailIcon />}>
+              <PillField icon={<MailIcon />} label="Email">
                 <input
                   type="email"
                   required
@@ -472,7 +569,7 @@ export default function LoginPage() {
                   style={{ fontSize: 16 }}
                   className={`${inputBase} pl-11 pr-4`}
                 />
-              </Field>
+              </PillField>
 
               {error && (
                 <p className="rounded-xl bg-red-500/10 px-3.5 py-2.5 text-xs text-red-400">{error}</p>
@@ -481,23 +578,16 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 active:scale-[0.98] disabled:opacity-60"
+                className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 active:scale-[0.98] disabled:opacity-60"
               >
                 {loading && <Spinner />}
                 {loading ? "Sending…" : "Send Code"}
               </button>
             </form>
-          </>
-        )}
+          )}
 
-        {/* FORGOT PASSWORD - OTP VERIFY */}
-        {mode === "forgot-otp" && (
-          <>
-            <h1 className="mt-7 font-display text-2xl font-bold text-white">Enter your code</h1>
-            <p className="mt-1 text-sm text-mist">
-              A 6-digit code was sent to <span className="font-medium text-white">{email}</span>.
-            </p>
-
+          {/* FORGOT PASSWORD - OTP VERIFY */}
+          {mode === "forgot-otp" && (
             <form onSubmit={handleForgotVerifyOtp} className="mt-7 flex flex-col gap-4">
               <OtpBoxes value={otp} onChange={setOtp} autoFocus />
 
@@ -508,23 +598,18 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 active:scale-[0.98] disabled:opacity-60"
+                className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 active:scale-[0.98] disabled:opacity-60"
               >
                 {loading && <Spinner />}
                 {loading ? "Verifying…" : "Verify Code"}
               </button>
             </form>
-          </>
-        )}
+          )}
 
-        {/* FORGOT PASSWORD - SET NEW PASSWORD */}
-        {mode === "forgot-newpass" && (
-          <>
-            <h1 className="mt-7 font-display text-2xl font-bold text-white">Set new password</h1>
-            <p className="mt-1 text-sm text-mist">Choose a strong new password.</p>
-
+          {/* FORGOT PASSWORD - SET NEW PASSWORD */}
+          {mode === "forgot-newpass" && (
             <form onSubmit={handleSetNewPassword} className="mt-7 flex flex-col gap-4">
-              <Field label="New password" icon={<LockIcon />}>
+              <PillField icon={<LockIcon />} label="New password">
                 <input
                   type="password"
                   required
@@ -535,9 +620,9 @@ export default function LoginPage() {
                   style={{ fontSize: 16 }}
                   className={`${inputBase} pl-11 pr-4`}
                 />
-              </Field>
+              </PillField>
 
-              <Field label="Confirm password" icon={<LockIcon />}>
+              <PillField icon={<LockIcon />} label="Confirm password">
                 <input
                   type="password"
                   required
@@ -548,7 +633,7 @@ export default function LoginPage() {
                   style={{ fontSize: 16 }}
                   className={`${inputBase} pl-11 pr-4`}
                 />
-              </Field>
+              </PillField>
 
               {error && (
                 <p className="rounded-xl bg-red-500/10 px-3.5 py-2.5 text-xs text-red-400">{error}</p>
@@ -557,14 +642,14 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="mt-2 flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition-all hover:shadow-violet/50 active:scale-[0.98] disabled:opacity-60"
+                className="mt-2 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition-all hover:shadow-violet-500/50 active:scale-[0.98] disabled:opacity-60"
               >
                 {loading && <Spinner />}
                 {loading ? "Saving…" : "Save New Password"}
               </button>
             </form>
-          </>
-        )}
+          )}
+        </div>
       </div>
     </main>
   );
