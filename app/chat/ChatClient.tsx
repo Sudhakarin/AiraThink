@@ -904,10 +904,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }
   }
 
+  const [deleteChatTarget, setDeleteChatTarget] = useState<{ id: string; name: string } | null>(null);
   function confirmDeleteConversation(convoId: string, name: string) {
-    const ok = window.confirm(`Delete chat with ${name}?\n\nThis removes it from your chat list.`);
     setChatSwipeState(null);
-    if (ok) deleteConversation(convoId);
+    setDeleteChatTarget({ id: convoId, name });
   }
 
   function onChatRowTouchStart(e: React.TouchEvent, convoId: string) {
@@ -3218,6 +3218,31 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <button onClick={closeConnectPopup} className="w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">OK</button>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {deleteChatTarget && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }} onClick={() => setDeleteChatTarget(null)}>
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-5 flex flex-col items-center gap-3 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/15 text-red-400">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7h12Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+              </span>
+              <div>
+                <p className="font-display text-lg font-bold text-white">Delete chat with {deleteChatTarget.name}?</p>
+                <p className="mt-1 text-sm text-mist">This removes it from your chat list. {deleteChatTarget.name} will still see the conversation on their side.</p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteChatTarget(null)} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">Cancel</button>
+              <button
+                onClick={() => { deleteConversation(deleteChatTarget.id); setDeleteChatTarget(null); }}
+                className="flex-1 rounded-full bg-red-500 py-3 text-sm font-semibold text-white shadow-lg shadow-red-500/30 transition hover:bg-red-600"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}
