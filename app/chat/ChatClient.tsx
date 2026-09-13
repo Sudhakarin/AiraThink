@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, Fragment, useMemo, type UIEvent } from "react";
+import React, { useCallback, useEffect, useRef, useState, Fragment, useMemo, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -145,6 +145,8 @@ const PHOTO_FILTERS: { id: string; label: string; css: string }[] = [
 const QUICK_EMOJIS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 const SWIPE_REPLY_THRESHOLD = 44;
 const SWIPE_REPLY_MAX = 64;
+const CHAT_SWIPE_MAX = 84;
+const CHAT_SWIPE_DELETE_THRESHOLD = 60;
 const MAX_BIO_LENGTH = 160;
 const STATUS_DURATION_MS = 15000;
 const STATUS_MAX_VIDEO_MS = 30000;
@@ -156,14 +158,6 @@ const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airalance-active-status";
 const EDIT_TIMEOUT_MS = 300000;
-
-const HOME_FEATURES = [
-  { icon: "🔒", title: "End-to-end encryption", desc: "Your messages stay private, always." },
-  { icon: "⚡", title: "Realtime chat", desc: "Messages arrive instantly, no delay." },
-  { icon: "⏳", title: "24 hours disappearing", desc: "Status updates vanish after a day." },
-  { icon: "🆓", title: "Free to use", desc: "No subscriptions, no hidden costs." },
-  { icon: "📶", title: "Works on all networks", desc: "Smooth on 3G, 4G, 5G and beyond." },
-];
 
 type StatusReplyPayload = {
   statusId: string;
@@ -728,6 +722,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
   const [swipeState, setSwipeState] = useState<{ id: string; dx: number } | null>(null);
+  const chatSwipeStartRef = useRef<{ id: string; x: number; y: number } | null>(null);
+  const [chatSwipeState, setChatSwipeState] = useState<{ id: string; dx: number } | null>(null);
 
   const [peerTyping, setPeerTyping] = useState(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -886,6 +882,40 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [myProfile.id, supabase]);
 
   useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  async function deleteConversation(convoId: string) {
+    setChatSwipeState(null);
+    // Remove only my own membership row — hides the chat from my list without
+    // deleting it for the other participant(s).
+    setConversations(prev => prev.filter(c => c.id !== convoId));
+    if (activeId === convoId) setActiveId(null);
+    const { error } = await supabase.from("conversation_participants").delete().eq("conversation_id", convoId).eq("user_id", myProfile.id);
+    if (error) { setErrorMsg("Could not delete chat. Please try again."); loadConversations(); }
+  }
+
+  function confirmDeleteConversation(convoId: string, name: string) {
+    const ok = window.confirm(`Delete chat with ${name}?\n\nThis removes it from your chat list.`);
+    setChatSwipeState(null);
+    if (ok) deleteConversation(convoId);
+  }
+
+  function onChatRowTouchStart(e: React.TouchEvent, convoId: string) {
+    chatSwipeStartRef.current = { id: convoId, x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  function onChatRowTouchMove(e: React.TouchEvent, convoId: string) {
+    const start = chatSwipeStartRef.current;
+    if (!start || start.id !== convoId) return;
+    const dx = e.touches[0].clientX - start.x;
+    const dy = e.touches[0].clientY - start.y;
+    if (Math.abs(dy) > Math.abs(dx)) return;
+    const clamped = Math.max(-CHAT_SWIPE_MAX, Math.min(dx, 0));
+    setChatSwipeState({ id: convoId, dx: clamped });
+  }
+  function onChatRowTouchEnd(convoId: string) {
+    chatSwipeStartRef.current = null;
+    setChatSwipeState(prev => (prev && prev.id === convoId && Math.abs(prev.dx) > CHAT_SWIPE_MAX / 2 ? prev : null));
+  }
+
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1330,11 +1360,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         });
     }
     
-    setMessages(prev => prev.map(m => 
-      m.id === messageId 
-        ? { ...m, is_deleted: forEveryone || message.sender_id === myProfile.id, deleted_at: new Date().toISOString() }
-        : m
-    ));
+    if (forEveryone) {
+      setMessages(prev => prev.map(m =>
+        m.id === messageId
+          ? { ...m, is_deleted: true, deleted_at: new Date().toISOString() }
+          : m
+      ));
+    } else {
+      // Delete just for me — hide it locally without touching the row for others.
+      setMessages(prev => prev.filter(m => m.id !== messageId));
+    }
   };
 
   const forwardMessage = async (targetConversationId: string) => {
@@ -1759,8 +1794,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         return;
       }
     }
-    const { data: existing } = await supabase.from("connection_requests").select("*").eq("from_user_id", myProfile.id).eq("to_user_id", other.id).maybeSingle();
+    const { data: existing } = await supabase
+      .from("connection_requests")
+      .select("*")
+      .or(`and(from_user_id.eq.${myProfile.id},to_user_id.eq.${other.id}),and(from_user_id.eq.${other.id},to_user_id.eq.${myProfile.id})`)
+      .maybeSingle();
     if (existing) {
+      if (existing.status === "accepted") {
+        // Connected, but no conversation row exists yet (e.g. an older
+        // connection) — let the "Message" button create one on demand.
+        setProfileViewStatus("connected");
+        setProfileViewConvoId(null);
+        return;
+      }
       if (existing.status === "pending") setProfileViewStatus("pending");
       else if (existing.status === "declined") setProfileViewStatus("declined");
       else setProfileViewStatus("none");
@@ -1777,10 +1823,39 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewMutuals({ profiles: [], count: 0 });
   }
 
-  function goToProfileChat() {
-    if (!profileViewConvoId) return;
+  const [startingProfileChat, setStartingProfileChat] = useState(false);
+  async function goToProfileChat() {
+    if (profileViewConvoId) {
+      setSearch(""); setSearchResults([]);
+      setActiveId(profileViewConvoId);
+      setMobileTab("chats");
+      closeProfileView();
+      return;
+    }
+    // Connected but no conversation exists yet — start a new chat now.
+    if (!profileView || startingProfileChat) return;
+    setStartingProfileChat(true);
+    const otherId = profileView.id;
+    const { data: mineRows } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
+    const myConvoIds = (mineRows ?? []).map((r) => r.conversation_id);
+    let convoId: string | null = null;
+    if (myConvoIds.length > 0) {
+      const { data: shared } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", otherId).in("conversation_id", myConvoIds);
+      if (shared && shared.length > 0) convoId = shared[0].conversation_id;
+    }
+    if (!convoId) {
+      const { data: convo, error } = await supabase.from("conversations").insert({ is_group: false, created_by: myProfile.id }).select().single();
+      if (error || !convo) { setErrorMsg("Could not start chat. Please try again."); setStartingProfileChat(false); return; }
+      convoId = convo.id;
+      await supabase.from("conversation_participants").insert([
+        { conversation_id: convoId, user_id: myProfile.id },
+        { conversation_id: convoId, user_id: otherId },
+      ]);
+    }
+    setStartingProfileChat(false);
+    await loadConversations();
     setSearch(""); setSearchResults([]);
-    setActiveId(profileViewConvoId);
+    setActiveId(convoId);
     setMobileTab("chats");
     closeProfileView();
   }
@@ -1807,9 +1882,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   async function confirmConnect() {
     if (!connectPopupTarget) return;
     setConnectSending(true);
-    const { error } = await supabase.from("connection_requests").insert({ from_user_id: myProfile.id, to_user_id: connectPopupTarget.id });
+    const { data: existingReq } = await supabase
+      .from("connection_requests")
+      .select("id")
+      .eq("from_user_id", myProfile.id)
+      .eq("to_user_id", connectPopupTarget.id)
+      .maybeSingle();
+    const { error } = existingReq
+      ? await supabase.from("connection_requests").update({ status: "pending", created_at: new Date().toISOString() }).eq("id", existingReq.id)
+      : await supabase.from("connection_requests").insert({ from_user_id: myProfile.id, to_user_id: connectPopupTarget.id });
     setConnectSending(false);
-    if (error) { setConnectPopupMode(null); setConnectPopupTarget(null); return; }
+    if (error) { setErrorMsg("Could not send request. Please try again."); setConnectPopupMode(null); setConnectPopupTarget(null); return; }
     sendPushNotification({ userId: connectPopupTarget.id, title: myProfile.display_name, body: `${myProfile.display_name} wants to connect with you!`, url: "/" });
     if (profileView?.id === connectPopupTarget.id) { setProfileViewStatus("pending"); }
     setConnectPopupMode(null);
@@ -2088,7 +2171,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   async function handleAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]; if (!file) return;
+    const file = e.target.files?.[0]; e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      setErrorMsg("Image is too large. Maximum size is 8 MB.");
+      return;
+    }
     setUploading(true);
     const ext = file.name.split(".").pop() ?? "jpg";
     const path = `${myProfile.id}/avatar-${Date.now()}.${ext}`;
@@ -2648,12 +2736,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }, 450);
   }, []);
 
-  const cancelAvatarLongPress = useCallback(() => {
+  // Only clears the pending timer — must NOT close the viewer, or the
+  // fullscreen avatar photo closes instantly on mouseup/touchend.
+  const clearAvatarLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
-    setAvatarViewer(null);
   }, []);
 
   const handleAvatarClick = useCallback((e: React.MouseEvent | React.TouchEvent, onShortClick?: () => void) => {
@@ -2920,8 +3009,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {/* Chat Search Modal */}
       {isSearchOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50">
-          <div className="mx-auto max-w-2xl bg-ink-900 p-4">
+        <div className="fixed inset-0 z-50 bg-black/50" onClick={() => { setIsSearchOpen(false); setSearchQuery(""); setSearchResultsMessages([]); }}>
+          <div className="mx-auto max-w-2xl bg-ink-900 p-4" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h3 className="font-semibold text-white">Search Messages</h3>
               <button onClick={() => { setIsSearchOpen(false); setSearchQuery(''); setSearchResultsMessages([]); }} className="text-mist hover:text-white">
@@ -3047,7 +3136,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
             )}
             {profileViewStatus === "connected" && (
-              <button onClick={goToProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Message</button>
+              <button onClick={goToProfileChat} disabled={startingProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60">{startingProfileChat ? "Starting…" : "Message"}</button>
             )}
           </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
@@ -3310,7 +3399,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               {myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}
             </button>
           ) : (
-            <div className="flex items-center gap-2 px-4 pb-4 pt-2" onPointerDown={pauseStatusTimer}>
+            <div className="flex items-center gap-2 px-4 pb-4 pt-2">
               {(() => {
                 // Check if connected
                 const connected = isConnectedTo(activeStatusItem.user_id);
@@ -3820,24 +3909,44 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const color = c.otherProfile?.avatar_color ?? "#7C5CFF";
                 const online = c.otherProfile ? onlineIds.has(c.otherProfile.id) : false;
                 const ring = c.otherProfile ? statusRingPropsFor(c.otherProfile.id) : { hasStatus: false, viewed: true };
+                const isSwiping = chatSwipeState?.id === c.id;
+                const translateX = isSwiping ? chatSwipeState!.dx : 0;
                 return (
-                  <button key={c.id} onClick={() => { setActiveId(c.id); setMobileTab("chats"); }} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}>
-                    <StatusRing {...ring}>
-                      <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
-                    </StatusRing>
-                    <div className="min-w-0 flex-1">
-                      <p className="flex items-center truncate text-lg font-semibold text-white">
-                        <span className="truncate">{name}</span>
-                        {isVerified(c.otherProfile?.username, c.otherProfile?.verified) && <VerifiedBadge size={16} />}
-                      </p>
-                      <p className="truncate text-sm text-mist">{c.lastMessage}</p>
-                    </div>
-                    {c.unreadCount > 0 && (
-                      <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0C12]">
-                        {c.unreadCount > 99 ? "99+" : c.unreadCount}
-                      </span>
-                    )}
-                  </button>
+                  <div key={c.id} className="relative mb-1 overflow-hidden rounded-xl">
+                    <button
+                      onClick={() => confirmDeleteConversation(c.id, name)}
+                      aria-label={`Delete chat with ${name}`}
+                      className="absolute inset-y-0 right-0 flex w-20 items-center justify-center gap-1 bg-red-500 text-xs font-semibold text-white"
+                      style={{ opacity: Math.min(1, Math.abs(translateX) / CHAT_SWIPE_DELETE_THRESHOLD) }}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7h12Z" stroke="white" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                      Delete
+                    </button>
+                    <button
+                      onClick={() => { if (translateX !== 0) { setChatSwipeState(null); return; } setActiveId(c.id); setMobileTab("chats"); }}
+                      onTouchStart={(e) => onChatRowTouchStart(e, c.id)}
+                      onTouchMove={(e) => onChatRowTouchMove(e, c.id)}
+                      onTouchEnd={() => onChatRowTouchEnd(c.id)}
+                      style={{ transform: `translateX(${translateX}px)` }}
+                      className={`flex w-full items-center gap-3 rounded-xl bg-ink-800 px-3 py-3 text-left transition-transform active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}
+                    >
+                      <StatusRing {...ring}>
+                        <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
+                      </StatusRing>
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center truncate text-lg font-semibold text-white">
+                          <span className="truncate">{name}</span>
+                          {isVerified(c.otherProfile?.username, c.otherProfile?.verified) && <VerifiedBadge size={16} />}
+                        </p>
+                        <p className="truncate text-sm text-mist">{c.lastMessage}</p>
+                      </div>
+                      {c.unreadCount > 0 && (
+                        <span className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-teal px-1.5 text-xs font-bold text-[#0A0C12]">
+                          {c.unreadCount > 99 ? "99+" : c.unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -4088,10 +4197,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button
                 onClick={(e) => handleAvatarClick(e, () => setShowContactInfo(true))}
                 onMouseDown={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
-                onMouseUp={cancelAvatarLongPress}
-                onMouseLeave={cancelAvatarLongPress}
+                onMouseUp={clearAvatarLongPress}
+                onMouseLeave={clearAvatarLongPress}
                 onTouchStart={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
-                onTouchEnd={(e) => { cancelAvatarLongPress(); if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; } }}
+                onTouchEnd={(e) => { clearAvatarLongPress(); if (longPressFiredRef.current) e.preventDefault(); }}
                 onContextMenu={(e) => e.preventDefault()}
                 className="no-callout relative z-10 flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1.5 pl-1 text-left transition-colors hover:bg-white/[0.05]"
               >
@@ -4226,8 +4335,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                                 <button
                                   onClick={() => {
                                     if (mine) {
-                                      const action = confirm("Delete for everyone or just for you?");
-                                      if (action !== null) deleteMessage(m.id, action);
+                                      const forEveryone = window.confirm(
+                                        "Delete this message for everyone?\n\nOK = Delete for everyone\nCancel = Delete just for me"
+                                      );
+                                      deleteMessage(m.id, forEveryone);
                                     } else {
                                       deleteMessage(m.id, false);
                                     }
