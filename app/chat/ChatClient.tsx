@@ -889,8 +889,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     // deleting it for the other participant(s).
     setConversations(prev => prev.filter(c => c.id !== convoId));
     if (activeId === convoId) setActiveId(null);
-    const { error } = await supabase.from("conversation_participants").delete().eq("conversation_id", convoId).eq("user_id", myProfile.id);
-    if (error) { setErrorMsg("Could not delete chat. Please try again."); loadConversations(); }
+    const { data, error } = await supabase
+      .from("conversation_participants")
+      .delete()
+      .eq("conversation_id", convoId)
+      .eq("user_id", myProfile.id)
+      .select();
+    // Some Supabase RLS setups return no error but also delete 0 rows when the
+    // DELETE policy is missing — that silently "un-deletes" the chat on the
+    // next refresh. Treat "nothing actually removed" as a failure too.
+    if (error || !data || data.length === 0) {
+      setErrorMsg("Could not delete chat. Please try again.");
+      loadConversations();
+    }
   }
 
   function confirmDeleteConversation(convoId: string, name: string) {
@@ -2736,13 +2747,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }, 450);
   }, []);
 
-  // Only clears the pending timer — must NOT close the viewer, or the
-  // fullscreen avatar photo closes instantly on mouseup/touchend.
-  const clearAvatarLongPress = useCallback(() => {
+  const cancelAvatarLongPress = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+    setAvatarViewer(null);
   }, []);
 
   const handleAvatarClick = useCallback((e: React.MouseEvent | React.TouchEvent, onShortClick?: () => void) => {
@@ -3928,7 +3938,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       onTouchMove={(e) => onChatRowTouchMove(e, c.id)}
                       onTouchEnd={() => onChatRowTouchEnd(c.id)}
                       style={{ transform: `translateX(${translateX}px)` }}
-                      className={`flex w-full items-center gap-3 rounded-xl bg-ink-800 px-3 py-3 text-left transition-transform active:bg-black/10 dark:active:bg-white/10 ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}
+                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-transform active:bg-black/10 dark:active:bg-white/10 ${translateX !== 0 ? "bg-ink-800" : ""} ${activeId === c.id ? "bg-violet/15" : "md:hover:bg-black/5 md:dark:hover:bg-white/5"}`}
                     >
                       <StatusRing {...ring}>
                         <Avatar name={name} color={color} online={online} avatarUrl={c.otherProfile?.avatar_url} size={56} />
@@ -4197,10 +4207,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <button
                 onClick={(e) => handleAvatarClick(e, () => setShowContactInfo(true))}
                 onMouseDown={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
-                onMouseUp={clearAvatarLongPress}
-                onMouseLeave={clearAvatarLongPress}
+                onMouseUp={cancelAvatarLongPress}
+                onMouseLeave={cancelAvatarLongPress}
                 onTouchStart={() => startAvatarLongPress({ url: active.otherProfile?.avatar_url, name: active.is_group ? active.name ?? "Group" : active.otherProfile?.display_name ?? "Unknown", color: active.otherProfile?.avatar_color ?? "#7C5CFF" })}
-                onTouchEnd={(e) => { clearAvatarLongPress(); if (longPressFiredRef.current) e.preventDefault(); }}
+                onTouchEnd={(e) => { cancelAvatarLongPress(); if (longPressFiredRef.current) { e.preventDefault(); longPressFiredRef.current = false; } }}
                 onContextMenu={(e) => e.preventDefault()}
                 className="no-callout relative z-10 flex min-w-0 flex-1 items-center gap-3 rounded-xl py-1.5 pl-1 text-left transition-colors hover:bg-white/[0.05]"
               >
