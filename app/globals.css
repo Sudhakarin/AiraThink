@@ -13,17 +13,17 @@ html, body {
 }
 
 :root {
-  --color-ink-900: #F5F6FA;
+  --color-ink-900: #FFFFFF;
   --color-ink-800: #FFFFFF;
-  --color-ink-700: #F0F1F5;
-  --color-ink-600: #E4E6ED;
-  --color-text: #12141C;
-  --color-mist: #6B7086;
-  --color-mist-light: #4B4F63;
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --glass-border: rgba(0, 0, 0, 0.07);
-  --scrollbar-thumb: #D7D9E2;
-  --scrollbar-thumb-hover: #C3C6D2;
+  --color-ink-700: #F4F4F6;
+  --color-ink-600: #EAEAEE;
+  --color-text: #0B0B0F;
+  --color-mist: #6B6B76;
+  --color-mist-light: #3F3F46;
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.08);
+  --scrollbar-thumb: #E2E2E6;
+  --scrollbar-thumb-hover: #CFCFD6;
 }
 
 .dark {
