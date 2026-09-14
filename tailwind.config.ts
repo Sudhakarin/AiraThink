@@ -25,6 +25,9 @@ const config: Config = {
           DEFAULT: "var(--color-mist)",
           light: "var(--color-mist-light)",
         },
+        text: {
+          DEFAULT: "var(--color-text)",
+        },
       },
       fontFamily: {
         display: ["var(--font-poppins)", "sans-serif"],
