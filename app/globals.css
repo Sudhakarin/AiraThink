@@ -40,6 +40,15 @@ html, body {
   --scrollbar-thumb-hover: #33394D;
 }
 
+html {
+  background-color: var(--color-ink-900);
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   background-color: var(--color-ink-900);
   color: var(--color-text);
