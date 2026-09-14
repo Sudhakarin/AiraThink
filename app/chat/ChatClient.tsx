@@ -3188,10 +3188,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <Avatar name={callPeer.display_name} color={callPeer.avatar_color} size={120} avatarUrl={callPeer.avatar_url} />
               </div>
             </div>
-            <p className="mt-6 flex items-center gap-1 font-display text-xl font-bold tracking-[-0.01em] text-text">
+            <p className="mt-6 flex items-center gap-1 font-display text-xl font-bold tracking-[-0.01em] text-white">
               {callPeer.display_name}{isVerified(callPeer.username, callPeer.verified) && <VerifiedBadge size={18} />}
             </p>
-            <p className={`mt-2 text-sm ${callStatus === "connected" ? "font-medium text-teal" : "text-mist"}`}>
+            <p className={`mt-2 text-sm ${callStatus === "connected" ? "font-medium text-teal" : "text-white/60"}`}>
               {callStatus === "outgoing" && "Calling…"}
               {callStatus === "incoming" && "Incoming call…"}
               {callStatus === "connected" && formatCallTime(callSeconds)}
@@ -3255,17 +3255,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           <div className="flex items-center gap-3 px-4 py-3">
             <Avatar name={activeStatusProfile?.display_name ?? ""} color={activeStatusProfile?.avatar_color ?? "#7C5CFF"} avatarUrl={activeStatusProfile?.avatar_url} size={36} />
             <div className="min-w-0 flex-1">
-              <p className="flex items-center text-sm font-semibold text-text">
+              <p className="flex items-center text-sm font-semibold text-white">
                 <span className="truncate">{activeStatusProfile?.display_name}</span>
                 {isVerified(activeStatusProfile?.username, activeStatusProfile?.verified) && <VerifiedBadge />}
               </p>
-              <p className="text-xs text-text/60">{formatLastSeen(activeStatusItem.created_at)}</p>
+              <p className="text-xs text-white/70">{formatLastSeen(activeStatusItem.created_at)}</p>
             </div>
             {activeStatusItem.music_title && (
               <div className="flex max-w-[38%] items-center gap-1.5 rounded-full bg-black/30 px-2.5 py-1 backdrop-blur-sm">
                 <span className="text-xs">🎵</span>
                 <div className="min-w-0 overflow-hidden">
-                  <p className="truncate text-[11px] font-medium text-text">{activeStatusItem.music_title}</p>
+                  <p className="truncate text-[11px] font-medium text-white">{activeStatusItem.music_title}</p>
                 </div>
               </div>
             )}
@@ -3284,9 +3284,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
             )}
             {activeStatusItem.user_id === myProfile.id && (
-              <button onClick={(e) => { e.stopPropagation(); deleteStatus(activeStatusItem.id); }} onPointerDown={(e) => e.stopPropagation()} className="text-xs font-medium text-text/70 hover:text-text">Delete</button>
+              <button onClick={(e) => { e.stopPropagation(); deleteStatus(activeStatusItem.id); }} onPointerDown={(e) => e.stopPropagation()} className="text-xs font-medium text-white/70 hover:text-white">Delete</button>
             )}
-            <button onClick={(e) => { e.stopPropagation(); closeStatusViewer(); }} onPointerDown={(e) => e.stopPropagation()} className="px-2 text-xl leading-none text-text" aria-label="Close">✕</button>
+            <button onClick={(e) => { e.stopPropagation(); closeStatusViewer(); }} onPointerDown={(e) => e.stopPropagation()} className="px-2 text-xl leading-none text-white" aria-label="Close">✕</button>
           </div>
           <div className="relative flex flex-1 items-center justify-center overflow-hidden" onClick={onStatusMediaTap}>
             <button
@@ -3336,7 +3336,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 />
               ) : (
                 <div className="flex h-full w-full items-center justify-center p-8" style={{ background: activeStatusItem.bg_color ?? "#7C5CFF" }}>
-                  <p className="break-words text-center text-2xl font-semibold text-text">{activeStatusItem.text_content}</p>
+                  <p className="break-words text-center text-2xl font-semibold text-white">{activeStatusItem.text_content}</p>
                 </div>
               )}
             </div>
@@ -3346,7 +3346,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           {activeStatusItem.user_id === myProfile.id ? (
             <button
               onClick={() => openStatusViewersList(activeStatusItem.id)}
-              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-text/80 transition hover:text-text"
+              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-white/80 transition hover:text-white"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
               {myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}
@@ -3380,7 +3380,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     {!showStatusReplyInput ? (
                       <button
                         onClick={() => { setShowStatusReplyInput(true); pauseStatusTimer(); }}
-                        className="flex-1 rounded-full border border-white/30 px-4 py-2.5 text-left text-sm text-text/70"
+                        className="flex-1 rounded-full border border-white/30 px-4 py-2.5 text-left text-sm text-white/70"
                       >
                         Reply to status…
                       </button>
@@ -3395,7 +3395,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           onChange={(e) => setStatusReplyText(e.target.value)}
                           onBlur={() => { if (!statusReplyText.trim()) { setShowStatusReplyInput(false); resumeStatusTimer(); } }}
                           placeholder="Reply to status…"
-                          className="flex-1 rounded-full border border-white/30 bg-transparent px-4 py-2.5 text-sm text-text placeholder:text-mist/60 outline-none"
+                          className="flex-1 rounded-full border border-white/30 bg-transparent px-4 py-2.5 text-sm text-white placeholder:text-white/50 outline-none"
                         />
                         <button
                           type="submit"
@@ -3457,12 +3457,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {showTextStatusComposer && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: textStatusColor }}>
           <div className="flex items-center justify-between px-4 py-4">
-            <button onClick={() => { (document.activeElement as HTMLElement | null)?.blur?.(); setShowTextStatusComposer(false); setTextStatusDraft(""); }} className="text-xl text-text" aria-label="Cancel">✕</button>
+            <button onClick={() => { (document.activeElement as HTMLElement | null)?.blur?.(); setShowTextStatusComposer(false); setTextStatusDraft(""); }} className="text-xl text-white" aria-label="Cancel">✕</button>
             <button onClick={() => setShowMusicPicker(true)} className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-semibold text-white" aria-label="Add music">🎵</button>
             <button onClick={postTextStatus} disabled={!textStatusDraft.trim()} className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">Post</button>
           </div>
           <div className="flex flex-1 items-center justify-center px-8">
-            <textarea autoFocus value={textStatusDraft} onChange={(e) => setTextStatusDraft(e.target.value.slice(0, 200))} placeholder="Type a status…" rows={4} className="w-full resize-none bg-transparent text-center text-2xl font-semibold text-text placeholder:text-mist/60 outline-none" />
+            <textarea autoFocus value={textStatusDraft} onChange={(e) => setTextStatusDraft(e.target.value.slice(0, 200))} placeholder="Type a status…" rows={4} className="w-full resize-none bg-transparent text-center text-2xl font-semibold text-white placeholder:text-white/50 outline-none" />
           </div>
           {pendingMusic && (
             <div className="mx-8 mb-3 flex items-center gap-2 rounded-xl bg-black/20 px-3 py-2">
@@ -3470,10 +3470,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <img src={pendingMusic.thumbnail} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-semibold text-text">{pendingMusic.title}</p>
-                <p className="truncate text-[11px] text-text/70">{pendingMusic.artist}</p>
+                <p className="truncate text-xs font-semibold text-white">{pendingMusic.title}</p>
+                <p className="truncate text-[11px] text-white/70">{pendingMusic.artist}</p>
               </div>
-              <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-text/70 hover:text-text" aria-label="Remove music">✕</button>
+              <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-white/70 hover:text-white" aria-label="Remove music">✕</button>
             </div>
           )}
           <div className="flex justify-center gap-3 pb-8">
@@ -3497,7 +3497,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         <div className="fixed inset-0 z-[70] flex flex-col bg-black status-fade-in">
           <div className="flex items-center justify-between px-4 py-4">
             <button onClick={closePhotoEditor} disabled={photoEditorBusy} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-lg text-white disabled:opacity-40" aria-label="Cancel">✕</button>
-            <p className="text-sm font-semibold text-text/80">Choose a filter</p>
+            <p className="text-sm font-semibold text-white/80">Choose a filter</p>
             <button
               onClick={confirmPhotoFilter}
               disabled={photoEditorBusy}
@@ -3536,7 +3536,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 >
                   <img src={photoEditorPreviewUrl} alt={f.label} className="h-full w-full object-cover" style={{ filter: f.css || "none" }} />
                 </span>
-                <span className={`text-[11px] font-medium ${photoEditorFilterId === f.id ? "text-text" : "text-text/55"}`}>{f.label}</span>
+                <span className={`text-[11px] font-medium ${photoEditorFilterId === f.id ? "text-white" : "text-white/55"}`}>{f.label}</span>
               </button>
             ))}
           </div>
