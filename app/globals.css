@@ -13,15 +13,16 @@ html, body {
 }
 
 :root {
-  --color-ink-900: #FFFFFF;
+  --color-ink-900: #F6F6F8;
   --color-ink-800: #FFFFFF;
-  --color-ink-700: #F4F4F6;
-  --color-ink-600: #EAEAEE;
-  --color-text: #0B0B0F;
-  --color-mist: #6B6B76;
+  --color-ink-700: #EFEFF2;
+  --color-ink-600: #E4E4E9;
+  --color-text: #0E0E13;
+  --color-mist: #6E6E78;
   --color-mist-light: #3F3F46;
-  --glass-bg: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(12, 12, 20, 0.07);
+  --glass-shadow: 0 1px 2px rgba(20, 20, 30, 0.04), 0 10px 26px -14px rgba(20, 20, 30, 0.14);
   --scrollbar-thumb: #E2E2E6;
   --scrollbar-thumb-hover: #CFCFD6;
 }
@@ -36,6 +37,7 @@ html, body {
   --color-mist-light: #C7C9D9;
   --glass-bg: rgba(22, 26, 38, 0.55);
   --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-shadow: none;
   --scrollbar-thumb: #262B3B;
   --scrollbar-thumb-hover: #33394D;
 }
@@ -76,6 +78,7 @@ body {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .text-gradient {
