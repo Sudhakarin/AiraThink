@@ -4092,7 +4092,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </header>
             <div className="relative z-10 flex flex-col items-center px-6 pt-8 pb-6 text-center" style={{ animation: "ciSlideUp 0.35s ease-out forwards" }}>
               <div className="mb-4 rounded-full p-[3px]" style={{ background: "linear-gradient(135deg, #7C5CFF, #22D3B8)" }}>
-                <div className="rounded-full border-[3px] border-[#0A0C12]">
+                <div className="rounded-full border-[3px] border-[color:var(--color-ink-900)]">
                   <Avatar
                     name={active.is_group ? active.name ?? "Group" : otherDisplayProfile?.display_name ?? "Unknown"}
                     color={otherDisplayProfile?.avatar_color ?? "#7C5CFF"}
@@ -4152,7 +4152,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="relative z-10 flex items-center gap-3 border-b border-white/[0.06] bg-[#0B0D14]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6">
+            <header className="relative z-10 flex items-center gap-3 border-b border-black/[0.06] dark:border-white/[0.06] bg-[color:var(--color-ink-800)]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6">
               <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-violet/[0.05] via-transparent to-transparent" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/50 to-transparent" />
               <button onClick={() => setActiveId(null)} className="relative z-10 mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-black/[0.06] dark:hover:bg-white/[0.06] hover:text-black dark:hover:text-text active:scale-90 md:hidden" aria-label="Back to conversations">
@@ -4222,7 +4222,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             <div
               ref={scrollRef}
               onScroll={handleMessagesScroll}
-              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[#0A0C12] px-4 py-6 md:px-8"
+              className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[color:var(--color-ink-900)] px-4 py-6 md:px-8"
               style={{
                 backgroundImage:
                   "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
@@ -4405,18 +4405,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
 
             {replyingTo && (
-              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#171A24] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
+              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-black/[0.06] dark:border-white/[0.06] bg-[color:var(--color-ink-700)] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.15)] dark:shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
                 <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2.5">
                   <p className="text-xs font-semibold text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
                   <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
                 </div>
-                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-white/10 hover:text-white" aria-label="Cancel reply">✕</button>
+                <button type="button" onClick={() => setReplyingTo(null)} className="ml-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-mist transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-black dark:hover:text-white" aria-label="Cancel reply">✕</button>
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/[0.06] bg-[#0B0D14] px-3 py-3 md:px-6">
+            <form onSubmit={sendMessage} className="relative z-10 border-t border-black/[0.06] dark:border-white/[0.06] bg-[color:var(--color-ink-800)] px-3 py-3 md:px-6">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              <div className="flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#171A24] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
+              <div className="flex items-center gap-1.5 rounded-[28px] border border-black/[0.08] dark:border-white/[0.08] bg-[color:var(--color-ink-700)] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(0,0,0,0.02),0_8px_24px_-8px_rgba(0,0,0,0.12)] dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
                 <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-black/[0.08] dark:hover:bg-white/[0.08] hover:text-black dark:hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
