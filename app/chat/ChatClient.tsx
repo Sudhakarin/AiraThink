@@ -157,7 +157,6 @@ const TYPING_THROTTLE_MS = 2000;
 const GROUPED_GAP_MS = 2 * 60 * 1000;
 const POLL_INTERVAL_MS = 3000;
 const ACTIVE_STATUS_STORAGE_KEY = "airalance-active-status";
-const THEME_STORAGE_KEY = "airalance-theme";
 const EDIT_TIMEOUT_MS = 300000;
 
 type StatusReplyPayload = {
@@ -586,6 +585,32 @@ function ErrorToast({ msg, onDismiss }: { msg: string; onDismiss: () => void }) 
   );
 }
 
+function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onChange}
+      aria-label="Toggle Active Status"
+      className="relative flex h-8 w-[58px] shrink-0 items-center rounded-full transition-colors duration-300"
+      style={{
+        background: on ? "linear-gradient(90deg, #22D3B8, #16A98C)" : "linear-gradient(90deg, #3A3550, #2A2540)",
+        boxShadow: on
+          ? "inset 0 0 0 1px rgba(0,0,0,0.06), 0 0 14px rgba(34,211,184,0.35)"
+          : "inset 0 0 0 1px rgba(255,255,255,0.08)",
+      }}
+    >
+      <span
+        className="absolute flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white transition-all duration-300 ease-out"
+        style={{
+          top: 4,
+          left: on ? 32 : 4,
+          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
+        }}
+      />
+    </button>
+  );
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   // Memoized so the Supabase client keeps a stable identity across re-renders.
   // Without this, every render created a brand-new client, which made every
@@ -776,7 +801,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [contactBlocked, setContactBlocked] = useState(false);
 
   const [activeStatusOn, setActiveStatusOn] = useState(true);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     try {
@@ -787,22 +811,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
-      if (saved === "light" || saved === "dark") setTheme(saved);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try {
       window.localStorage.setItem(ACTIVE_STATUS_STORAGE_KEY, activeStatusOn ? "on" : "off");
     } catch {}
   }, [activeStatusOn]);
 
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-    } catch {}
-  }, [theme]);
+  function toggleActiveStatus() {
+    setActiveStatusOn((v) => !v);
+  }
 
   const active = useMemo(
     () => conversations.find((c) => c.id === activeId),
@@ -2752,7 +2767,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   return (
     <div
-      className={`relative flex w-full overflow-x-hidden bg-ink-900 text-white ${theme === "light" ? "light" : ""}`}
+      className="relative flex w-full overflow-x-hidden bg-ink-900 text-white"
       style={{
         position: "fixed",
         top: 0,
@@ -2806,124 +2821,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         .status-heart-pop { display: inline-block; animation: statusHeartPop 700ms cubic-bezier(0.2, 0.9, 0.3, 1); filter: drop-shadow(0 4px 16px rgba(0,0,0,0.4)); }
         @keyframes scrollBtnPop { from { opacity: 0; transform: translateY(6px) scale(0.85); } to { opacity: 1; transform: translateY(0) scale(1); } }
-
-        /* ==================== LIGHT THEME ==================== */
-        .light { color: #171A24; color-scheme: light; }
-        .light ::selection { background: rgba(124,92,255,0.25); }
-
-        /* surfaces */
-        .light .bg-ink-900 { background-color: #F1F3F9 !important; }
-        .light .bg-ink-900\/95 { background-color: rgba(241,243,249,0.95) !important; }
-        .light .bg-ink-800 { background-color: #FFFFFF !important; }
-        .light .bg-ink-800\/60 { background-color: rgba(255,255,255,0.72) !important; }
-        .light .bg-ink-800\/90 { background-color: rgba(255,255,255,0.92) !important; }
-        .light .bg-\[\#0A0C12\] { background-color: #ECF0F6 !important; }
-        .light .bg-\[\#0B0D14\] { background-color: #F7F8FC !important; }
-        .light .bg-\[\#0B0D14\]\/85 { background-color: rgba(247,248,252,0.88) !important; }
-        .light .bg-\[\#171A24\] { background-color: #FFFFFF !important; }
-        .light .border-ink-900 { border-color: #F1F3F9 !important; }
-        .light .glass { background: rgba(255,255,255,0.78); border: 1px solid rgba(15,17,26,0.07); }
-        .light .bg-aurora { background: radial-gradient(ellipse 80% 50% at 15% -10%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 70% 45% at 100% 100%, rgba(34,211,184,0.09), transparent 60%) !important; }
-
-        /* text colors */
-        .light .text-white { color: #171A24 !important; }
-        .light .text-white\/85 { color: rgba(23,26,36,0.85) !important; }
-        .light .text-white\/80 { color: rgba(23,26,36,0.80) !important; }
-        .light .text-white\/75 { color: rgba(23,26,36,0.72) !important; }
-        .light .text-white\/70 { color: rgba(23,26,36,0.64) !important; }
-        .light .text-white\/60 { color: rgba(23,26,36,0.55) !important; }
-        .light .text-white\/55 { color: rgba(23,26,36,0.50) !important; }
-        .light .text-white\/45 { color: rgba(23,26,36,0.45) !important; }
-        .light .text-white\/40 { color: rgba(23,26,36,0.42) !important; }
-        .light .text-white\/30 { color: rgba(23,26,36,0.32) !important; }
-        .light .text-white\/25 { color: rgba(23,26,36,0.28) !important; }
-        .light .text-mist { color: #69707E !important; }
-        .light .text-mist\/75 { color: rgba(105,112,126,0.75) !important; }
-        .light .text-mist\/70 { color: rgba(105,112,126,0.70) !important; }
-        .light .text-mist\/60 { color: rgba(105,112,126,0.60) !important; }
-        .light .text-mist\/50 { color: rgba(105,112,126,0.50) !important; }
-        .light .placeholder\:text-white\/30::placeholder { color: rgba(23,26,36,0.35) !important; }
-        .light .placeholder\:text-white\/50::placeholder { color: rgba(23,26,36,0.42) !important; }
-        .light .placeholder\:text-white\/60::placeholder { color: rgba(23,26,36,0.45) !important; }
-        .light .placeholder\:text-mist\/50::placeholder { color: rgba(105,112,126,0.55) !important; }
-
-        /* white overlays -> soft dark overlays */
-        .light .bg-white\/3 { background-color: rgba(15,17,26,0.03) !important; }
-        .light .bg-white\/4 { background-color: rgba(15,17,26,0.04) !important; }
-        .light .bg-white\/5 { background-color: rgba(15,17,26,0.05) !important; }
-        .light .bg-white\/8 { background-color: rgba(15,17,26,0.07) !important; }
-        .light .bg-white\/10 { background-color: rgba(15,17,26,0.08) !important; }
-        .light .bg-white\/15 { background-color: rgba(15,17,26,0.10) !important; }
-        .light .bg-white\/20 { background-color: rgba(15,17,26,0.12) !important; }
-        .light .bg-white\/25 { background-color: rgba(15,17,26,0.14) !important; }
-        .light .bg-white\/30 { background-color: rgba(15,17,26,0.16) !important; }
-        .light .bg-white\/\[0\.03\] { background-color: rgba(15,17,26,0.03) !important; }
-        .light .bg-white\/\[0\.04\] { background-color: rgba(15,17,26,0.04) !important; }
-        .light .bg-white\/\[0\.05\] { background-color: rgba(15,17,26,0.05) !important; }
-        .light .bg-white\/\[0\.06\] { background-color: rgba(15,17,26,0.06) !important; }
-        .light .bg-white\/\[0\.08\] { background-color: rgba(15,17,26,0.08) !important; }
-        .light .bg-black\/15 { background-color: rgba(15,17,26,0.10) !important; }
-        .light .bg-black\/25 { background-color: rgba(15,17,26,0.07) !important; }
-
-        /* borders / rings / dividers */
-        .light .border-white\/5 { border-color: rgba(15,17,26,0.06) !important; }
-        .light .border-white\/7 { border-color: rgba(15,17,26,0.07) !important; }
-        .light .border-white\/8 { border-color: rgba(15,17,26,0.08) !important; }
-        .light .border-white\/10 { border-color: rgba(15,17,26,0.09) !important; }
-        .light .border-white\/15 { border-color: rgba(15,17,26,0.12) !important; }
-        .light .border-white\/20 { border-color: rgba(15,17,26,0.14) !important; }
-        .light .border-white\/30 { border-color: rgba(15,17,26,0.20) !important; }
-        .light .border-white\/\[0\.05\] { border-color: rgba(15,17,26,0.06) !important; }
-        .light .border-white\/\[0\.06\] { border-color: rgba(15,17,26,0.07) !important; }
-        .light .border-white\/\[0\.07\] { border-color: rgba(15,17,26,0.08) !important; }
-        .light .border-white\/\[0\.08\] { border-color: rgba(15,17,26,0.09) !important; }
-        .light .ring-white\/5 { --tw-ring-color: rgba(15,17,26,0.06) !important; }
-        .light .ring-white\/10 { --tw-ring-color: rgba(15,17,26,0.10) !important; }
-        .light .ring-white\/15 { --tw-ring-color: rgba(15,17,26,0.13) !important; }
-        .light .ring-white\/20 { --tw-ring-color: rgba(15,17,26,0.16) !important; }
-        .light .ring-white\/\[0\.06\] { --tw-ring-color: rgba(15,17,26,0.07) !important; }
-        .light .ring-white\/\[0\.07\] { --tw-ring-color: rgba(15,17,26,0.08) !important; }
-        .light .ring-white\/\[0\.08\] { --tw-ring-color: rgba(15,17,26,0.09) !important; }
-        .light .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(15,17,26,0.06) !important; }
-        .light .divide-white\/10 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(15,17,26,0.09) !important; }
-
-        /* keep white text on violet buttons, photo cards and dark screens */
-        .light .from-violet .text-white, .light .from-violet-light .text-white { color: #FFFFFF !important; }
-        .light .from-violet .text-white\/60, .light .from-violet .text-white\/70, .light .from-violet-light .text-white\/60, .light .from-violet-light .text-white\/70 { color: rgba(255,255,255,0.78) !important; }
-        .light .from-ink-900\/90, .light .from-ink-900\/90 * { color: #FFFFFF !important; }
-        .light .bg-black .text-white, .light .bg-black\/95 .text-white, .light .bg-\[\#07080D\] .text-white { color: #FFFFFF !important; }
-        .light .bg-black .text-mist, .light .bg-black\/95 .text-mist, .light .bg-\[\#07080D\] .text-mist { color: rgba(255,255,255,0.60) !important; }
-        .light .bg-black .text-white\/55, .light .bg-black .text-white\/60, .light .bg-black .text-white\/70, .light .bg-black .text-white\/75, .light .bg-black .text-white\/80, .light .bg-black .text-white\/85, .light .bg-black\/95 .text-white\/55, .light .bg-black\/95 .text-white\/60, .light .bg-black\/95 .text-white\/70, .light .bg-black\/95 .text-white\/75, .light .bg-\[\#07080D\] .text-white\/60, .light .bg-\[\#07080D\] .text-white\/75 { color: rgba(255,255,255,0.80) !important; }
-        .light .bg-black ::placeholder, .light .bg-\[\#07080D\] ::placeholder { color: rgba(255,255,255,0.45) !important; }
-        .light [style*="background: rgb(124, 92, 255)"] .text-white,
-.light [style*="background: rgb(124, 92, 255)"] .text-white/60,
-.light [style*="background: rgb(124, 92, 255)"] .text-white/70,
-.light [style*="background: rgb(124, 92, 255)"] .text-white/75,
-.light [style*="background: rgb(34, 211, 184)"] .text-white,
-.light [style*="background: rgb(34, 211, 184)"] .text-white/60,
-.light [style*="background: rgb(34, 211, 184)"] .text-white/70,
-.light [style*="background: rgb(34, 211, 184)"] .text-white/75,
-.light [style*="background: rgb(239, 68, 68)"] .text-white,
-.light [style*="background: rgb(239, 68, 68)"] .text-white/60,
-.light [style*="background: rgb(239, 68, 68)"] .text-white/70,
-.light [style*="background: rgb(239, 68, 68)"] .text-white/75,
-.light [style*="background: rgb(245, 158, 11)"] .text-white,
-.light [style*="background: rgb(245, 158, 11)"] .text-white/60,
-.light [style*="background: rgb(245, 158, 11)"] .text-white/70,
-.light [style*="background: rgb(245, 158, 11)"] .text-white/75,
-.light [style*="background: rgb(59, 130, 246)"] .text-white,
-.light [style*="background: rgb(59, 130, 246)"] .text-white/60,
-.light [style*="background: rgb(59, 130, 246)"] .text-white/70,
-.light [style*="background: rgb(59, 130, 246)"] .text-white/75,
-.light [style*="background: rgb(236, 72, 153)"] .text-white,
-.light [style*="background: rgb(236, 72, 153)"] .text-white/60,
-.light [style*="background: rgb(236, 72, 153)"] .text-white/70,
-.light [style*="background: rgb(236, 72, 153)"] .text-white/75,
-.light [style*="background: rgb(17, 24, 39)"] .text-white,
-.light [style*="background: rgb(17, 24, 39)"] .text-white/60,
-.light [style*="background: rgb(17, 24, 39)"] .text-white/70,
-.light [style*="background: rgb(17, 24, 39)"] .text-white/75 { color: #FFFFFF !important; }
-
       `}</style>
       <audio ref={remoteAudioRef} autoPlay />
 
@@ -4158,43 +4055,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-                            <div className="glass mt-6 rounded-2xl overflow-hidden">
+              <div className="glass mt-6 rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-3.5">
                   <div className="flex items-center gap-3">
                     <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet/15 text-violet-light">
-                      {theme === "light" ? (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.8" />
-                          <path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.4 5.6l-1.4 1.4M7 17l-1.4 1.4M18.4 18.4 17 17M7 7 5.6 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                        </svg>
-                      ) : (
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                        </svg>
-                      )}
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+                        <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.4 5.6l-1.55 1.55M7.15 16.85 5.6 18.4M18.4 18.4l-1.55-1.55M7.15 7.15 5.6 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                      </svg>
                     </span>
                     <div>
-                      <p className="text-sm font-semibold text-white">Appearance</p>
-                      <p className="text-[11px] text-mist">{theme === "light" ? "Light mode" : "Dark mode"}</p>
+                      <p className="text-sm font-semibold text-white">Active Status</p>
+                      <p className="text-[11px] text-mist">{activeStatusOn ? "You're visible online" : "You're appearing offline"}</p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}
-                    aria-label="Toggle light and dark mode"
-                    className="relative flex h-8 w-[58px] shrink-0 items-center rounded-full transition-colors duration-300"
-                    style={{
-                      background: theme === "light" ? "linear-gradient(90deg, #F59E0B, #FBBF24)" : "linear-gradient(90deg, #3A3550, #2A2540)",
-                      boxShadow: theme === "light" ? "inset 0 0 0 1px rgba(0,0,0,0.06), 0 0 14px rgba(245,158,11,0.35)" : "inset 0 0 0 1px rgba(255,255,255,0.08)",
-                    }}
-                  >
-                    <span
-                      className="absolute flex h-[22px] w-[22px] items-center justify-center rounded-full bg-white text-[11px] transition-all duration-300 ease-out"
-                      style={{ top: 4, left: theme === "light" ? 4 : 32, boxShadow: "0 2px 5px rgba(0,0,0,0.2)" }}
-                    >
-                      {theme === "light" ? "\u2600\uFE0F" : "\uD83C\uDF19"}
-                    </span>
-                  </button>
+                  <ActiveStatusSwitch on={activeStatusOn} onChange={toggleActiveStatus} />
                 </div>
               </div>
 
