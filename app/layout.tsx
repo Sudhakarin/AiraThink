@@ -13,8 +13,6 @@ export const viewport: Viewport = {
   maximumScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  colorScheme: "dark",
-  themeColor: "#0A0C12",
 };
 
 export const metadata: Metadata = {
@@ -30,8 +28,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           fontFamily: "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
           WebkitTextSizeAdjust: "100%",
           textSizeAdjust: "100%",
-          colorScheme: "dark",
-          backgroundColor: "#0A0C12",
         } as React.CSSProperties}
       >
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
