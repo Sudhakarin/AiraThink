@@ -3059,80 +3059,80 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       {profileView && (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
           <div
-            className="pointer-events-none absolute left-1/2 top-0 h-36 w-36 -translate-x-1/2 rounded-full opacity-20 blur-2xl"
+            className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
             style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
           />
-          <header className="relative z-10 flex items-center justify-between px-4 py-3">
+          <header className="relative z-10 flex items-center justify-between px-4 py-4">
             <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="Back">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
             <span className="h-9 w-9" />
           </header>
-          <div className="relative z-10 flex flex-col items-center px-6 pt-1 pb-4 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
+          <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
             <div className="relative">
-              <div className="rounded-full p-[2px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
-                <div className="rounded-full bg-ink-900 p-[2px]">
-                  <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={72} />
+              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
+                <div className="rounded-full bg-ink-900 p-[3px]">
+                  <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={104} />
                 </div>
               </div>
               {onlineIds.has(profileView.id) && (
-                <span className="absolute bottom-1 right-1 h-3 w-3 rounded-full border-2 border-ink-900 bg-teal" />
+                <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />
               )}
             </div>
-            <h2 className="mt-3 flex items-center gap-1 font-display text-lg font-bold text-white tx1">
+            <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white tx1">
               {profileView.display_name}
-              {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={16} />}
+              {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={18} />}
             </h2>
-            <p className="text-xs text-white/40 tx2">@{profileView.username}</p>
+            <p className="text-sm text-white/40 tx2">@{profileView.username}</p>
             <div
-              className="mt-2.5 flex items-center gap-1.5 rounded-full border px-2.5 py-1"
+              className="mt-3 flex items-center gap-1.5 rounded-full border px-3 py-1"
               style={{
                 borderColor: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.28)" : "rgba(255,255,255,0.1)",
                 background: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.08)" : "rgba(255,255,255,0.04)",
               }}
             >
-              <span className="relative flex h-1.5 w-1.5">
+              <span className="relative flex h-2 w-2">
                 {onlineIds.has(profileView.id) && (
                   <span className="absolute inset-0 animate-ping rounded-full bg-teal opacity-60" />
                 )}
-                <span className="relative h-1.5 w-1.5 rounded-full" style={{ background: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.3)" }} />
+                <span className="relative h-2 w-2 rounded-full" style={{ background: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.3)" }} />
               </span>
-              <span className="text-[11px] font-medium" style={{ color: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.45)" }}>
+              <span className="text-[11.5px] font-medium" style={{ color: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.45)" }}>
                 {onlineIds.has(profileView.id) ? "Active now" : profileView.last_seen ? `Last seen ${formatLastSeen(profileView.last_seen)}` : "Offline"}
               </span>
             </div>
-            <div className="mt-4 flex items-center gap-6 rounded-2xl border border-white/8 bg-white/[0.03] px-5 py-2.5">
+            <div className="mt-5 flex items-center gap-8">
               <div className="flex flex-col items-center">
-                <span className="text-[15px] font-bold text-white tx1 tabular-nums">{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
-                <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-white/40 tx2">Connection{profileViewConnCount === 1 ? "" : "s"}</span>
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewConnCount === null ? "—" : profileViewAnimCount}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Connection{profileViewConnCount === 1 ? "" : "s"}</span>
               </div>
-              <div className="h-7 w-px bg-white/8" />
+              <div className="h-8 w-px bg-white/8" />
               <div className="flex flex-col items-center">
-                <span className="text-[15px] font-bold text-white tx1 tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
-                <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-white/40 tx2">Updates</span>
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Updates</span>
               </div>
             </div>
             {profileView.bio && (
-              <p className="mt-3 max-w-xs whitespace-pre-wrap text-[13px] leading-relaxed text-white/60 tx2">{profileView.bio}</p>
+              <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{profileView.bio}</p>
             )}
             {profileViewMutuals.count > 0 && (
-              <div className="mt-3 flex items-center gap-2">
+              <div className="mt-4 flex items-center gap-2">
                 <div className="flex -space-x-2">
                   {profileViewMutuals.profiles.map((p) => (
                     <div key={p.id} className="rounded-full border-2 border-ink-900">
-                      <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={22} />
+                      <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={24} />
                     </div>
                   ))}
                 </div>
-                <p className="text-[11px] text-white/40 tx2">
+                <p className="text-[12px] text-white/40 tx2">
                   Connected with <span className="text-white/70 tx2">{profileViewMutuals.profiles.map((p) => p.display_name).join(", ")}</span>
                   {profileViewMutuals.count > profileViewMutuals.profiles.length ? ` +${profileViewMutuals.count - profileViewMutuals.profiles.length}` : ""}
                 </p>
               </div>
             )}
           </div>
-          <div className="relative z-10 flex gap-3 px-6 pb-5">
+          <div className="relative z-10 flex gap-3 px-6 pb-8">
             {profileViewStatus === "loading" && (
               <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
             )}
@@ -3150,14 +3150,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
           </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
-            <div className="relative z-10 px-6 pb-5">
+            <div className="relative z-10 px-6 pb-8">
               {isVerified(profileView.username, false) ? (
                 <p className="text-center text-[11px] text-mist">This account is verified by default and can't be changed here.</p>
               ) : profileView.verified ? (
                 <button
                   onClick={() => setVerification(profileView, false)}
                   disabled={grantingVerification}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 py-2.5 text-[13px] font-semibold text-red-400 disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400 disabled:opacity-50"
                 >
                   {grantingVerification ? "Updating…" : "Remove Verification"}
                 </button>
@@ -3165,7 +3165,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <button
                   onClick={() => setVerification(profileView, true)}
                   disabled={grantingVerification}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-2.5 text-[13px] font-semibold text-violet-light disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
                 >
                   {grantingVerification ? "Verifying…" : "Grant Verification"}
                 </button>
