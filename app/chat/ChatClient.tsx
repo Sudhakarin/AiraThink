@@ -1735,10 +1735,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .or("username.ilike.sudhakarin,username.ilike.instagram")
+      .or("username.ilike.sudhakarin,username.ilike.airalance")
       .neq("id", myProfile.id);
     if (data) {
-      const order = ["sudhakarin", "instagram"];
+      const order = ["sudhakarin", "airalance"];
       const sorted = [...data].sort(
         (a, b) => order.indexOf((a.username || "").toLowerCase()) - order.indexOf((b.username || "").toLowerCase())
       );
