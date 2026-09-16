@@ -199,6 +199,61 @@ function decodeStatusReply(content: string | null | undefined): { payload: Statu
   }
 }
 
+// ---- Status mention (tag a connection in your status; they get a chat
+// notification with a preview + the option to reshare it to their own status) ----
+const STATUS_MENTION_PREFIX = "\u27E6STATUS_MENTION\u27E7";
+
+type StatusMentionPayload = {
+  statusId: string;
+  mediaUrl: string | null;
+  mediaType: string | null;
+  textContent: string | null;
+  bgColor: string | null;
+  musicTitle?: string | null;
+  musicArtist?: string | null;
+  musicThumbnail?: string | null;
+  musicStreamUrl?: string | null;
+  musicStartSec?: number | null;
+  musicDurationSec?: number | null;
+  fromUsername?: string;
+  fromDisplayName?: string;
+};
+
+function encodeStatusMention(status: Status, from: Profile): string {
+  const payload: StatusMentionPayload = {
+    statusId: status.id,
+    mediaUrl: status.media_url,
+    mediaType: status.media_type ?? (status.media_url ? "image" : "text"),
+    textContent: status.text_content,
+    bgColor: status.bg_color,
+    musicTitle: status.music_title ?? null,
+    musicArtist: status.music_artist ?? null,
+    musicThumbnail: status.music_thumbnail ?? null,
+    musicStreamUrl: status.music_stream_url ?? null,
+    musicStartSec: status.music_start_sec ?? null,
+    musicDurationSec: status.music_duration_sec ?? null,
+    fromUsername: from.username,
+    fromDisplayName: from.display_name,
+  };
+  let encoded = "";
+  try {
+    encoded = btoa(encodeURIComponent(JSON.stringify(payload)));
+  } catch {
+    encoded = "";
+  }
+  return `${STATUS_MENTION_PREFIX}${encoded}`;
+}
+
+function decodeStatusMention(content: string | null | undefined): StatusMentionPayload | null {
+  if (!content || !content.startsWith(STATUS_MENTION_PREFIX)) return null;
+  const encoded = content.slice(STATUS_MENTION_PREFIX.length);
+  try {
+    return JSON.parse(decodeURIComponent(atob(encoded))) as StatusMentionPayload;
+  } catch {
+    return null;
+  }
+}
+
 function sendPushNotification(opts: { userId?: string | null; title: string; body: string; url?: string }) {
   if (!opts.userId) return;
   fetch("/api/send-push", {
@@ -775,6 +830,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [statusViewersOpen, setStatusViewersOpen] = useState(false);
   const [statusViewersList, setStatusViewersList] = useState<StatusViewer[]>([]);
   const [statusViewersLoading, setStatusViewersLoading] = useState(false);
+  const statusViewersSwipeStartRef = useRef<number | null>(null);
+  const statusViewersSwipeFiredRef = useRef(false);
+  const [pendingMentions, setPendingMentions] = useState<Profile[]>([]);
+  const [showMentionPicker, setShowMentionPicker] = useState(false);
+  const [mentionSearch, setMentionSearch] = useState("");
+  const [mentionSearchResults, setMentionSearchResults] = useState<Profile[]>([]);
+  const [mentionSearchLoading, setMentionSearchLoading] = useState(false);
   const statusVideoRef = useRef<HTMLVideoElement>(null);
   const [statusVideoMuted, setStatusVideoMuted] = useState(true);
   const [statusDragY, setStatusDragY] = useState(0);
@@ -867,6 +929,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (m.message_type === "voice") return "🎤 Voice message";
       const statusReply = decodeStatusReply(m.content);
       if (statusReply) return `↩️ Replied to status: ${statusReply.text}`;
+      if (decodeStatusMention(m.content)) return "@ Mentioned you in a status";
       return m.content;
     };
 
@@ -1735,10 +1798,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .or("username.ilike.sudhakarin,username.ilike.airalance")
+      .or("username.ilike.sudhakarin,username.ilike.instagram")
       .neq("id", myProfile.id);
     if (data) {
-      const order = ["sudhakarin", "airalance"];
+      const order = ["sudhakarin", "instagram"];
       const sorted = [...data].sort(
         (a, b) => order.indexOf((a.username || "").toLowerCase()) - order.indexOf((b.username || "").toLowerCase())
       );
@@ -2099,7 +2162,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         return;
       }
       const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-      const { error } = await supabase.from("statuses").insert({
+      const { data: insertedStatus, error } = await supabase.from("statuses").insert({
         user_id: myProfile.id,
         media_url: publicUrlData.publicUrl,
         media_type: "image",
@@ -2110,9 +2173,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         music_stream_url: pendingMusic?.streamUrl ?? null,
         music_start_sec: pendingMusic?.startSec ?? null,
         music_duration_sec: pendingMusic?.clipDurationSec ?? null,
-      });
+      }).select().single();
       if (error) { setErrorMsg("Failed to post status. Please try again."); }
-      setUploadingStatus(false); setPendingMusic(null); loadStatuses();
+      else if (insertedStatus) notifyMentionedUsers(insertedStatus as Status, pendingMentions);
+      setUploadingStatus(false); setPendingMusic(null); setPendingMentions([]); loadStatuses();
     } else if (target === "chat" && activeId) {
       setUploadingMedia(true);
       const path = `${activeId}/${myProfile.id}-${Date.now()}.${ext}`;
@@ -2314,7 +2378,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return;
     }
     const { data: publicUrlData } = supabase.storage.from(STATUS_MEDIA_BUCKET).getPublicUrl(path);
-    const { error } = await supabase.from("statuses").insert({
+    const { data: insertedStatus, error } = await supabase.from("statuses").insert({
       user_id: myProfile.id,
       media_url: publicUrlData.publicUrl,
       media_type: "video",
@@ -2325,14 +2389,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       music_stream_url: pendingMusic?.streamUrl ?? null,
       music_start_sec: pendingMusic?.startSec ?? null,
       music_duration_sec: pendingMusic?.clipDurationSec ?? null,
-    });
+    }).select().single();
     if (error) { setErrorMsg("Failed to post status. Please try again."); }
-    setUploadingStatus(false); setPendingMusic(null); loadStatuses();
+    else if (insertedStatus) notifyMentionedUsers(insertedStatus as Status, pendingMentions);
+    setUploadingStatus(false); setPendingMusic(null); setPendingMentions([]); loadStatuses();
   }
 
   async function postTextStatus() {
     const trimmed = textStatusDraft.trim(); if (!trimmed) return;
-    const { error } = await supabase.from("statuses").insert({
+    const { data: insertedStatus, error } = await supabase.from("statuses").insert({
       user_id: myProfile.id,
       text_content: trimmed,
       bg_color: textStatusColor,
@@ -2344,10 +2409,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       music_stream_url: pendingMusic?.streamUrl ?? null,
       music_start_sec: pendingMusic?.startSec ?? null,
       music_duration_sec: pendingMusic?.clipDurationSec ?? null,
-    });
+    }).select().single();
     if (error) { setErrorMsg("Failed to post status. Please try again."); return; }
+    if (insertedStatus) notifyMentionedUsers(insertedStatus as Status, pendingMentions);
     (document.activeElement as HTMLElement | null)?.blur?.();
-    setTextStatusDraft(""); setShowTextStatusComposer(false); setPendingMusic(null); loadStatuses();
+    setTextStatusDraft(""); setShowTextStatusComposer(false); setPendingMusic(null); setPendingMentions([]); loadStatuses();
   }
 
   async function deleteStatus(id: string) {
@@ -2466,6 +2532,108 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setStatusViewersOpen(false);
     setStatusViewersList([]);
     setStatusPaused(false); statusPausedRef.current = false;
+  }
+
+  // Instagram-style: let the small "views" bar at the bottom of your own
+  // status be swiped up (not just tapped) to open the full viewer list.
+  function onStatusViewersBarPointerDown(e: React.PointerEvent) {
+    statusViewersSwipeStartRef.current = e.clientY;
+    statusViewersSwipeFiredRef.current = false;
+  }
+  function onStatusViewersBarPointerMove(e: React.PointerEvent, statusId: string) {
+    const start = statusViewersSwipeStartRef.current;
+    if (start === null || statusViewersSwipeFiredRef.current) return;
+    if (start - e.clientY > 18) {
+      statusViewersSwipeFiredRef.current = true;
+      openStatusViewersList(statusId);
+    }
+  }
+  function onStatusViewersBarPointerUp() {
+    statusViewersSwipeStartRef.current = null;
+  }
+
+  // ---- Mentions ----
+  async function loadMentionCandidates(q: string) {
+    setMentionSearchLoading(true);
+    const connectionIds = await fetchAcceptedConnectionIds(myProfile.id);
+    if (connectionIds.length === 0) { setMentionSearchResults([]); setMentionSearchLoading(false); return; }
+    let query = supabase.from("profiles").select("*").in("id", connectionIds);
+    if (q.trim()) query = query.or(`username.ilike.%${q.trim()}%,display_name.ilike.%${q.trim()}%`);
+    const { data } = await query.limit(20);
+    setMentionSearchResults((data ?? []) as Profile[]);
+    setMentionSearchLoading(false);
+  }
+
+  function openMentionPicker() {
+    setShowMentionPicker(true);
+    setMentionSearch("");
+    loadMentionCandidates("");
+  }
+  function closeMentionPicker() {
+    setShowMentionPicker(false);
+  }
+  function handleMentionSearchChange(q: string) {
+    setMentionSearch(q);
+    loadMentionCandidates(q);
+  }
+  function toggleMentionSelect(profile: Profile) {
+    setPendingMentions((prev) =>
+      prev.some((p) => p.id === profile.id) ? prev.filter((p) => p.id !== profile.id) : [...prev, profile]
+    );
+  }
+  function removePendingMention(id: string) {
+    setPendingMentions((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  async function findConversationWith(userId: string): Promise<string | null> {
+    const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
+    const myIds = (mine ?? []).map((r: any) => r.conversation_id);
+    if (myIds.length === 0) return null;
+    const { data: theirs } = await supabase
+      .from("conversation_participants")
+      .select("conversation_id")
+      .eq("user_id", userId)
+      .in("conversation_id", myIds);
+    return theirs && theirs.length > 0 ? theirs[0].conversation_id : null;
+  }
+
+  async function notifyMentionedUsers(status: Status, mentioned: Profile[]) {
+    if (mentioned.length === 0) return;
+    const content = encodeStatusMention(status, myProfile);
+    for (const profile of mentioned) {
+      const convoId = await findConversationWith(profile.id);
+      if (!convoId) continue;
+      await supabase.from("messages").insert({ conversation_id: convoId, sender_id: myProfile.id, content, message_type: "text" });
+      sendPushNotification({ userId: profile.id, title: myProfile.display_name, body: "mentioned you in their status", url: "/" });
+    }
+  }
+
+  function viewMentionedStatus(payload: StatusMentionPayload) {
+    const original = statuses.find((s) => s.id === payload.statusId);
+    if (original) {
+      openStatusViewer(original.user_id);
+    } else {
+      setErrorMsg("This status has expired.");
+    }
+  }
+
+  async function reshareMentionedStatus(payload: StatusMentionPayload) {
+    const { error } = await supabase.from("statuses").insert({
+      user_id: myProfile.id,
+      media_url: payload.mediaUrl,
+      media_type: payload.mediaType,
+      text_content: payload.textContent,
+      bg_color: payload.bgColor,
+      music_title: payload.musicTitle ?? null,
+      music_artist: payload.musicArtist ?? null,
+      music_thumbnail: payload.musicThumbnail ?? null,
+      music_stream_url: payload.musicStreamUrl ?? null,
+      music_start_sec: payload.musicStartSec ?? null,
+      music_duration_sec: payload.musicDurationSec ?? null,
+    });
+    if (error) { setErrorMsg("Couldn't add to your status. Please try again."); return; }
+    setErrorMsg("Added to your status!");
+    loadStatuses();
   }
 
   // ===== FIXED: sendStatusReply with proper connection check =====
@@ -2669,6 +2837,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (m.message_type === "voice") return "🎤 Voice message"; 
     const statusReply = decodeStatusReply(m.content);
     if (statusReply) return `↩️ Replied to status: ${statusReply.text}`;
+    if (decodeStatusMention(m.content)) return "@ Mentioned you in a status";
     return m.content; 
   }
 
@@ -3428,10 +3597,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           {activeStatusItem.user_id === myProfile.id ? (
             <button
               onClick={() => openStatusViewersList(activeStatusItem.id)}
-              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-white/80 transition hover:text-white"
+              onPointerDown={onStatusViewersBarPointerDown}
+              onPointerMove={(e) => onStatusViewersBarPointerMove(e, activeStatusItem.id)}
+              onPointerUp={onStatusViewersBarPointerUp}
+              className="flex flex-col items-center gap-1 px-4 pb-3 pt-1 text-sm font-medium text-white/80 transition hover:text-white touch-none"
+              aria-label="Swipe up to see who viewed"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
-              {myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}
+              <span className="h-1 w-9 rounded-full bg-white/30" />
+              <span className="flex items-center gap-1.5">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
+                {myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}
+              </span>
             </button>
           ) : (
             <div className="flex items-center gap-2 px-4 pb-4 pt-2">
@@ -3536,16 +3712,74 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
+      {showMentionPicker && (
+        <div className="fixed inset-0 z-[65] flex items-end justify-center bg-black/60" onClick={closeMentionPicker}>
+          <div className="w-full max-w-md rounded-t-2xl bg-ink-900 pb-6 pt-3" onClick={(e) => e.stopPropagation()}>
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
+            <div className="flex items-center justify-between px-5 pb-2">
+              <p className="text-sm font-semibold text-white">Mention someone</p>
+              <button onClick={closeMentionPicker} className="text-sm font-semibold text-violet-light">Done</button>
+            </div>
+            <div className="px-4 pb-3">
+              <input
+                autoFocus
+                value={mentionSearch}
+                onChange={(e) => handleMentionSearchChange(e.target.value)}
+                placeholder="Search by username…"
+                className="w-full rounded-full bg-white/10 px-4 py-2 text-sm text-white placeholder:text-white/50 outline-none"
+              />
+            </div>
+            <div className="max-h-80 overflow-y-auto px-2">
+              {mentionSearchLoading ? (
+                <p className="px-3 py-6 text-center text-sm text-mist">Loading…</p>
+              ) : mentionSearchResults.length === 0 ? (
+                <p className="px-3 py-6 text-center text-sm text-mist">No connections found.</p>
+              ) : (
+                mentionSearchResults.map((p) => {
+                  const selected = pendingMentions.some((m) => m.id === p.id);
+                  return (
+                    <button key={p.id} onClick={() => toggleMentionSelect(p)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-white/5">
+                      <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={40} />
+                      <div className="min-w-0 flex-1">
+                        <p className="flex items-center truncate text-sm font-medium text-white">
+                          <span className="truncate">{p.display_name}</span>
+                          {isVerified(p.username, p.verified) && <VerifiedBadge />}
+                        </p>
+                        <p className="truncate text-xs text-mist">@{p.username}</p>
+                      </div>
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${selected ? "border-violet bg-violet text-white" : "border-white/30 text-transparent"}`}>✓</span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showTextStatusComposer && (
         <div className="fixed inset-0 z-50 flex flex-col" style={{ background: textStatusColor }}>
-          <div className="flex items-center justify-between px-4 py-4">
+          <div className="flex items-center justify-between gap-1.5 px-4 py-4">
             <button onClick={() => { (document.activeElement as HTMLElement | null)?.blur?.(); setShowTextStatusComposer(false); setTextStatusDraft(""); }} className="text-xl text-white" aria-label="Cancel">✕</button>
-            <button onClick={() => setShowMusicPicker(true)} className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-semibold text-white" aria-label="Add music">🎵</button>
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => setShowMusicPicker(true)} className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-semibold text-white" aria-label="Add music">🎵</button>
+              <button onClick={openMentionPicker} className="rounded-full bg-white/20 px-3 py-1.5 text-sm font-semibold text-white" aria-label="Mention someone">@</button>
+            </div>
             <button onClick={postTextStatus} disabled={!textStatusDraft.trim()} className="rounded-full bg-white/20 px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-40">Post</button>
           </div>
           <div className="flex flex-1 items-center justify-center px-8">
             <textarea autoFocus value={textStatusDraft} onChange={(e) => setTextStatusDraft(e.target.value.slice(0, 200))} placeholder="Type a status…" rows={4} className="w-full resize-none bg-transparent text-center text-2xl font-semibold text-white placeholder:text-white/60 outline-none" />
           </div>
+          {pendingMentions.length > 0 && (
+            <div className="mx-8 mb-3 flex flex-wrap items-center justify-center gap-1.5">
+              {pendingMentions.map((p) => (
+                <span key={p.id} className="flex items-center gap-1 rounded-full bg-black/20 px-2.5 py-1 text-[11px] font-medium text-white">
+                  @{p.username}
+                  <button onClick={() => removePendingMention(p.id)} className="text-white/70 hover:text-white" aria-label={`Remove mention ${p.username}`}>✕</button>
+                </span>
+              ))}
+            </div>
+          )}
           {pendingMusic && (
             <div className="mx-8 mb-3 flex items-center gap-2 rounded-xl bg-black/20 px-3 py-2">
               {pendingMusic.thumbnail && (
@@ -3875,6 +4109,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </p>
                 </button>
                 <button onClick={() => setShowMusicPicker(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Add music to status">🎵</button>
+                <button onClick={openMentionPicker} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Mention someone">@</button>
                 <button onClick={() => setShowTextStatusComposer(true)} className="rounded-full px-3 py-1.5 text-xs font-medium text-violet-light transition hover:bg-black/5 dark:hover:bg-white/5">Aa</button>
               </div>
               {pendingMusic && (
@@ -3887,6 +4122,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <p className="truncate text-[11px] text-mist">{pendingMusic.artist} · Agli status pe lagega</p>
                   </div>
                   <button onClick={() => setPendingMusic(null)} className="shrink-0 text-xs text-mist hover:text-white" aria-label="Remove music">✕</button>
+                </div>
+              )}
+              {pendingMentions.length > 0 && (
+                <div className="mx-3 mb-2 flex flex-wrap items-center gap-1.5">
+                  {pendingMentions.map((p) => (
+                    <span key={p.id} className="flex items-center gap-1 rounded-full bg-violet/15 px-2.5 py-1 text-[11px] font-medium text-violet-light">
+                      @{p.username}
+                      <button onClick={() => removePendingMention(p.id)} className="text-violet-light/70 hover:text-violet-light" aria-label={`Remove mention ${p.username}`}>✕</button>
+                    </span>
+                  ))}
                 </div>
               )}
               {(() => {
@@ -4314,6 +4559,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 const isVoice = m.message_type === "voice" && !!m.media_url;
                 const quoted = messageById(m.reply_to_id);
                 const statusReply = !isImage && !isVoice ? decodeStatusReply(m.content) : null;
+                const statusMention = !isImage && !isVoice && !statusReply ? decodeStatusMention(m.content) : null;
                 const isSwiping = swipeState?.id === m.id;
                 const translateX = isSwiping ? swipeState!.dx : 0;
                 const prevMsg = messages[idx - 1];
@@ -4414,6 +4660,29 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             )}
                             {isDeleted ? (
                               <p className="text-sm italic text-mist">This message was deleted</p>
+                            ) : statusMention ? (
+                              <div className="w-56 max-w-full">
+                                <div className="flex items-center gap-2">
+                                  {statusMention.mediaType === "image" && statusMention.mediaUrl ? (
+                                    <img src={statusMention.mediaUrl} alt="Status" className="h-12 w-12 shrink-0 rounded-lg object-cover" />
+                                  ) : statusMention.mediaType === "video" && statusMention.mediaUrl ? (
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-black/40 text-xs">▶️</div>
+                                  ) : (
+                                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-[9px] text-white/90" style={{ background: statusMention.bgColor ?? "#7C5CFF" }}>
+                                      <span className="line-clamp-3 px-0.5 text-center leading-tight">{statusMention.textContent}</span>
+                                    </div>
+                                  )}
+                                  <p className="text-xs text-white/80">
+                                    {mine ? "You mentioned them in your status" : `${statusMention.fromDisplayName ?? "They"} mentioned you in their status`}
+                                  </p>
+                                </div>
+                                {!mine && (
+                                  <div className="mt-2 flex gap-2">
+                                    <button onClick={() => viewMentionedStatus(statusMention)} className="flex-1 rounded-full bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-white/20">View status</button>
+                                    <button onClick={() => reshareMentionedStatus(statusMention)} className="flex-1 rounded-full bg-violet px-2.5 py-1.5 text-[11px] font-semibold text-white transition hover:bg-violet-light">Add to my status</button>
+                                  </div>
+                                )}
+                              </div>
                             ) : isImage ? (
                               <img src={m.media_url!} alt="Shared photo" className="no-callout max-h-72 w-full cursor-pointer rounded-xl object-cover" onClick={() => setImageViewerUrl(m.media_url!)} />
                             ) : isVoice ? (
