@@ -95,7 +95,14 @@ type ConnectionRequest = {
 type AppNotification = {
   id: string;
   user_id: string;
-  type: "request_accepted" | "request_declined" | "verified";
+  type:
+    | "request_accepted"
+    | "request_declined"
+    | "verified"
+    | "message"
+    | "status_like"
+    | "status_mention"
+    | "status_reply";
   title: string;
   body: string;
   actor_id?: string | null;
@@ -355,7 +362,7 @@ function linkifyText(text: string): React.ReactNode[] {
 
 function isVerified(username?: string, verifiedFlag?: boolean | null) {
   if (verifiedFlag) return true;
-  return ["sudhakarin", "tanushree2251", "instagram", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
+  return ["sudhakarin", "tanushree2251", "airalance", "shikhamishra", "manjumishra"].includes(username?.toLowerCase() || "");
 }
 
 function isAiralanceSource(source?: string) {
@@ -760,6 +767,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [dismissedRequestIds, setDismissedRequestIds] = useState<Set<string>>(new Set());
+  const visibleNotifications = useMemo(
+    () => notifications.filter((n) => !dismissedRequestIds.has(n.id)),
+    [notifications, dismissedRequestIds]
+  );
 
   const [connectPopupTarget, setConnectPopupTarget] = useState<Profile | null>(null);
   const [connectPopupMode, setConnectPopupMode] = useState<"ask" | "pending" | "declined" | null>(null);
@@ -1148,6 +1160,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setAppNotifications((appData ?? []) as any);
   }, [myProfile.id, supabase]);
 
+  // Central helper: writes an in-app notification row (so it shows up in the
+  // bell/dropdown) AND fires the browser push notification. Every event that
+  // should notify someone (new message, verification, status mention/like,
+  // status reply, connection requests) should go through this instead of
+  // calling sendPushNotification directly, so the bell always stays in sync.
+  const notifyUser = useCallback(
+    async (opts: { userId?: string | null; type: AppNotification["type"]; title: string; body: string; url?: string }) => {
+      if (!opts.userId || opts.userId === myProfile.id) return;
+      await supabase.from("app_notifications").insert({
+        user_id: opts.userId,
+        type: opts.type,
+        title: opts.title,
+        body: opts.body,
+        actor_id: myProfile.id,
+      });
+      sendPushNotification({ userId: opts.userId, title: opts.title, body: opts.body, url: opts.url || "/" });
+    },
+    [supabase, myProfile.id]
+  );
+
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
   useEffect(() => {
     if (mobileTab === "search") loadSuggestedProfiles();
@@ -1208,14 +1240,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         { conversation_id: convoId, user_id: req.from_user_id },
       ]);
     }
-    await supabase.from("app_notifications").insert({
-      user_id: req.from_user_id,
-      type: "request_accepted",
-      title: myProfile.display_name,
-      body: `${myProfile.display_name} accepted your connect request!`,
-      actor_id: myProfile.id,
-    });
-    sendPushNotification({ userId: req.from_user_id, title: myProfile.display_name, body: `${myProfile.display_name} accepted your connect request!`, url: "/" });
+    notifyUser({ userId: req.from_user_id, type: "request_accepted", title: myProfile.display_name, body: `${myProfile.display_name} accepted your connect request!` });
     await loadConversations();
     setActiveId(convoId);
     setMobileTab("chats");
@@ -1225,14 +1250,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function declineRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "declined" }).eq("id", req.id);
-    await supabase.from("app_notifications").insert({
-      user_id: req.from_user_id,
-      type: "request_declined",
-      title: myProfile.display_name,
-      body: `${myProfile.display_name} declined your connect request`,
-      actor_id: myProfile.id,
-    });
+    notifyUser({ userId: req.from_user_id, type: "request_declined", title: myProfile.display_name, body: `${myProfile.display_name} declined your connect request` });
     loadNotifications();
+  }
+
+  // Dismiss a single notification: connection-request rows are only hidden
+  // locally (the underlying request itself is untouched — the person can
+  // still Accept/Decline it from elsewhere), while app_notifications rows
+  // (message/verified/status like/mention/reply/accepted/declined) are
+  // actually deleted so older notifications don't keep piling up.
+  function dismissRequestNotification(id: string) {
+    setDismissedRequestIds((prev) => new Set(prev).add(id));
+  }
+  async function dismissAppNotification(id: string) {
+    setAppNotifications((prev) => prev.filter((n) => n.id !== id));
+    await supabase.from("app_notifications").delete().eq("id", id);
   }
 
   useEffect(() => {
@@ -1798,10 +1830,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data } = await supabase
       .from("profiles")
       .select("*")
-      .or("username.ilike.sudhakarin,username.ilike.instagram")
+      .or("username.ilike.sudhakarin,username.ilike.airalance")
       .neq("id", myProfile.id);
     if (data) {
-      const order = ["sudhakarin", "instagram"];
+      const order = ["airalance", "sudhakarin"];
       const sorted = [...data].sort(
         (a, b) => order.indexOf((a.username || "").toLowerCase()) - order.indexOf((b.username || "").toLowerCase())
       );
@@ -1940,14 +1972,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { error } = await supabase.rpc("set_verification", { target_user_id: target.id, should_verify: makeVerified });
     if (error) { setErrorMsg(makeVerified ? "Failed to grant verification. Please try again." : "Failed to remove verification. Please try again."); setGrantingVerification(false); return; }
     if (makeVerified) {
-      await supabase.from("app_notifications").insert({
-        user_id: target.id,
+      await notifyUser({
+        userId: target.id,
         type: "verified",
         title: "You're verified",
         body: "Congratulations — your account has been verified on Airalance.",
-        actor_id: myProfile.id,
       });
-      sendPushNotification({ userId: target.id, title: "You're verified", body: "Congratulations — your account has been verified on Airalance.", url: "/" });
     }
     setProfileView((prev) => (prev && prev.id === target.id ? { ...prev, verified: makeVerified } : prev));
     setGrantingVerification(false);
@@ -2039,7 +2069,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (prev.some((m) => m.id === (inserted as Message).id)) return prev.filter((m) => m.id !== tempId);
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
     });
-    sendPushNotification({ userId: active?.otherProfile?.id, title: myProfile.display_name, body: content, url: "/" });
+    notifyUser({ userId: active?.otherProfile?.id, type: "message", title: myProfile.display_name, body: content });
     loadConversations();
     setSending(false);
     messageInputRef.current?.focus();
@@ -2084,7 +2114,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (prev.some((m) => m.id === (inserted as Message).id)) return prev.filter((m) => m.id !== tempId);
       return prev.map((m) => (m.id === tempId ? (inserted as Message) : m));
     });
-    sendPushNotification({ userId: active?.otherProfile?.id, title: myProfile.display_name, body: opts.type === "image" ? "📷 Photo" : "🎤 Voice message", url: "/" });
+    notifyUser({ userId: active?.otherProfile?.id, type: "message", title: myProfile.display_name, body: opts.type === "image" ? "📷 Photo" : "🎤 Voice message" });
     loadConversations();
   }
 
@@ -2489,7 +2519,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     } else {
       await supabase.from("status_likes").insert({ status_id: status.id, user_id: myProfile.id });
       if (status.user_id !== myProfile.id) {
-        sendPushNotification({ userId: status.user_id, title: myProfile.display_name, body: "❤️ liked your status", url: "/" });
+        notifyUser({ userId: status.user_id, type: "status_like", title: myProfile.display_name, body: `${myProfile.display_name} liked your status ❤️` });
       }
     }
     if (statusViewersOpen) fetchStatusViewers(status.id);
@@ -2604,7 +2634,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       const convoId = await findConversationWith(profile.id);
       if (!convoId) continue;
       await supabase.from("messages").insert({ conversation_id: convoId, sender_id: myProfile.id, content, message_type: "text" });
-      sendPushNotification({ userId: profile.id, title: myProfile.display_name, body: "mentioned you in their status", url: "/" });
+      notifyUser({ userId: profile.id, type: "status_mention", title: myProfile.display_name, body: `${myProfile.display_name} mentioned you in their status` });
     }
   }
 
@@ -2702,12 +2732,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         return;
       }
 
-      // Send push notification
-      sendPushNotification({ 
-        userId: status.user_id, 
-        title: myProfile.display_name, 
-        body: `Replied to your status: ${text}`, 
-        url: "/" 
+      // Send notification (bell + push)
+      notifyUser({
+        userId: status.user_id,
+        type: "status_reply",
+        title: myProfile.display_name,
+        body: `${myProfile.display_name} replied to your status: ${text}`,
       });
 
       // Reset state
@@ -3875,9 +3905,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                 <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              {(notifications.length + appNotifications.length) > 0 && (
+              {(visibleNotifications.length + appNotifications.length) > 0 && (
                 <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {(notifications.length + appNotifications.length) > 9 ? "9+" : notifications.length + appNotifications.length}
+                  {(visibleNotifications.length + appNotifications.length) > 9 ? "9+" : visibleNotifications.length + appNotifications.length}
                 </span>
               )}
             </button>
@@ -3887,13 +3917,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <p className="text-sm font-semibold text-white">Notifications</p>
                   <button onClick={() => setShowNotifications(false)} className="text-mist hover:text-white">✕</button>
                 </div>
-                {notifications.length === 0 && appNotifications.length === 0 ? (
+                {visibleNotifications.length === 0 && appNotifications.length === 0 ? (
                   <p className="px-4 py-6 text-center text-xs text-mist">No new notifications</p>
                 ) : (
                   <div className="max-h-96 overflow-y-auto">
-                    {notifications.map((req) => (
-                      <div key={req.id} className="border-b border-white/5 px-4 py-3">
-                        <div className="flex items-center gap-3">
+                    {visibleNotifications.map((req) => (
+                      <div key={req.id} className="group relative border-b border-white/5 px-4 py-3">
+                        <button
+                          onClick={() => dismissRequestNotification(req.id)}
+                          aria-label="Remove notification"
+                          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-mist/70 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+                        </button>
+                        <div className="flex items-center gap-3 pr-5">
                           <Avatar name={req.from_profile?.display_name ?? "User"} color={req.from_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={req.from_profile?.avatar_url} size={36} />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-white tx1">{req.from_profile?.display_name} wants to connect with you!</p>
@@ -3907,20 +3944,35 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       </div>
                     ))}
                     {appNotifications.map((n) => (
-                      <div key={n.id} className="flex items-center gap-3 border-b border-white/5 px-4 py-3">
+                      <div key={n.id} className="group relative flex items-center gap-3 border-b border-white/5 px-4 py-3">
                         {n.type === "verified" ? (
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet/15">
                             <VerifiedBadge size={20} />
                           </span>
-                        ) : n.type === "request_accepted" ? (
-                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#22D3B8"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                        ) : n.type === "status_like" ? (
+                          <span className="relative shrink-0">
+                            <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#EF4444"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink-800 text-[9px]">❤️</span>
+                          </span>
+                        ) : n.type === "status_mention" || n.type === "status_reply" ? (
+                          <span className="relative shrink-0">
+                            <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                            <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-ink-800 text-[9px]">💬</span>
+                          </span>
                         ) : (
-                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#7C5CFF"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
+                          <Avatar name={n.actor_profile?.display_name ?? "User"} color={n.actor_profile?.avatar_color ?? "#22D3B8"} avatarUrl={n.actor_profile?.avatar_url} size={36} />
                         )}
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0 flex-1 pr-5">
                           <p className="text-xs font-semibold text-white tx1">{n.body}</p>
                           <p className="mt-0.5 text-[10px] text-mist">{formatLastSeen(n.created_at)}</p>
                         </div>
+                        <button
+                          onClick={() => dismissAppNotification(n.id)}
+                          aria-label="Remove notification"
+                          className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full text-mist/70 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>
+                        </button>
                       </div>
                     ))}
                   </div>
