@@ -918,44 +918,56 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [supabase]);
 
   // ---- Push permission ----
-  // Browsers ignore/suppress Notification.requestPermission() unless it is
-  // triggered by a real user tap. So we only (re)subscribe automatically when
-  // permission is ALREADY granted; otherwise we show an "Enable" card and ask
-  // when the user taps it.
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("default");
-  const [notifCardHidden, setNotifCardHidden] = useState(true);
-
+  // No custom card: the native OS/browser permission popup is shown directly.
+  // Browsers/iOS only allow that popup from a real user gesture, so we ask on
+  // the user's FIRST tap anywhere in the app. If permission is already
+  // granted we just (re)subscribe silently.
   useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) {
-      setNotifPermission("unsupported");
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+
+    const setupPush = async () => {
+      try {
+        await subscribeToPush(myProfile.id);
+      } catch (e: any) {
+        console.warn("[push] subscribeToPush failed", e);
+        setErrorMsg(`Notifications setup failed: ${e?.message || "unknown error"}`);
+        return;
+      }
+      // Diagnostic: confirm the browser really has a push subscription.
+      try {
+        if (!("serviceWorker" in navigator)) { setErrorMsg("Notifications: service worker not supported here."); return; }
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) { setErrorMsg("Notifications: service worker not registered (is /sw.js present?)."); return; }
+        const sub = await reg.pushManager.getSubscription();
+        if (!sub) setErrorMsg("Notifications: push subscription was not created (check VAPID public key).");
+      } catch (e) {
+        console.warn("[push] verify failed", e);
+      }
+    };
+
+    if (Notification.permission === "granted") {
+      setupPush();
       return;
     }
-    setNotifPermission(Notification.permission);
-    if (Notification.permission === "granted") {
-      subscribeToPush(myProfile.id);
-    } else {
-      let dismissedAt = 0;
-      try { dismissedAt = Number(localStorage.getItem("notif-card-dismissed-at") || 0); } catch {}
-      // Re-show after 3 days if the user tapped "Not now"
-      setNotifCardHidden(Date.now() - dismissedAt < 3 * 24 * 60 * 60 * 1000);
-    }
+    if (Notification.permission === "denied") return;
+
+    const ask = async () => {
+      window.removeEventListener("click", ask);
+      window.removeEventListener("touchend", ask);
+      try {
+        const result = await Notification.requestPermission();
+        if (result === "granted") await setupPush();
+      } catch (e) {
+        console.warn("[push] requestPermission failed", e);
+      }
+    };
+    window.addEventListener("click", ask);
+    window.addEventListener("touchend", ask);
+    return () => {
+      window.removeEventListener("click", ask);
+      window.removeEventListener("touchend", ask);
+    };
   }, [myProfile.id]);
-
-  async function enableNotifications() {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    try {
-      const result = await Notification.requestPermission(); // runs inside a tap => popup shows
-      setNotifPermission(result);
-      if (result === "granted") await subscribeToPush(myProfile.id);
-    } catch {
-      setErrorMsg("Could not enable notifications. Please try again.");
-    }
-  }
-
-  function dismissNotifCard() {
-    setNotifCardHidden(true);
-    try { localStorage.setItem("notif-card-dismissed-at", String(Date.now())); } catch {}
-  }
 
   const loadConversations = useCallback(async () => {
     const { data: participantRows } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
@@ -3065,32 +3077,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       <audio ref={remoteAudioRef} autoPlay />
 
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
-
-      {/* Push notification permission card */}
-      {notifPermission !== "unsupported" && notifPermission !== "granted" && !notifCardHidden && (
-        <div className="fixed inset-x-3 bottom-20 z-[70] mx-auto max-w-md rounded-2xl border border-white/10 bg-ink-800 p-4 shadow-2xl">
-          {notifPermission === "denied" ? (
-            <>
-              <p className="text-sm font-semibold text-white">Notifications are blocked</p>
-              <p className="mt-1 text-xs text-mist">
-                Browser/site settings mein jaakar Notifications ko &quot;Allow&quot; karo, phir page reload karo.
-              </p>
-              <div className="mt-3 flex gap-2">
-                <button onClick={dismissNotifCard} className="flex-1 rounded-full border border-white/10 py-2 text-xs font-semibold text-mist hover:text-white">OK</button>
-              </div>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-semibold text-white">Turn on notifications</p>
-              <p className="mt-1 text-xs text-mist">Naye messages, calls aur requests miss na ho — notifications allow karo.</p>
-              <div className="mt-3 flex gap-2">
-                <button onClick={dismissNotifCard} className="flex-1 rounded-full border border-white/10 py-2 text-xs font-semibold text-mist hover:text-white">Not now</button>
-                <button onClick={enableNotifications} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-2 text-xs font-semibold text-white">Allow</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
 
       {/* Article Reader Modal - same as before */}
       {activeArticle && (
