@@ -917,9 +917,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     });
   }, [supabase]);
 
+  // ---- Push permission ----
+  // Browsers ignore/suppress Notification.requestPermission() unless it is
+  // triggered by a real user tap. So we only (re)subscribe automatically when
+  // permission is ALREADY granted; otherwise we show an "Enable" card and ask
+  // when the user taps it.
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [notifCardHidden, setNotifCardHidden] = useState(true);
+
   useEffect(() => {
-    subscribeToPush(myProfile.id);
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      setNotifPermission("unsupported");
+      return;
+    }
+    setNotifPermission(Notification.permission);
+    if (Notification.permission === "granted") {
+      subscribeToPush(myProfile.id);
+    } else {
+      let dismissedAt = 0;
+      try { dismissedAt = Number(localStorage.getItem("notif-card-dismissed-at") || 0); } catch {}
+      // Re-show after 3 days if the user tapped "Not now"
+      setNotifCardHidden(Date.now() - dismissedAt < 3 * 24 * 60 * 60 * 1000);
+    }
   }, [myProfile.id]);
+
+  async function enableNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    try {
+      const result = await Notification.requestPermission(); // runs inside a tap => popup shows
+      setNotifPermission(result);
+      if (result === "granted") await subscribeToPush(myProfile.id);
+    } catch {
+      setErrorMsg("Could not enable notifications. Please try again.");
+    }
+  }
+
+  function dismissNotifCard() {
+    setNotifCardHidden(true);
+    try { localStorage.setItem("notif-card-dismissed-at", String(Date.now())); } catch {}
+  }
 
   const loadConversations = useCallback(async () => {
     const { data: participantRows } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
@@ -1155,9 +1191,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .from("app_notifications")
       .select("*, actor_profile:profiles!app_notifications_actor_id_fkey(*)")
       .eq("user_id", myProfile.id)
+      .neq("type", "message") // chat messages only get a push, never a bell entry
       .order("created_at", { ascending: false })
       .limit(30);
-    setAppNotifications((appData ?? []) as any);
+    setAppNotifications(((appData ?? []) as any[]).filter((n) => n.type !== "message") as any);
   }, [myProfile.id, supabase]);
 
   // Central helper: writes an in-app notification row (so it shows up in the
@@ -1168,13 +1205,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const notifyUser = useCallback(
     async (opts: { userId?: string | null; type: AppNotification["type"]; title: string; body: string; url?: string }) => {
       if (!opts.userId || opts.userId === myProfile.id) return;
-      await supabase.from("app_notifications").insert({
-        user_id: opts.userId,
-        type: opts.type,
-        title: opts.title,
-        body: opts.body,
-        actor_id: myProfile.id,
-      });
+      // New chat messages are push-only: they must not be stored in the
+      // in-app notifications tab (the chat list already shows unread counts).
+      if (opts.type !== "message") {
+        await supabase.from("app_notifications").insert({
+          user_id: opts.userId,
+          type: opts.type,
+          title: opts.title,
+          body: opts.body,
+          actor_id: myProfile.id,
+        });
+      }
       sendPushNotification({ userId: opts.userId, title: opts.title, body: opts.body, url: opts.url || "/" });
     },
     [supabase, myProfile.id]
@@ -3024,6 +3065,32 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       <audio ref={remoteAudioRef} autoPlay />
 
       {errorMsg && <ErrorToast msg={errorMsg} onDismiss={() => setErrorMsg(null)} />}
+
+      {/* Push notification permission card */}
+      {notifPermission !== "unsupported" && notifPermission !== "granted" && !notifCardHidden && (
+        <div className="fixed inset-x-3 bottom-20 z-[70] mx-auto max-w-md rounded-2xl border border-white/10 bg-ink-800 p-4 shadow-2xl">
+          {notifPermission === "denied" ? (
+            <>
+              <p className="text-sm font-semibold text-white">Notifications are blocked</p>
+              <p className="mt-1 text-xs text-mist">
+                Browser/site settings mein jaakar Notifications ko &quot;Allow&quot; karo, phir page reload karo.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button onClick={dismissNotifCard} className="flex-1 rounded-full border border-white/10 py-2 text-xs font-semibold text-mist hover:text-white">OK</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-white">Turn on notifications</p>
+              <p className="mt-1 text-xs text-mist">Naye messages, calls aur requests miss na ho — notifications allow karo.</p>
+              <div className="mt-3 flex gap-2">
+                <button onClick={dismissNotifCard} className="flex-1 rounded-full border border-white/10 py-2 text-xs font-semibold text-mist hover:text-white">Not now</button>
+                <button onClick={enableNotifications} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-2 text-xs font-semibold text-white">Allow</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Article Reader Modal - same as before */}
       {activeArticle && (
