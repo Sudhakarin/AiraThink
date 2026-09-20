@@ -410,18 +410,39 @@ function Avatar({ name, color, size = 40, online = false, avatarUrl }: {
   );
 }
 
+// Status ring look (lavender -> purple -> pink -> coral, with a soft light spot top-right)
+const STATUS_RING_GRADIENT =
+  "radial-gradient(circle at 82% 6%, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 30%), linear-gradient(215deg, #C9C2FF 0%, #A78BFA 28%, #D66BE0 58%, #F4607A 100%)";
+const STATUS_RING_VIEWED = "linear-gradient(215deg, #5A6172 0%, #3A3F4C 100%)";
+const STATUS_RING_GLOW = "0 0 14px -3px rgba(214,107,224,0.6), inset 0 0 0 1px rgba(255,255,255,0.2)";
+
+function StatusSparkle() {
+  return (
+    <svg
+      aria-hidden="true"
+      width="11"
+      height="11"
+      viewBox="0 0 24 24"
+      className="pointer-events-none absolute -right-[3px] -top-[3px] animate-pulse motion-reduce:animate-none"
+      style={{ filter: "drop-shadow(0 0 3px rgba(255,255,255,0.95))" }}
+    >
+      <path d="M12 0C12.6 6.5 17.5 11.4 24 12C17.5 12.6 12.6 17.5 12 24C11.4 17.5 6.5 12.6 0 12C6.5 11.4 11.4 6.5 12 0Z" fill="white" />
+    </svg>
+  );
+}
+
 function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewed: boolean; children: React.ReactNode }) {
   if (!hasStatus) return <>{children}</>;
   return (
     <div
-      className="rounded-full p-[2.5px] transition-transform duration-150 ease-out active:scale-95"
+      className="relative rounded-full p-[3.5px] transition-transform duration-150 ease-out active:scale-95"
       style={{
-        background: viewed
-          ? "#3F4552"
-          : "conic-gradient(from 220deg, #7C5CFF, #22D3B8, #7C5CFF)",
+        background: viewed ? STATUS_RING_VIEWED : STATUS_RING_GRADIENT,
+        boxShadow: viewed ? undefined : STATUS_RING_GLOW,
       }}
     >
-      <div className="rounded-full bg-ink-900 p-[2px]">{children}</div>
+      <div className="rounded-full bg-ink-900 p-[2.5px]">{children}</div>
+      {!viewed && <StatusSparkle />}
     </div>
   );
 }
@@ -943,6 +964,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
   const dismissedAppIdsRef = useRef<Set<string> | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [dismissedRequestIds, setDismissedRequestIds] = useState<Set<string>>(new Set());
   const visibleNotifications = useMemo(
     () => notifications.filter((n) => !dismissedRequestIds.has(n.id)),
@@ -4800,17 +4822,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </svg>
               </button>
             )}
-            <button onClick={() => setShowNotifications((v) => !v)} className="relative flex h-8 w-8 items-center justify-center rounded-full text-white transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Notifications">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-              {(visibleNotifications.length + appNotifications.length) > 0 && (
-                <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
-                  {(visibleNotifications.length + appNotifications.length) > 9 ? "9+" : visibleNotifications.length + appNotifications.length}
-                </span>
-              )}
-            </button>
-            {showNotifications && (
+            {mobileTab === "profile" ? (
+              <button
+                onClick={() => setShowSettings(true)}
+                className="group flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white ring-1 ring-inset ring-white/10 transition hover:bg-white/10 active:scale-95"
+                aria-label="Settings"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-300 group-active:rotate-90">
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+            ) : (
+              <button onClick={() => setShowNotifications((v) => !v)} className="relative flex h-8 w-8 items-center justify-center rounded-full text-white transition hover:bg-black/5 dark:hover:bg-white/5" aria-label="Notifications">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {(visibleNotifications.length + appNotifications.length) > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                    {(visibleNotifications.length + appNotifications.length) > 9 ? "9+" : visibleNotifications.length + appNotifications.length}
+                  </span>
+                )}
+              </button>
+            )}
+            {showNotifications && mobileTab !== "profile" && (
               <div className="absolute right-0 top-11 z-50 w-80 rounded-2xl border border-white/10 bg-ink-800 shadow-2xl">
                 <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                   <p className="text-sm font-semibold text-white">Notifications</p>
@@ -5255,10 +5290,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 return (
                   <div className="flex items-center gap-5">
                     <button onClick={() => fileInputRef.current?.click()} className="relative shrink-0" disabled={uploading} aria-label="Change profile photo">
-                      <span className="block rounded-full p-[2.5px]" style={{ background: ownActive > 0 ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
+                      <span
+                        className="relative block rounded-full p-[3.5px]"
+                        style={{ background: ownActive > 0 ? STATUS_RING_GRADIENT : "rgba(255,255,255,0.12)", boxShadow: ownActive > 0 ? STATUS_RING_GLOW : undefined }}
+                      >
                         <span className="block rounded-full bg-ink-900 p-[2.5px]">
                           <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={82} avatarUrl={myProfile.avatar_url} />
                         </span>
+                        {ownActive > 0 && <StatusSparkle />}
                       </span>
                       {uploading && (
                         <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55">
@@ -5816,6 +5855,46 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </>
         )}
       </section>
+
+      {showSettings && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
+          style={{ height: "100dvh" }}
+          onClick={() => setShowSettings(false)}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display text-lg font-bold text-white">Settings</h3>
+              <button
+                type="button"
+                onClick={() => setShowSettings(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 rounded-2xl bg-white/[0.04] p-3 ring-1 ring-inset ring-white/[0.06]">
+              <Avatar name={myProfile.display_name} color={myProfile.avatar_color} avatarUrl={myProfile.avatar_url} size={48} />
+              <div className="min-w-0 flex-1">
+                <p className="flex items-center truncate text-[15px] font-semibold text-white">
+                  <span className="truncate">{myProfile.display_name}</span>
+                  {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={16} />}
+                </p>
+                <p className="truncate text-xs text-mist">@{myProfile.username}</p>
+              </div>
+            </div>
+
+            {/* TODO: settings rows / sections go here (account, privacy, notifications, etc.) */}
+            <p className="px-1 pb-2 pt-6 text-center text-xs text-mist">More settings are on the way.</p>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showPublishModal && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" style={{ height: "100dvh" }}>
