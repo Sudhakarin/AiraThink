@@ -800,6 +800,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
+  const [editingBio, setEditingBio] = useState(false);
+  const bioBoxRef = useRef<HTMLDivElement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -2756,13 +2758,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
-  async function saveBio() {
+  async function saveBio(): Promise<boolean> {
     const trimmed = bioDraft.trim();
-    if (trimmed === (myProfile.bio ?? "")) return;
+    if (trimmed === (myProfile.bio ?? "")) return true;
     const { error } = await supabase.from("profiles").update({ bio: trimmed }).eq("id", myProfile.id);
-    if (error) { setErrorMsg("Failed to save bio. Please try again."); return; }
+    if (error) { setErrorMsg("Failed to save bio. Please try again."); return false; }
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
+    return true;
   }
+
+  // When the bio editor opens, bring it into view (above the keyboard)
+  useEffect(() => {
+    if (!editingBio) return;
+    const t = setTimeout(() => bioBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
+    return () => clearTimeout(t);
+  }, [editingBio]);
 
   const loadStatuses = useCallback(async () => {
     const { data } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
@@ -5202,15 +5212,60 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <span className="text-sm font-medium text-red-400">Log out</span>
                 </button>
               </div>
-              <div className="glass mt-4 rounded-2xl px-4 py-3.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-mist">Bio</span>
-                  <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
+              {editingBio ? (
+                <div
+                  ref={bioBoxRef}
+                  className="glass mt-4 rounded-2xl px-4 py-3.5"
+                  style={{ animation: "statusFadeIn 160ms ease-out" }}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-mist">Bio</span>
+                    <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
+                  </div>
+                  <textarea
+                    autoFocus
+                    value={bioDraft}
+                    onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))}
+                    onFocus={(e) => { const l = e.target.value.length; e.target.setSelectionRange(l, l); }}
+                    placeholder="Write something about yourself…"
+                    rows={4}
+                    className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none"
+                  />
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => { setBioDraft(myProfile.bio ?? ""); setEditingBio(false); }}
+                      className="rounded-full px-3 py-1 text-xs font-semibold text-mist transition hover:text-white active:scale-95"
+                    >
+                      Cancel
+                    </button>
+                  </div>
                 </div>
-                <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none" />
-              </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setEditingBio(true)}
+                  aria-label="Edit bio"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3.5 text-sm font-semibold text-white ring-1 ring-inset ring-white/5 backdrop-blur-xl transition hover:bg-white/[0.11] active:scale-[0.98]"
+                  style={{
+                    WebkitBackdropFilter: "blur(20px) saturate(160%)",
+                    backdropFilter: "blur(20px) saturate(160%)",
+                    boxShadow: "0 8px 30px -12px rgba(124,92,255,0.55), inset 0 1px 0 rgba(255,255,255,0.12)",
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                    <path d="M13.5 8.5l2 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                  </svg>
+                  Edit bio
+                </button>
+              )}
               <button
-                onClick={() => { saveDisplayName(); saveBio(); }}
+                onClick={async () => {
+                  await saveDisplayName();
+                  const ok = await saveBio();
+                  if (ok) setEditingBio(false);
+                }}
                 disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "")}
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
               >
