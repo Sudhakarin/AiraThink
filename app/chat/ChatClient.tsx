@@ -726,6 +726,37 @@ function CountSkeleton() {
   return <span className="inline-block h-[15px] w-7 animate-pulse rounded-md bg-white/10" />;
 }
 
+// Skeleton placeholder for the Home "News for you" feed (featured card + list rows)
+function NewsSkeleton() {
+  return (
+    <div aria-busy="true" aria-label="Loading news">
+      {/* Featured card */}
+      <div className="relative mb-3 w-full animate-pulse overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06]" style={{ height: 168 }}>
+        <div className="absolute inset-x-0 bottom-0 flex flex-col gap-2 p-4">
+          <div className="h-4 w-24 rounded-full bg-white/10" />
+          <div className="h-3.5 w-4/5 rounded bg-white/15" />
+          <div className="h-3.5 w-3/5 rounded bg-white/10" />
+          <div className="mt-1 h-2.5 w-2/5 rounded bg-white/10" />
+        </div>
+      </div>
+      {/* List rows */}
+      <div className="flex flex-col">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="flex items-center gap-3 px-2 py-2.5">
+            <div className="h-[70px] w-[70px] shrink-0 animate-pulse rounded-2xl bg-white/10" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-2.5 w-16 animate-pulse rounded bg-white/10" />
+              <div className="h-3.5 w-full animate-pulse rounded bg-white/10" />
+              <div className="h-3.5 w-2/3 animate-pulse rounded bg-white/[0.07]" />
+              <div className="h-2.5 w-1/3 animate-pulse rounded bg-white/[0.07]" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 type ProfileCacheEntry = {
   followers?: number;
   following?: number;
@@ -4828,8 +4859,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           (a) => a.category?.toLowerCase() === selectedNewsCategory.toLowerCase()
                         );
 
-                  if (loadingNews) {
-                    return <p className="px-1 py-6 text-center text-xs text-mist">Loading news…</p>;
+                  // Skeleton only on first load (nothing cached yet) — refetch after publish/delete won't flash it
+                  if (loadingNews && newsArticles.length === 0) {
+                    return <NewsSkeleton />;
                   }
 
                   if (filteredNews.length === 0) {
