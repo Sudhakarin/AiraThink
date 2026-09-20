@@ -17,8 +17,8 @@ type Profile = {
   last_seen?: string;
   avatar_url?: string | null;
   bio?: string | null;
+  website?: string | null;
   verified?: boolean | null;
-  link?: string | null;
 };
 
 type MessageType = "text" | "image" | "voice";
@@ -156,6 +156,7 @@ const SWIPE_REPLY_MAX = 64;
 const CHAT_SWIPE_MAX = 84;
 const CHAT_SWIPE_DELETE_THRESHOLD = 60;
 const MAX_BIO_LENGTH = 160;
+const MAX_WEBSITE_LENGTH = 100;
 const STATUS_DURATION_MS = 15000;
 const STATUS_MAX_VIDEO_MS = 30000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
@@ -359,40 +360,6 @@ function linkifyText(text: string): React.ReactNode[] {
     nodes.push(text.slice(lastIndex));
   }
   return nodes;
-}
-
-const MAX_LINK_LENGTH = 120;
-
-// 14200 -> "14.2K", 84000 -> "84K", 1250000 -> "1.3M" (TikTok style)
-function formatCount(n: number | null | undefined): string {
-  if (n === null || n === undefined) return "—";
-  if (n < 1000) return String(n);
-  if (n < 999_500) {
-    const v = n / 1000;
-    return `${v >= 100 ? Math.round(v) : Math.round(v * 10) / 10}K`;
-  }
-  const m = n / 1_000_000;
-  return `${m >= 100 ? Math.round(m) : Math.round(m * 10) / 10}M`;
-}
-
-// Returns "" for empty input, a safe absolute http(s) URL for valid input, or null when invalid.
-function normalizeLink(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return "";
-  const withProto = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  try {
-    const u = new URL(withProto);
-    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
-    if (!u.hostname.includes(".")) return null;
-    if (u.username || u.password) return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
-}
-
-function displayLink(url: string): string {
-  return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
 }
 
 function isVerified(username?: string, verifiedFlag?: boolean | null) {
@@ -770,7 +737,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
-  const [linkDraft, setLinkDraft] = useState(initialProfile.link ? displayLink(initialProfile.link) : "");
+  const [websiteDraft, setWebsiteDraft] = useState(initialProfile.website ?? "");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -816,19 +783,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [profileView, setProfileView] = useState<Profile | null>(null);
   const [profileViewStatus, setProfileViewStatus] = useState<"loading" | "none" | "pending" | "declined" | "connected" | null>(null);
   const [profileViewConvoId, setProfileViewConvoId] = useState<string | null>(null);
+  const [profileViewConnCount, setProfileViewConnCount] = useState<number | null>(null);
+  const [profileViewAnimCount, setProfileViewAnimCount] = useState(0);
   const [profileViewMutuals, setProfileViewMutuals] = useState<{ profiles: Profile[]; count: number }>({ profiles: [], count: 0 });
-  const [profileViewFollowing, setProfileViewFollowing] = useState(false);
-  const [profileViewFollowsMe, setProfileViewFollowsMe] = useState(false);
   const [profileViewFollowerCount, setProfileViewFollowerCount] = useState<number | null>(null);
   const [profileViewFollowingCount, setProfileViewFollowingCount] = useState<number | null>(null);
-  const [followBusy, setFollowBusy] = useState(false);
+  const [profileViewIsFollowing, setProfileViewIsFollowing] = useState(false);
+  const [profileViewFollowBusy, setProfileViewFollowBusy] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [profileMenuConfirm, setProfileMenuConfirm] = useState<"block" | null>(null);
-  const [blockBusy, setBlockBusy] = useState(false);
-  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
-  const [restrictedIds, setRestrictedIds] = useState<Set<string>>(new Set());
-  const restrictedIdsRef = useRef<Set<string>>(new Set());
-  const profileViewIdRef = useRef<string | null>(null);
+  const [profileViewBlocked, setProfileViewBlocked] = useState(false);
+  const [profileViewRestricted, setProfileViewRestricted] = useState(false);
+  const [profileViewBlockBusy, setProfileViewBlockBusy] = useState(false);
+  const [profileViewRestrictBusy, setProfileViewRestrictBusy] = useState(false);
+  const [myBlockedIds, setMyBlockedIds] = useState<string[]>([]);
+  const [myRestrictedIds, setMyRestrictedIds] = useState<string[]>([]);
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
@@ -918,6 +886,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const callTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [contactMuted, setContactMuted] = useState(false);
+  const [contactBlocked, setContactBlocked] = useState(false);
 
   const [activeStatusOn, setActiveStatusOn] = useState(true);
 
@@ -1022,13 +991,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const { data: convos } = await supabase.from("conversations").select("id, is_group, name").in("id", convoIds);
     const { data: otherParticipants } = await supabase.from("conversation_participants").select("conversation_id, user_id, profiles(*)").in("conversation_id", convoIds).neq("user_id", myProfile.id);
     const { data: lastMessages } = await supabase.from("messages").select("conversation_id, content, message_type, created_at, is_deleted").in("conversation_id", convoIds).order("created_at", { ascending: false });
-    const { data: unreadRows } = await supabase.from("messages").select("id, conversation_id, sender_id").in("conversation_id", convoIds).neq("sender_id", myProfile.id).is("read_at", null);
+    const { data: unreadRows } = await supabase.from("messages").select("id, conversation_id").in("conversation_id", convoIds).neq("sender_id", myProfile.id).is("read_at", null);
 
     const unreadCounts: Record<string, number> = {};
-    (unreadRows ?? []).forEach((m: any) => {
-      if (restrictedIdsRef.current.has(m.sender_id)) return; // restricted users don't raise unread badges
-      unreadCounts[m.conversation_id] = (unreadCounts[m.conversation_id] || 0) + 1;
-    });
+    (unreadRows ?? []).forEach((m: any) => { unreadCounts[m.conversation_id] = (unreadCounts[m.conversation_id] || 0) + 1; });
 
     const previewFor = (m: any) => {
       if (!m) return "Say hello 👋";
@@ -1860,6 +1826,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { if (callTimerRef.current) clearInterval(callTimerRef.current); };
   }, [callStatus]);
 
+  useEffect(() => {
+    if (profileViewConnCount === null || profileViewConnCount === 0) { setProfileViewAnimCount(0); return; }
+    let raf: number;
+    const target = profileViewConnCount;
+    const start = performance.now();
+    const duration = 650;
+    function step(now: number) {
+      const p = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setProfileViewAnimCount(Math.floor(eased * target));
+      if (p < 1) raf = requestAnimationFrame(step);
+      else setProfileViewAnimCount(target);
+    }
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [profileViewConnCount]);
+
   async function sendToUser(targetId: string, event: string, payload: any) {
     const channel = supabase.channel(`calls:${targetId}`);
     await new Promise<void>((resolve) => { channel.subscribe((status) => { if (status === "SUBSCRIBED") resolve(); }); });
@@ -1956,88 +1939,110 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return (data ?? []).map((r: any) => (r.from_user_id === userId ? r.to_user_id : r.from_user_id));
   }
 
-  async function loadFollowInfo(otherId: string) {
-    const [followers, following, iFollow, followsMe] = await Promise.all([
-      supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("following_id", otherId),
-      supabase.from("follows").select("following_id", { count: "exact", head: true }).eq("follower_id", otherId),
-      supabase.from("follows").select("follower_id").eq("follower_id", myProfile.id).eq("following_id", otherId).maybeSingle(),
-      supabase.from("follows").select("follower_id").eq("follower_id", otherId).eq("following_id", myProfile.id).maybeSingle(),
+  async function fetchFollowCounts(userId: string): Promise<{ followers: number; following: number }> {
+    const [{ count: followers }, { count: following }] = await Promise.all([
+      supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("following_id", userId),
+      supabase.from("follows").select("following_id", { count: "exact", head: true }).eq("follower_id", userId),
     ]);
-    if (profileViewIdRef.current !== otherId) return; // user already moved to another profile
-    setProfileViewFollowerCount(followers.count ?? 0);
-    setProfileViewFollowingCount(following.count ?? 0);
-    setProfileViewFollowing(!!iFollow.data);
-    setProfileViewFollowsMe(!!followsMe.data);
+    return { followers: followers ?? 0, following: following ?? 0 };
   }
 
-  async function toggleFollow() {
-    if (!profileView || followBusy || blockedIds.has(profileView.id)) return;
-    const targetId = profileView.id;
-    const wasFollowing = profileViewFollowing;
-    setFollowBusy(true);
+  async function toggleFollow(other: Profile) {
+    if (profileViewFollowBusy) return;
+    setProfileViewFollowBusy(true);
+    const wasFollowing = profileViewIsFollowing;
     // optimistic update
-    setProfileViewFollowing(!wasFollowing);
-    setProfileViewFollowerCount((c) => Math.max(0, (c ?? 0) + (wasFollowing ? -1 : 1)));
-    const { error } = wasFollowing
-      ? await supabase.from("follows").delete().eq("follower_id", myProfile.id).eq("following_id", targetId)
-      : await supabase.from("follows").upsert({ follower_id: myProfile.id, following_id: targetId }, { onConflict: "follower_id,following_id", ignoreDuplicates: true });
-    setFollowBusy(false);
-    if (error) {
-      if (profileViewIdRef.current === targetId) {
-        setProfileViewFollowing(wasFollowing);
-        setProfileViewFollowerCount((c) => Math.max(0, (c ?? 0) + (wasFollowing ? 1 : -1)));
+    setProfileViewIsFollowing(!wasFollowing);
+    setProfileViewFollowerCount((prev) => (prev === null ? prev : prev + (wasFollowing ? -1 : 1)));
+    if (wasFollowing) {
+      const { error } = await supabase.from("follows").delete().eq("follower_id", myProfile.id).eq("following_id", other.id);
+      if (error) {
+        setProfileViewIsFollowing(true);
+        setProfileViewFollowerCount((prev) => (prev === null ? prev : prev + 1));
+        setErrorMsg("Could not unfollow. Please try again.");
       }
-      setErrorMsg(wasFollowing ? "Could not unfollow. Please try again." : "Could not follow. Please try again.");
-      return;
+    } else {
+      const { error } = await supabase.from("follows").insert({ follower_id: myProfile.id, following_id: other.id });
+      if (error) {
+        setProfileViewIsFollowing(false);
+        setProfileViewFollowerCount((prev) => (prev === null ? prev : prev - 1));
+        setErrorMsg("Could not follow. Please try again.");
+      } else {
+        notifyUser({ userId: other.id, type: "new_follower", title: myProfile.display_name, body: `${myProfile.display_name} started following you` });
+      }
     }
-    if (!wasFollowing) {
-      sendPushNotification({ userId: targetId, title: myProfile.display_name, body: `${myProfile.display_name} started following you`, url: "/" });
-    }
+    setProfileViewFollowBusy(false);
   }
 
-  // kind: "block" | "restrict" | null (null = clear either one)
-  async function setRelationship(target: Profile, kind: "block" | "restrict" | null) {
-    if (blockBusy) return;
-    setBlockBusy(true);
-    const { error } = kind
-      ? await supabase.from("user_blocks").upsert({ blocker_id: myProfile.id, blocked_id: target.id, kind }, { onConflict: "blocker_id,blocked_id" })
-      : await supabase.from("user_blocks").delete().eq("blocker_id", myProfile.id).eq("blocked_id", target.id);
-    if (error) {
-      setBlockBusy(false);
-      setErrorMsg("Could not update. Please try again.");
-      return;
-    }
-    if (kind === "block") {
-      // blocking removes follows in both directions
-      await supabase.from("follows").delete().or(`and(follower_id.eq.${myProfile.id},following_id.eq.${target.id}),and(follower_id.eq.${target.id},following_id.eq.${myProfile.id})`);
-    }
-    const nextBlocked = new Set(blockedIds); nextBlocked.delete(target.id); if (kind === "block") nextBlocked.add(target.id);
-    const nextRestricted = new Set(restrictedIds); nextRestricted.delete(target.id); if (kind === "restrict") nextRestricted.add(target.id);
-    setBlockedIds(nextBlocked);
-    setRestrictedIds(nextRestricted);
-    restrictedIdsRef.current = nextRestricted;
-    setBlockBusy(false);
+  async function loadMyModerationLists() {
+    const [{ data: blocked }, { data: restricted }] = await Promise.all([
+      supabase.from("blocked_users").select("blocked_id").eq("blocker_id", myProfile.id),
+      supabase.from("restricted_users").select("restricted_id").eq("restrictor_id", myProfile.id),
+    ]);
+    setMyBlockedIds((blocked ?? []).map((r: any) => r.blocked_id));
+    setMyRestrictedIds((restricted ?? []).map((r: any) => r.restricted_id));
+  }
+
+  async function toggleBlockUser(other: Profile) {
+    if (profileViewBlockBusy) return;
+    setProfileViewBlockBusy(true);
+    const wasBlocked = profileViewBlocked;
+    setProfileViewBlocked(!wasBlocked);
     setProfileMenuOpen(false);
-    setProfileMenuConfirm(null);
-    if (profileViewIdRef.current === target.id) loadFollowInfo(target.id);
-    loadConversations();
+    if (wasBlocked) {
+      const { error } = await supabase.from("blocked_users").delete().eq("blocker_id", myProfile.id).eq("blocked_id", other.id);
+      if (error) { setProfileViewBlocked(true); setErrorMsg("Could not unblock. Please try again."); }
+      else setMyBlockedIds((prev) => prev.filter((id) => id !== other.id));
+    } else {
+      const { error } = await supabase.from("blocked_users").insert({ blocker_id: myProfile.id, blocked_id: other.id });
+      if (error) { setProfileViewBlocked(false); setErrorMsg("Could not block. Please try again."); }
+      else setMyBlockedIds((prev) => [...prev, other.id]);
+    }
+    setProfileViewBlockBusy(false);
+  }
+
+  async function toggleRestrictUser(other: Profile) {
+    if (profileViewRestrictBusy) return;
+    setProfileViewRestrictBusy(true);
+    const wasRestricted = profileViewRestricted;
+    setProfileViewRestricted(!wasRestricted);
+    setProfileMenuOpen(false);
+    if (wasRestricted) {
+      const { error } = await supabase.from("restricted_users").delete().eq("restrictor_id", myProfile.id).eq("restricted_id", other.id);
+      if (error) { setProfileViewRestricted(true); setErrorMsg("Could not unrestrict. Please try again."); }
+      else setMyRestrictedIds((prev) => prev.filter((id) => id !== other.id));
+    } else {
+      const { error } = await supabase.from("restricted_users").insert({ restrictor_id: myProfile.id, restricted_id: other.id });
+      if (error) { setProfileViewRestricted(false); setErrorMsg("Could not restrict. Please try again."); }
+      else setMyRestrictedIds((prev) => [...prev, other.id]);
+    }
+    setProfileViewRestrictBusy(false);
   }
 
   async function openProfileView(other: Profile) {
-    profileViewIdRef.current = other.id;
     setProfileView(other);
     setProfileViewStatus("loading");
     setProfileViewConvoId(null);
+    setProfileViewConnCount(null);
+    setProfileViewAnimCount(0);
     setProfileViewMutuals({ profiles: [], count: 0 });
-    setProfileViewFollowing(false);
-    setProfileViewFollowsMe(false);
     setProfileViewFollowerCount(null);
     setProfileViewFollowingCount(null);
+    setProfileViewIsFollowing(false);
     setProfileMenuOpen(false);
-    setProfileMenuConfirm(null);
-    loadFollowInfo(other.id);
+    setProfileViewBlocked(myBlockedIds.includes(other.id));
+    setProfileViewRestricted(myRestrictedIds.includes(other.id));
+
+    fetchFollowCounts(other.id).then(({ followers, following }) => {
+      setProfileViewFollowerCount(followers);
+      setProfileViewFollowingCount(following);
+    });
+    supabase.from("follows").select("follower_id").eq("follower_id", myProfile.id).eq("following_id", other.id).maybeSingle().then(({ data }) => {
+      setProfileViewIsFollowing(!!data);
+    });
 
     fetchAcceptedConnectionIds(other.id).then(async (theirIds) => {
+      setProfileViewConnCount(theirIds.length);
       const myIds = await fetchAcceptedConnectionIds(myProfile.id);
       const mutualIds = myIds.filter((id) => theirIds.includes(id));
       if (mutualIds.length > 0) {
@@ -2078,13 +2083,17 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   function closeProfileView() {
-    profileViewIdRef.current = null;
-    setProfileMenuOpen(false);
-    setProfileMenuConfirm(null);
     setProfileView(null);
     setProfileViewStatus(null);
     setProfileViewConvoId(null);
+    setProfileViewConnCount(null);
     setProfileViewMutuals({ profiles: [], count: 0 });
+    setProfileViewFollowerCount(null);
+    setProfileViewFollowingCount(null);
+    setProfileViewIsFollowing(false);
+    setProfileMenuOpen(false);
+    setProfileViewBlocked(false);
+    setProfileViewRestricted(false);
   }
 
   const [startingProfileChat, setStartingProfileChat] = useState(false);
@@ -2190,7 +2199,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (sending) return;
     const content = input.trim();
     if (!content || !activeId) return;
-    if (contactBlocked) { setErrorMsg("You blocked this user. Unblock them to send messages."); return; }
     setSending(true); setInput("");
     messageInputRef.current?.focus();
     activeChannelRef.current?.send({ type: "broadcast", event: "typing", payload: { userId: myProfile.id, typing: false } });
@@ -2236,7 +2244,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function sendMediaMessage(opts: { type: "image" | "voice"; url: string; duration?: number }) {
     if (!activeId) return;
-    if (contactBlocked) { setErrorMsg("You blocked this user. Unblock them to send messages."); return; }
     const replyTo = replyingTo; setReplyingTo(null);
     const tempId = `temp-${Date.now()}`;
     const optimisticMsg: Message = { 
@@ -2479,27 +2486,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
-  async function saveLink() {
-    const normalized = normalizeLink(linkDraft);
-    if (normalized === null) { setErrorMsg("Enter a valid link, for example yourwebsite.com"); return; }
-    if (normalized === (myProfile.link ?? "")) return;
-    const { error } = await supabase.from("profiles").update({ link: normalized || null }).eq("id", myProfile.id);
+  async function saveWebsite() {
+    const trimmed = websiteDraft.trim();
+    if (trimmed === (myProfile.website ?? "")) return;
+    const { error } = await supabase.from("profiles").update({ website: trimmed }).eq("id", myProfile.id);
     if (error) { setErrorMsg("Failed to save link. Please try again."); return; }
-    setMyProfile((prev) => ({ ...prev, link: normalized || null }));
-    setLinkDraft(normalized ? displayLink(normalized) : "");
+    setMyProfile((prev) => ({ ...prev, website: trimmed }));
   }
-
-  const loadMyBlocks = useCallback(async () => {
-    const { data } = await supabase.from("user_blocks").select("blocked_id, kind").eq("blocker_id", myProfile.id);
-    const blocked = new Set<string>();
-    const restricted = new Set<string>();
-    (data ?? []).forEach((row: any) => { (row.kind === "restrict" ? restricted : blocked).add(row.blocked_id); });
-    setBlockedIds(blocked);
-    setRestrictedIds(restricted);
-    restrictedIdsRef.current = restricted;
-  }, [supabase, myProfile.id]);
-
-  useEffect(() => { loadMyBlocks(); }, [loadMyBlocks]);
 
   const loadStatuses = useCallback(async () => {
     const { data } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
@@ -2507,6 +2500,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [supabase]);
 
   useEffect(() => { loadStatuses(); }, [loadStatuses]);
+  useEffect(() => { if (myProfile?.id) loadMyModerationLists(); }, [myProfile?.id]);
 
   useEffect(() => {
     const channel = supabase.channel("statuses-realtime").on("postgres_changes", { event: "*", schema: "public", table: "statuses" }, () => loadStatuses()).subscribe();
@@ -3074,7 +3068,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   const otherIsOnline = active?.otherProfile ? onlineIds.has(active.otherProfile.id) : false;
   const otherDisplayProfile = otherProfileFresh ?? active?.otherProfile ?? null;
-  const contactBlocked = !!(active && !active.is_group && otherDisplayProfile && blockedIds.has(otherDisplayProfile.id));
   const activeStatusList = statusViewerUserId ? (statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? []) : [];
   const activeStatusItem = activeStatusList[statusViewerIndex] ?? null;
   const activeStatusProfile = activeStatusItem?.profile ?? (statusViewerUserId === myProfile.id ? myProfile : active?.otherProfile) ?? null;
@@ -3438,239 +3431,180 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
-      {profileView && (() => {
-        const pv = profileView;
-        const isBlocked = blockedIds.has(pv.id);
-        const isRestricted = restrictedIds.has(pv.id);
-        const online = onlineIds.has(pv.id);
-        const safeLink = pv.link ? normalizeLink(pv.link) : null;
-        const followLabel = profileViewFollowing ? "Following" : profileViewFollowsMe ? "Follow back" : "Follow";
-        const statusCount = statuses.filter((s) => s.user_id === pv.id).length;
-        const stats: { label: string; value: number | null }[] = [
-          { label: "Following", value: profileViewFollowingCount },
-          { label: "Followers", value: profileViewFollowerCount },
-          { label: "Status", value: statusCount },
-        ];
-        return (
+      {profileView && (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
           <div
             className="pointer-events-none absolute left-1/2 top-0 h-64 w-64 -translate-x-1/2 rounded-full opacity-25"
-            style={{ background: `radial-gradient(circle, ${pv.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
+            style={{ background: `radial-gradient(circle, ${profileView.avatar_color ?? "#7C5CFF"} 0%, transparent 70%)` }}
           />
-
-          {/* Top bar: back · name · more */}
-          <header className="relative z-10 flex items-center justify-between px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-            <button onClick={closeProfileView} className="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white active:scale-90" aria-label="Back">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <header className="relative z-10 flex items-center justify-between px-4 py-4">
+            <button onClick={closeProfileView} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="Back">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
-            <p className="min-w-0 flex-1 truncate px-2 text-center font-display text-[17px] font-bold text-white tx1">{pv.display_name}</p>
-            <button onClick={() => setProfileMenuOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white active:scale-90" aria-label="More options" aria-haspopup="dialog">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9" /><circle cx="12" cy="12" r="1.9" /><circle cx="19" cy="12" r="1.9" /></svg>
-            </button>
-          </header>
-
-          {/* Avatar · @username · presence */}
-          <div className="relative z-10 flex flex-col items-center px-6 pt-3 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
+            <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
             <div className="relative">
-              <div className="rounded-full p-[3px]" style={{ background: online ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
-                <div className="rounded-full bg-ink-900 p-[3px]">
-                  <Avatar name={pv.display_name} color={pv.avatar_color} avatarUrl={pv.avatar_url} size={96} />
-                </div>
-              </div>
-              {online && <span className="absolute bottom-1.5 right-1.5 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />}
-            </div>
-            <h2 className="mt-3 flex items-center font-display text-[17px] font-semibold text-white tx1">
-              @{pv.username}
-              {isVerified(pv.username, pv.verified) && <VerifiedBadge size={18} />}
-            </h2>
-            <p className="mt-1 flex items-center gap-1.5 text-[12px]" style={{ color: online ? "#22D3B8" : "rgba(255,255,255,0.45)" }}>
-              <span className="relative flex h-1.5 w-1.5">
-                {online && <span className="absolute inset-0 animate-ping rounded-full bg-teal opacity-60" />}
-                <span className="relative h-1.5 w-1.5 rounded-full" style={{ background: online ? "#22D3B8" : "rgba(255,255,255,0.3)" }} />
-              </span>
-              {online ? "Active now" : pv.last_seen ? `Last seen ${formatLastSeen(pv.last_seen)}` : "Offline"}
-            </p>
-
-            {/* Stats */}
-            <div className="mt-5 flex w-full max-w-sm items-stretch justify-center">
-              {stats.map((st, i) => (
-                <Fragment key={st.label}>
-                  {i > 0 && <div className="my-1 w-px bg-white/10" />}
-                  <div className="flex min-w-0 flex-1 flex-col items-center px-1">
-                    <span className="text-[17px] font-bold tabular-nums text-white tx1">{formatCount(st.value)}</span>
-                    <span className="mt-0.5 text-[12px] text-white/45 tx2">{st.label}</span>
+              <button onClick={() => setProfileMenuOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="More options">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.8" fill="currentColor" /><circle cx="12" cy="12" r="1.8" fill="currentColor" /><circle cx="19" cy="12" r="1.8" fill="currentColor" /></svg>
+              </button>
+              {profileMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-20" onClick={() => setProfileMenuOpen(false)} />
+                  <div className="absolute right-0 top-11 z-30 flex min-w-[180px] flex-col gap-0.5 rounded-2xl border border-white/10 bg-ink-800 p-1.5 shadow-2xl" style={{ animation: "ciSlideUp 0.15s ease-out forwards" }}>
+                    <button
+                      onClick={() => toggleRestrictUser(profileView)}
+                      disabled={profileViewRestrictBusy}
+                      className="rounded-xl px-3 py-2.5 text-left text-[13.5px] font-medium text-yellow-400 transition hover:bg-white/5 disabled:opacity-50"
+                    >
+                      {profileViewRestricted ? "Unrestrict" : "Restrict"}
+                    </button>
+                    <button
+                      onClick={() => toggleBlockUser(profileView)}
+                      disabled={profileViewBlockBusy}
+                      className="rounded-xl px-3 py-2.5 text-left text-[13.5px] font-medium text-red-400 transition hover:bg-white/5 disabled:opacity-50"
+                    >
+                      {profileViewBlocked ? "Unblock" : "Block"}
+                    </button>
                   </div>
-                </Fragment>
-              ))}
-            </div>
-          </div>
-
-          {/* Follow (Connect stays below, exactly like before) */}
-          {isBlocked ? (
-            <div className="relative z-10 px-6 pt-5">
-              <button onClick={() => setRelationship(pv, null)} disabled={blockBusy} className="flex h-11 w-full items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
-                {blockBusy ? "Unblocking…" : "Unblock"}
-              </button>
-              <p className="mt-2 text-center text-xs text-white/40 tx2">You blocked @{pv.username}. They can&apos;t message, follow or connect with you.</p>
-            </div>
-          ) : (
-            <div className="relative z-10 flex flex-col items-center px-6 pt-5">
-              <button
-                onClick={toggleFollow}
-                disabled={followBusy}
-                aria-pressed={profileViewFollowing}
-                className={`flex h-11 w-full max-w-[300px] items-center justify-center rounded-full text-sm font-semibold transition active:scale-[0.98] disabled:opacity-70 ${
-                  profileViewFollowing
-                    ? "bg-white/10 text-white hover:bg-white/15"
-                    : "border border-violet/40 bg-violet/10 text-violet-light hover:bg-violet/20"
-                }`}
-              >
-                {profileViewFollowing ? "Following" : profileViewFollowsMe ? "Follow back" : "Follow"}
-              </button>
-              {isRestricted && <p className="mt-2 text-center text-xs text-white/40 tx2">You restricted this account.</p>}
-            </div>
-          )}
-
-          {/* Bio + link */}
-          {(pv.bio || safeLink) && (
-            <div className="relative z-10 flex flex-col items-center px-8 pt-4 text-center">
-              {pv.bio && <p className="max-w-xs whitespace-pre-wrap break-words text-[14px] leading-snug text-white/80 tx2">{pv.bio}</p>}
-              {safeLink && (
-                <a
-                  href={safeLink}
-                  target="_blank"
-                  rel="noopener noreferrer nofollow ugc"
-                  className="mt-3 inline-flex max-w-full items-center gap-1.5 text-[14px] font-semibold text-white tx1 hover:underline"
-                >
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="shrink-0" aria-hidden="true">
-                    <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                  <span className="truncate">{displayLink(safeLink)}</span>
-                </a>
+                </>
               )}
             </div>
-          )}
-
-          {profileViewMutuals.count > 0 && (
-            <div className="relative z-10 mt-4 flex items-center justify-center gap-2 px-6">
-              <div className="flex -space-x-2">
-                {profileViewMutuals.profiles.map((p) => (
-                  <div key={p.id} className="rounded-full border-2 border-ink-900">
-                    <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={24} />
-                  </div>
-                ))}
+          </header>
+          <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
+            <div className="relative">
+              <div className="rounded-full p-[3px]" style={{ background: onlineIds.has(profileView.id) ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
+                <div className="rounded-full bg-ink-900 p-[3px]">
+                  <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={104} />
+                </div>
               </div>
-              <p className="text-[12px] text-white/40 tx2">
-                Connected with <span className="text-white/70 tx2">{profileViewMutuals.profiles.map((p) => p.display_name).join(", ")}</span>
-                {profileViewMutuals.count > profileViewMutuals.profiles.length ? ` +${profileViewMutuals.count - profileViewMutuals.profiles.length}` : ""}
-              </p>
+              {onlineIds.has(profileView.id) && (
+                <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-[3px] border-ink-900 bg-teal" />
+              )}
             </div>
-          )}
-
-          {!isBlocked && (
-            <div className="relative z-10 flex gap-3 px-6 pb-8 pt-5">
+            <h2 className="mt-4 flex items-center font-display text-xl font-bold text-white tx1">
+              {profileView.display_name}
+              {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={18} />}
+            </h2>
+            <p className="text-sm text-white/40 tx2">@{profileView.username}</p>
+            <div
+              className="mt-3 flex items-center gap-1.5 rounded-full border px-3 py-1"
+              style={{
+                borderColor: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.28)" : "rgba(255,255,255,0.1)",
+                background: onlineIds.has(profileView.id) ? "rgba(34,211,184,0.08)" : "rgba(255,255,255,0.04)",
+              }}
+            >
+              <span className="relative flex h-2 w-2">
+                {onlineIds.has(profileView.id) && (
+                  <span className="absolute inset-0 animate-ping rounded-full bg-teal opacity-60" />
+                )}
+                <span className="relative h-2 w-2 rounded-full" style={{ background: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.3)" }} />
+              </span>
+              <span className="text-[11.5px] font-medium" style={{ color: onlineIds.has(profileView.id) ? "#22D3B8" : "rgba(255,255,255,0.45)" }}>
+                {onlineIds.has(profileView.id) ? "Active now" : profileView.last_seen ? `Last seen ${formatLastSeen(profileView.last_seen)}` : "Offline"}
+              </span>
+            </div>
+            <div className="mt-5 flex items-center gap-6">
+              <div className="flex flex-col items-center">
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewFollowerCount === null ? "—" : profileViewFollowerCount}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Followers</span>
+              </div>
+              <div className="h-8 w-px bg-white/8" />
+              <div className="flex flex-col items-center">
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewFollowingCount === null ? "—" : profileViewFollowingCount}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Following</span>
+              </div>
+              <div className="h-8 w-px bg-white/8" />
+              <div className="flex flex-col items-center">
+                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
+                <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Status</span>
+              </div>
+            </div>
+            {profileView.bio && (
+              <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{profileView.bio}</p>
+            )}
+            {profileView.website && (
+              <a
+                href={/^https?:\/\//i.test(profileView.website) ? profileView.website : `https://${profileView.website}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-violet-light"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 15l6-6M10 6l1-1a4 4 0 015.5 5.5L15 12M14 18l-1 1a4 4 0 01-5.5-5.5L9 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                {profileView.website.replace(/^https?:\/\//i, "")}
+              </a>
+            )}
+            {profileViewMutuals.count > 0 && (
+              <div className="mt-4 flex items-center gap-2">
+                <div className="flex -space-x-2">
+                  {profileViewMutuals.profiles.map((p) => (
+                    <div key={p.id} className="rounded-full border-2 border-ink-900">
+                      <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={24} />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[12px] text-white/40 tx2">
+                  Connected with <span className="text-white/70 tx2">{profileViewMutuals.profiles.map((p) => p.display_name).join(", ")}</span>
+                  {profileViewMutuals.count > profileViewMutuals.profiles.length ? ` +${profileViewMutuals.count - profileViewMutuals.profiles.length}` : ""}
+                </p>
+              </div>
+            )}
+          </div>
+          {profileViewBlocked ? (
+            <div className="relative z-10 px-6 pb-8">
+              <div className="flex items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">You've blocked this account</div>
+            </div>
+          ) : (
+            <div className="relative z-10 flex gap-3 px-6 pb-8">
+              <button
+                onClick={() => toggleFollow(profileView)}
+                disabled={profileViewFollowBusy}
+                className={`flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 ${
+                  profileViewIsFollowing
+                    ? "border border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70"
+                    : "border border-white/15 bg-white/10 text-white hover:bg-white/15"
+                }`}
+              >
+                {profileViewIsFollowing ? "Following" : "Follow"}
+              </button>
               {profileViewStatus === "loading" && (
                 <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
               )}
               {profileViewStatus === "none" && (
-                <button onClick={() => { setConnectPopupTarget(pv); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
+                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
               )}
               {profileViewStatus === "pending" && (
                 <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
               )}
               {profileViewStatus === "declined" && (
-                <button onClick={() => { setConnectPopupTarget(pv); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
+                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
               )}
               {profileViewStatus === "connected" && (
                 <button onClick={goToProfileChat} disabled={startingProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60">{startingProfileChat ? "Starting…" : "Message"}</button>
               )}
             </div>
           )}
-          {isBlocked && <div className="h-8 shrink-0" />}
-            {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
-              <div className="relative z-10 px-6 pb-8">
-                {isVerified(profileView.username, false) ? (
-                  <p className="text-center text-[11px] text-mist">This account is verified by default and can't be changed here.</p>
-                ) : profileView.verified ? (
-                  <button
-                    onClick={() => setVerification(profileView, false)}
-                    disabled={grantingVerification}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400 disabled:opacity-50"
-                  >
-                    {grantingVerification ? "Updating…" : "Remove Verification"}
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => setVerification(profileView, true)}
-                    disabled={grantingVerification}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
-                  >
-                    {grantingVerification ? "Verifying…" : "Grant Verification"}
-                  </button>
-                )}
-              </div>
-            )}
-        </div>
-        );
-      })()}
-
-      {profileView && profileMenuOpen && (
-        <div
-          className="fixed inset-0 z-[65] flex items-end justify-center bg-black/60 backdrop-blur-sm"
-          onClick={() => { if (!blockBusy) { setProfileMenuOpen(false); setProfileMenuConfirm(null); } }}
-        >
-          <div
-            role="dialog"
-            aria-label="Profile options"
-            className="w-full max-w-md rounded-t-3xl border border-white/10 bg-ink-800 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))]"
-            style={{ animation: "ciSlideUp 0.22s ease-out forwards" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mx-auto mb-3 h-1 w-9 rounded-full bg-white/15" />
-            {profileMenuConfirm === "block" ? (
-              <>
-                <p className="text-center font-display text-base font-bold text-white">Block @{profileView.username}?</p>
-                <p className="mt-2 text-center text-sm text-mist">They won&apos;t be able to message you, follow you or send you a connect request. They won&apos;t be notified. You can unblock anytime from their profile.</p>
-                <div className="mt-5 flex gap-3">
-                  <button onClick={() => setProfileMenuConfirm(null)} disabled={blockBusy} className="flex-1 rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white">Cancel</button>
-                  <button onClick={() => setRelationship(profileView, "block")} disabled={blockBusy} className="flex-1 rounded-full bg-red-500 py-3 text-sm font-semibold text-white disabled:opacity-50">{blockBusy ? "Blocking…" : "Block"}</button>
-                </div>
-              </>
-            ) : (
-              <>
-                {!blockedIds.has(profileView.id) && (
-                  <button
-                    onClick={() => setRelationship(profileView, restrictedIds.has(profileView.id) ? null : "restrict")}
-                    disabled={blockBusy}
-                    className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left transition hover:bg-white/5 active:bg-white/10 disabled:opacity-50"
-                  >
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/10 text-white">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-[15px] font-semibold text-white">{restrictedIds.has(profileView.id) ? "Unrestrict" : "Restrict"}</span>
-                      <span className="block text-xs text-mist">{restrictedIds.has(profileView.id) ? "Their messages will count as unread again." : "Their messages won't show unread badges for you. They won't be notified."}</span>
-                    </span>
-                  </button>
-                )}
+          {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
+            <div className="relative z-10 px-6 pb-8">
+              {isVerified(profileView.username, false) ? (
+                <p className="text-center text-[11px] text-mist">This account is verified by default and can't be changed here.</p>
+              ) : profileView.verified ? (
                 <button
-                  onClick={() => { if (blockedIds.has(profileView.id)) setRelationship(profileView, null); else setProfileMenuConfirm("block"); }}
-                  disabled={blockBusy}
-                  className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left transition hover:bg-red-500/10 active:bg-red-500/15 disabled:opacity-50"
+                  onClick={() => setVerification(profileView, false)}
+                  disabled={grantingVerification}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400 disabled:opacity-50"
                 >
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-500/15 text-red-400">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[15px] font-semibold text-red-400">{blockedIds.has(profileView.id) ? "Unblock" : "Block"}</span>
-                    <span className="block text-xs text-mist">{blockedIds.has(profileView.id) ? "They'll be able to reach you again." : "They can't message, follow or connect with you."}</span>
-                  </span>
+                  {grantingVerification ? "Updating…" : "Remove Verification"}
                 </button>
-                <button onClick={() => { setProfileMenuOpen(false); setProfileMenuConfirm(null); }} className="mt-2 w-full rounded-full bg-white/5 py-3 text-sm font-semibold text-white transition hover:bg-white/10">Cancel</button>
-              </>
-            )}
-          </div>
+              ) : (
+                <button
+                  onClick={() => setVerification(profileView, true)}
+                  disabled={grantingVerification}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-full border border-violet/30 bg-violet/10 py-3 text-sm font-semibold text-violet-light disabled:opacity-50"
+                >
+                  {grantingVerification ? "Verifying…" : "Grant Verification"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -4698,23 +4632,22 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <div className="glass mt-4 rounded-2xl px-4 py-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-medium text-mist">Link</span>
-                  <span className="text-[10px] text-mist/70">{linkDraft.length}/{MAX_LINK_LENGTH}</span>
+                  <span className="text-[10px] text-mist/70">{websiteDraft.length}/{MAX_WEBSITE_LENGTH}</span>
                 </div>
                 <input
-                  value={linkDraft}
-                  onChange={(e) => setLinkDraft(e.target.value.slice(0, MAX_LINK_LENGTH))}
+                  value={websiteDraft}
+                  onChange={(e) => setWebsiteDraft(e.target.value.slice(0, MAX_WEBSITE_LENGTH))}
                   placeholder="yourwebsite.com"
-                  inputMode="url"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  style={{ fontSize: 16 }}
-                  className="mt-2 w-full bg-transparent text-white placeholder:text-mist/50 outline-none"
+                  className="mt-2 w-full bg-transparent text-sm text-white placeholder:text-mist/50 outline-none"
                 />
               </div>
               <button
-                onClick={() => { saveDisplayName(); saveBio(); saveLink(); }}
-                disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "") && linkDraft.trim() === (myProfile.link ? displayLink(myProfile.link) : "")}
+                onClick={() => { saveDisplayName(); saveBio(); saveWebsite(); }}
+                disabled={
+                  (!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) &&
+                  bioDraft.trim() === (myProfile.bio ?? "") &&
+                  websiteDraft.trim() === (myProfile.website ?? "")
+                }
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
               >
                 Save Changes
@@ -4825,20 +4758,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
             <div className="relative z-10 mx-5 mb-4 h-px bg-white/6" />
             <div className="relative z-10 flex flex-col gap-2 px-5 pb-8">
-              {!active.is_group && otherDisplayProfile && (
-                <button
-                  onClick={() => {
-                    if (contactBlocked) { setRelationship(otherDisplayProfile, null); return; }
-                    if (window.confirm(`Block @${otherDisplayProfile.username}? They won't be able to message, follow or connect with you.`)) setRelationship(otherDisplayProfile, "block");
-                  }}
-                  disabled={blockBusy}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition disabled:opacity-50"
-                  style={{ background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(255,255,255,0.03)", borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.07)", color: "#F87171" }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                  {contactBlocked ? "Unblock User" : "Block User"}
-                </button>
-              )}
+              <button onClick={() => setContactBlocked((v) => !v)} className="flex w-full items-center justify-center gap-2 rounded-2xl border py-3.5 text-sm font-semibold transition" style={{ background: contactBlocked ? "rgba(248,113,113,0.10)" : "rgba(255,255,255,0.03)", borderColor: contactBlocked ? "rgba(248,113,113,0.25)" : "rgba(255,255,255,0.07)", color: "#F87171" }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                {contactBlocked ? "Unblock User" : "Block User"}
+              </button>
               <button className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/7 bg-white/3 py-3.5 text-sm font-semibold text-red-400 transition hover:bg-red-500/8">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><polyline points="3 6 5 6 21 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 Delete Chat
@@ -5135,14 +5058,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            {contactBlocked && (
-              <div className="relative z-10 flex items-center justify-between gap-3 border-t border-red-500/20 bg-red-500/10 px-4 py-2.5">
-                <p className="text-xs text-red-300">You blocked this user. They can&apos;t reach you and you can&apos;t message them.</p>
-                {otherDisplayProfile && (
-                  <button type="button" onClick={() => setRelationship(otherDisplayProfile, null)} disabled={blockBusy} className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Unblock</button>
-                )}
-              </div>
-            )}
             <form onSubmit={sendMessage} className="relative z-10 border-t border-white/[0.06] bg-[#0B0D14] px-3 py-3 md:px-6">
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
               <div className="flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#171A24] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
