@@ -819,6 +819,16 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [profileViewStatusCount, setProfileViewStatusCount] = useState<number | null>(null);
   const profileViewIdRef = useRef<string | null>(null);
+
+  // Logged-in user's own follower / following numbers + the list popup
+  const [myFollowerCount, setMyFollowerCount] = useState<number | null>(null);
+  const [myFollowingCount, setMyFollowingCount] = useState<number | null>(null);
+  const [followSheet, setFollowSheet] = useState<"followers" | "following" | null>(null);
+  const [followLists, setFollowLists] = useState<{ followers: Profile[]; following: Profile[] } | null>(null);
+  const [myFollowingIds, setMyFollowingIds] = useState<Set<string>>(new Set());
+  const [followBusyId, setFollowBusyId] = useState<string | null>(null);
+  const followSheetRef = useRef<"followers" | "following" | null>(null);
+  followSheetRef.current = followSheet;
   const profileCacheRef = useRef<Record<string, ProfileCacheEntry> | null>(null);
 
   // Profile numbers/state are remembered per user (in memory + localStorage), so
@@ -2154,6 +2164,112 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setGrantingVerification(false);
   }
 
+  // ---- Own followers / following (Profile tab) ----
+  async function loadMyFollowCounts() {
+    const [f1, f2] = await Promise.all([
+      supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("followed_id", myProfile.id),
+      supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("follower_id", myProfile.id),
+    ]);
+    if (f1.count !== null) setMyFollowerCount(f1.count);
+    if (f2.count !== null) setMyFollowingCount(f2.count);
+  }
+
+  // Returns null on error so a failed request never wipes what's already shown
+  async function fetchFollowIds(pick: "follower_id" | "followed_id", match: "follower_id" | "followed_id"): Promise<string[] | null> {
+    const sb: any = supabase;
+    let res = await sb.from("follows").select(`${pick}, created_at`).eq(match, myProfile.id).order("created_at", { ascending: false });
+    if (res.error) res = await sb.from("follows").select(pick).eq(match, myProfile.id);
+    if (res.error) return null;
+    return ((res.data ?? []) as any[]).map((r) => r[pick] as string);
+  }
+
+  async function loadFollowLists() {
+    const [followerIds, followingIds] = await Promise.all([
+      fetchFollowIds("follower_id", "followed_id"),
+      fetchFollowIds("followed_id", "follower_id"),
+    ]);
+    if (!followerIds || !followingIds) return;
+    const allIds = Array.from(new Set([...followerIds, ...followingIds]));
+    const byId: Record<string, Profile> = {};
+    const chunks: string[][] = [];
+    for (let i = 0; i < allIds.length; i += 100) chunks.push(allIds.slice(i, i + 100));
+    const results = await Promise.all(chunks.map((ids) => supabase.from("profiles").select("*").in("id", ids)));
+    results.forEach((r) => ((r.data ?? []) as Profile[]).forEach((pr) => { byId[pr.id] = pr; }));
+    setMyFollowingIds(new Set(followingIds));
+    setFollowLists({
+      followers: followerIds.map((id) => byId[id]).filter(Boolean),
+      following: followingIds.map((id) => byId[id]).filter(Boolean),
+    });
+    setMyFollowerCount(followerIds.length);
+    setMyFollowingCount(followingIds.length);
+  }
+
+  function refreshMyFollowData() {
+    loadMyFollowCounts();
+    if (followSheetRef.current) loadFollowLists();
+  }
+
+  function openFollowSheet(tab: "followers" | "following") {
+    setFollowSheet(tab);
+    loadFollowLists();
+  }
+
+  async function toggleFollowFromList(target: Profile) {
+    if (followBusyId) return;
+    setFollowBusyId(target.id);
+    const wasFollowing = myFollowingIds.has(target.id);
+    const { error } = wasFollowing
+      ? await supabase.from("follows").delete().eq("follower_id", myProfile.id).eq("followed_id", target.id)
+      : await supabase.from("follows").insert({ follower_id: myProfile.id, followed_id: target.id });
+    if (!error) {
+      setMyFollowingIds((prev) => {
+        const next = new Set(prev);
+        if (wasFollowing) next.delete(target.id); else next.add(target.id);
+        return next;
+      });
+      setMyFollowingCount((c) => (c === null ? c : Math.max(0, c + (wasFollowing ? -1 : 1))));
+      const prevFollowers = getProfileCache()[target.id]?.followers;
+      saveProfileCache(target.id, {
+        isFollowing: !wasFollowing,
+        ...(prevFollowers !== undefined ? { followers: Math.max(0, prevFollowers + (wasFollowing ? -1 : 1)) } : {}),
+      });
+      if (!wasFollowing) {
+        notifyUser({ userId: target.id, type: "follow", title: "New follower", body: `${myProfile.display_name} started following you.` });
+      }
+    }
+    setFollowBusyId(null);
+  }
+
+  // Show saved numbers instantly, then refresh quietly
+  useEffect(() => {
+    const c = getProfileCache()[myProfile.id];
+    if (c?.followers !== undefined) setMyFollowerCount(c.followers);
+    if (c?.following !== undefined) setMyFollowingCount(c.following);
+    loadMyFollowCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myProfile.id]);
+
+  useEffect(() => {
+    if (mobileTab === "profile") loadMyFollowCounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileTab]);
+
+  useEffect(() => {
+    if (myFollowerCount !== null) saveProfileCache(myProfile.id, { followers: myFollowerCount });
+    if (myFollowingCount !== null) saveProfileCache(myProfile.id, { following: myFollowingCount });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myFollowerCount, myFollowingCount]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel(`my-follows:${myProfile.id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "follows", filter: `followed_id=eq.${myProfile.id}` }, () => refreshMyFollowData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "follows", filter: `follower_id=eq.${myProfile.id}` }, () => refreshMyFollowData())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supabase, myProfile.id]);
+
   async function toggleFollow(target: Profile) {
     if (followToggling) return;
     setFollowToggling(true);
@@ -2163,6 +2279,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         setProfileViewFollowing(false);
         setProfileViewFollowerCount((c) => (c === null ? c : Math.max(0, c - 1)));
         saveProfileCache(target.id, { isFollowing: false, ...(profileViewFollowerCount !== null ? { followers: Math.max(0, profileViewFollowerCount - 1) } : {}) });
+        setMyFollowingIds((prev) => { const next = new Set(prev); next.delete(target.id); return next; });
+        setMyFollowingCount((c) => (c === null ? c : Math.max(0, c - 1)));
+        if (followSheetRef.current) loadFollowLists();
       }
     } else {
       const { error } = await supabase.from("follows").insert({ follower_id: myProfile.id, followed_id: target.id });
@@ -2170,6 +2289,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         setProfileViewFollowing(true);
         setProfileViewFollowerCount((c) => (c === null ? c : c + 1));
         saveProfileCache(target.id, { isFollowing: true, ...(profileViewFollowerCount !== null ? { followers: profileViewFollowerCount + 1 } : {}) });
+        setMyFollowingIds((prev) => new Set(prev).add(target.id));
+        setMyFollowingCount((c) => (c === null ? c : c + 1));
+        if (followSheetRef.current) loadFollowLists();
         notifyUser({
           userId: target.id,
           type: "follow",
@@ -3469,6 +3591,98 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
+      {followSheet && (
+        <div
+          className="fixed inset-0 z-[55] flex items-end justify-center sm:items-center sm:p-6"
+          style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)", animation: "statusFadeIn 160ms ease-out" }}
+          onClick={() => setFollowSheet(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={followSheet === "followers" ? "Followers" : "Following"}
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-[78vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-ink-800 shadow-2xl sm:h-[70vh] sm:rounded-3xl"
+            style={{ animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
+          >
+            <div className="px-4 pt-3">
+              <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
+              <div className="flex items-center justify-between pb-1">
+                <p className="font-display text-[15px] font-bold text-white">@{myProfile.username}</p>
+                <button onClick={() => setFollowSheet(null)} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 border-b border-white/10">
+              {(["followers", "following"] as const).map((tab) => {
+                const on = followSheet === tab;
+                const n = tab === "followers" ? myFollowerCount : myFollowingCount;
+                return (
+                  <button
+                    key={tab}
+                    onClick={() => setFollowSheet(tab)}
+                    className={`relative py-3 text-[13.5px] font-semibold transition ${on ? "text-white" : "text-white/45 hover:text-white/70"}`}
+                  >
+                    {tab === "followers" ? "Followers" : "Following"}
+                    {n !== null && <span className="ml-1.5 tabular-nums text-white/45">{formatCount(n)}</span>}
+                    {on && <span className="absolute inset-x-6 bottom-0 h-[2px] rounded-full bg-[#E54E60]" />}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto py-1" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
+              {followLists === null ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                    <div className="h-11 w-11 animate-pulse rounded-full bg-white/10" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 w-32 animate-pulse rounded bg-white/10" />
+                      <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
+                    </div>
+                  </div>
+                ))
+              ) : followLists[followSheet].length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                  <p className="text-sm font-semibold text-white">{followSheet === "followers" ? "No followers yet" : "Not following anyone yet"}</p>
+                  <p className="mt-1 text-xs text-mist">
+                    {followSheet === "followers" ? "When someone follows you, they'll show up here." : "People you follow will show up here."}
+                  </p>
+                </div>
+              ) : (
+                followLists[followSheet].map((pr) => {
+                  const iFollow = myFollowingIds.has(pr.id);
+                  const followsMe = followLists.followers.some((f) => f.id === pr.id);
+                  return (
+                    <div key={pr.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <button onClick={() => openProfileView(pr)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                        <Avatar name={pr.display_name} color={pr.avatar_color} avatarUrl={pr.avatar_url} size={44} />
+                        <div className="min-w-0">
+                          <p className="flex items-center truncate text-[14.5px] font-semibold text-white tx1">
+                            {pr.display_name}
+                            {isVerified(pr.username, pr.verified) && <VerifiedBadge size={14} />}
+                          </p>
+                          <p className="truncate text-xs text-mist">@{pr.username}</p>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => toggleFollowFromList(pr)}
+                        disabled={followBusyId === pr.id}
+                        className={`h-8 min-w-[92px] shrink-0 rounded-[10px] px-3 text-[13px] font-semibold text-white transition active:scale-95 disabled:opacity-60 ${
+                          iFollow ? "bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] hover:bg-[#3A3A3A]" : "bg-[#E54E60] hover:bg-[#EC5C6D]"
+                        }`}
+                      >
+                        {followBusyId === pr.id ? "…" : iFollow ? "Following" : followsMe ? "Follow back" : "Follow"}
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {profileView && (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
           <div
@@ -4671,21 +4885,24 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
-              <div className="glass mt-6 rounded-2xl overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-violet/15 text-violet-light">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
-                        <path d="M12 2.5v2.2M12 19.3v2.2M21.5 12h-2.2M4.7 12H2.5M18.4 5.6l-1.55 1.55M7.15 16.85 5.6 18.4M18.4 18.4l-1.55-1.55M7.15 7.15 5.6 5.6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                      </svg>
-                    </span>
-                    <div>
-                      <p className="text-sm font-semibold text-white">Active Status</p>
-                      <p className="text-[11px] text-mist">{activeStatusOn ? "You're visible online" : "You're appearing offline"}</p>
-                    </div>
-                  </div>
-                  <ActiveStatusSwitch on={activeStatusOn} onChange={toggleActiveStatus} />
+              <div className="glass mt-6 overflow-hidden rounded-2xl">
+                <div className="grid grid-cols-2 divide-x divide-black/5 dark:divide-white/5">
+                  {([
+                    { key: "followers", label: "Followers", n: myFollowerCount },
+                    { key: "following", label: "Following", n: myFollowingCount },
+                  ] as const).map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => openFollowSheet(item.key)}
+                      aria-label={`View ${item.label.toLowerCase()}`}
+                      className="flex flex-col items-center py-4 transition hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                    >
+                      <span className="flex h-7 items-center font-display text-[22px] font-bold tabular-nums text-white">
+                        {item.n === null ? <CountSkeleton /> : formatCount(item.n)}
+                      </span>
+                      <span className="mt-0.5 text-[12px] font-medium text-mist">{item.label}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
