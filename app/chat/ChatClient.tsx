@@ -816,8 +816,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [profileView, setProfileView] = useState<Profile | null>(null);
   const [profileViewStatus, setProfileViewStatus] = useState<"loading" | "none" | "pending" | "declined" | "connected" | null>(null);
   const [profileViewConvoId, setProfileViewConvoId] = useState<string | null>(null);
-  const [profileViewConnCount, setProfileViewConnCount] = useState<number | null>(null);
-  const [profileViewAnimCount, setProfileViewAnimCount] = useState(0);
   const [profileViewMutuals, setProfileViewMutuals] = useState<{ profiles: Profile[]; count: number }>({ profiles: [], count: 0 });
   const [profileViewFollowing, setProfileViewFollowing] = useState(false);
   const [profileViewFollowsMe, setProfileViewFollowsMe] = useState(false);
@@ -1862,23 +1860,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return () => { if (callTimerRef.current) clearInterval(callTimerRef.current); };
   }, [callStatus]);
 
-  useEffect(() => {
-    if (profileViewConnCount === null || profileViewConnCount === 0) { setProfileViewAnimCount(0); return; }
-    let raf: number;
-    const target = profileViewConnCount;
-    const start = performance.now();
-    const duration = 650;
-    function step(now: number) {
-      const p = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - p, 3);
-      setProfileViewAnimCount(Math.floor(eased * target));
-      if (p < 1) raf = requestAnimationFrame(step);
-      else setProfileViewAnimCount(target);
-    }
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-  }, [profileViewConnCount]);
-
   async function sendToUser(targetId: string, event: string, payload: any) {
     const channel = supabase.channel(`calls:${targetId}`);
     await new Promise<void>((resolve) => { channel.subscribe((status) => { if (status === "SUBSCRIBED") resolve(); }); });
@@ -2047,8 +2028,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileView(other);
     setProfileViewStatus("loading");
     setProfileViewConvoId(null);
-    setProfileViewConnCount(null);
-    setProfileViewAnimCount(0);
     setProfileViewMutuals({ profiles: [], count: 0 });
     setProfileViewFollowing(false);
     setProfileViewFollowsMe(false);
@@ -2059,7 +2038,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     loadFollowInfo(other.id);
 
     fetchAcceptedConnectionIds(other.id).then(async (theirIds) => {
-      setProfileViewConnCount(theirIds.length);
       const myIds = await fetchAcceptedConnectionIds(myProfile.id);
       const mutualIds = myIds.filter((id) => theirIds.includes(id));
       if (mutualIds.length > 0) {
@@ -2106,7 +2084,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileView(null);
     setProfileViewStatus(null);
     setProfileViewConvoId(null);
-    setProfileViewConnCount(null);
     setProfileViewMutuals({ profiles: [], count: 0 });
   }
 
@@ -3468,17 +3445,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         const online = onlineIds.has(pv.id);
         const safeLink = pv.link ? normalizeLink(pv.link) : null;
         const followLabel = profileViewFollowing ? "Following" : profileViewFollowsMe ? "Follow back" : "Follow";
-        // the "next best action" gets the accent colour: Follow first, then Connect/Message once you follow
-        const followPrimary = !profileViewFollowing;
-        const primaryCls = "bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30";
-        const neutralCls = "bg-white/10 text-white hover:bg-white/15";
-        const connectCls = followPrimary ? neutralCls : primaryCls;
         const statusCount = statuses.filter((s) => s.user_id === pv.id).length;
         const stats: { label: string; value: number | null }[] = [
           { label: "Following", value: profileViewFollowingCount },
           { label: "Followers", value: profileViewFollowerCount },
           { label: "Status", value: statusCount },
-          { label: "Connections", value: profileViewConnCount === null ? null : profileViewAnimCount },
         ];
         return (
         <div className="fixed inset-0 z-[60] flex flex-col overflow-y-auto bg-ink-900">
@@ -3534,41 +3505,28 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
           </div>
 
-          {/* Actions */}
+          {/* Follow (Connect stays below, exactly like before) */}
           {isBlocked ? (
             <div className="relative z-10 px-6 pt-5">
-              <button onClick={() => setRelationship(pv, null)} disabled={blockBusy} className="flex h-11 w-full items-center justify-center rounded-lg bg-white/10 text-[15px] font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
+              <button onClick={() => setRelationship(pv, null)} disabled={blockBusy} className="flex h-11 w-full items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-50">
                 {blockBusy ? "Unblocking…" : "Unblock"}
               </button>
               <p className="mt-2 text-center text-xs text-white/40 tx2">You blocked @{pv.username}. They can&apos;t message, follow or connect with you.</p>
             </div>
           ) : (
-            <div className="relative z-10 px-6 pt-5">
-              <div className="flex gap-2">
-                <button
-                  onClick={toggleFollow}
-                  disabled={followBusy}
-                  aria-pressed={profileViewFollowing}
-                  className={`flex h-11 flex-1 items-center justify-center rounded-lg text-[15px] font-semibold transition active:scale-[0.98] disabled:opacity-70 ${followPrimary ? primaryCls : neutralCls}`}
-                >
-                  {followLabel}
-                </button>
-                {profileViewStatus === "loading" && (
-                  <div className="flex h-11 flex-1 items-center justify-center rounded-lg bg-white/5 text-[15px] font-semibold text-mist">Checking…</div>
-                )}
-                {profileViewStatus === "none" && (
-                  <button onClick={() => { setConnectPopupTarget(pv); setConnectPopupMode("ask"); }} className={`flex h-11 flex-1 items-center justify-center rounded-lg text-[15px] font-semibold transition active:scale-[0.98] ${connectCls}`}>Connect</button>
-                )}
-                {profileViewStatus === "pending" && (
-                  <button disabled className="flex h-11 flex-1 items-center justify-center rounded-lg bg-white/5 text-[15px] font-semibold text-mist">Request Sent</button>
-                )}
-                {profileViewStatus === "declined" && (
-                  <button onClick={() => { setConnectPopupTarget(pv); setConnectPopupMode("declined"); }} className="flex h-11 flex-1 items-center justify-center rounded-lg border border-red-500/25 bg-red-500/10 text-[15px] font-semibold text-red-400">Request Declined</button>
-                )}
-                {profileViewStatus === "connected" && (
-                  <button onClick={goToProfileChat} disabled={startingProfileChat} className={`flex h-11 flex-1 items-center justify-center rounded-lg text-[15px] font-semibold transition active:scale-[0.98] disabled:opacity-60 ${connectCls}`}>{startingProfileChat ? "Starting…" : "Message"}</button>
-                )}
-              </div>
+            <div className="relative z-10 flex flex-col items-center px-6 pt-5">
+              <button
+                onClick={toggleFollow}
+                disabled={followBusy}
+                aria-pressed={profileViewFollowing}
+                className={`flex h-11 w-full max-w-[300px] items-center justify-center rounded-full text-sm font-semibold transition active:scale-[0.98] disabled:opacity-70 ${
+                  profileViewFollowing
+                    ? "bg-white/10 text-white hover:bg-white/15"
+                    : "border border-violet/40 bg-violet/10 text-violet-light hover:bg-violet/20"
+                }`}
+              >
+                {profileViewFollowing ? "Following" : profileViewFollowsMe ? "Follow back" : "Follow"}
+              </button>
               {isRestricted && <p className="mt-2 text-center text-xs text-white/40 tx2">You restricted this account.</p>}
             </div>
           )}
@@ -3610,7 +3568,26 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
           )}
 
-          <div className="h-8 shrink-0" />
+          {!isBlocked && (
+            <div className="relative z-10 flex gap-3 px-6 pb-8 pt-5">
+              {profileViewStatus === "loading" && (
+                <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
+              )}
+              {profileViewStatus === "none" && (
+                <button onClick={() => { setConnectPopupTarget(pv); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
+              )}
+              {profileViewStatus === "pending" && (
+                <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
+              )}
+              {profileViewStatus === "declined" && (
+                <button onClick={() => { setConnectPopupTarget(pv); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
+              )}
+              {profileViewStatus === "connected" && (
+                <button onClick={goToProfileChat} disabled={startingProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60">{startingProfileChat ? "Starting…" : "Message"}</button>
+              )}
+            </div>
+          )}
+          {isBlocked && <div className="h-8 shrink-0" />}
             {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
               <div className="relative z-10 px-6 pb-8">
                 {isVerified(profileView.username, false) ? (
