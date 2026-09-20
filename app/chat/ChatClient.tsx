@@ -726,6 +726,80 @@ function CountSkeleton() {
   return <span className="inline-block h-[15px] w-7 animate-pulse rounded-md bg-white/10" />;
 }
 
+// Skeleton for the Chats list (avatar + name + last message + time)
+function ChatListSkeleton({ count = 7 }: { count?: number }) {
+  return (
+    <div aria-busy="true" aria-label="Loading chats">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="mb-1 flex items-center gap-3 rounded-xl px-3 py-2.5">
+          <div className="h-12 w-12 shrink-0 animate-pulse rounded-full bg-white/10" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 animate-pulse rounded bg-white/10" style={{ width: `${40 + ((i * 17) % 30)}%` }} />
+            <div className="h-3 animate-pulse rounded bg-white/[0.07]" style={{ width: `${55 + ((i * 23) % 35)}%` }} />
+          </div>
+          <div className="h-2.5 w-8 animate-pulse rounded bg-white/[0.07]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Skeleton rows for any "avatar + name + @username" list (search, viewers, mentions, suggestions)
+function PersonRowsSkeleton({ count = 4, avatar = 40, padX = "px-3", action = false }: { count?: number; avatar?: number; padX?: string; action?: boolean }) {
+  return (
+    <div aria-busy="true" aria-label="Loading">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className={`flex items-center gap-3 rounded-xl py-2.5 ${padX}`}>
+          <div className="shrink-0 animate-pulse rounded-full bg-white/10" style={{ width: avatar, height: avatar }} />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 animate-pulse rounded bg-white/10" style={{ width: `${35 + ((i * 19) % 30)}%` }} />
+            <div className="h-3 w-1/4 animate-pulse rounded bg-white/[0.07]" />
+          </div>
+          {action && <div className="h-7 w-20 shrink-0 animate-pulse rounded-full bg-white/10" />}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Skeleton for the Status tab list (big avatar + name + time)
+function StatusListSkeleton({ count = 4 }: { count?: number }) {
+  return (
+    <div aria-busy="true" aria-label="Loading status updates">
+      <div className="mx-3 mb-1 mt-3 h-3 w-28 animate-pulse rounded bg-white/[0.07]" />
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+          <div className="h-16 w-16 shrink-0 animate-pulse rounded-full bg-white/10" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-4 animate-pulse rounded bg-white/10" style={{ width: `${35 + ((i * 21) % 30)}%` }} />
+            <div className="h-3 w-1/3 animate-pulse rounded bg-white/[0.07]" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Skeleton chat bubbles for an opening conversation (compact = older messages loading at the top)
+function MessagesSkeleton({ compact = false }: { compact?: boolean }) {
+  const rows = [
+    { mine: false, w: "55%" }, { mine: false, w: "34%" }, { mine: true, w: "48%" },
+    { mine: false, w: "62%" }, { mine: true, w: "30%" }, { mine: true, w: "52%" },
+  ];
+  return (
+    <div className="space-y-3 pb-3 pt-2" aria-busy="true" aria-label="Loading messages">
+      {rows.slice(0, compact ? 2 : rows.length).map((r, i) => (
+        <div key={i} className={`flex ${r.mine ? "justify-end" : "justify-start"}`}>
+          <div
+            className={`h-10 animate-pulse rounded-2xl ${r.mine ? "rounded-br-md bg-violet/20" : "rounded-bl-md bg-white/[0.08]"}`}
+            style={{ width: r.w }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Skeleton placeholder for the Home "News for you" feed (featured card + list rows)
 function NewsSkeleton() {
   return (
@@ -800,10 +874,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [messages, setMessages] = useState<Message[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // which conversation's first page of messages has finished loading (drives the skeleton bubbles)
+  const [messagesLoadedFor, setMessagesLoadedFor] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
   const [suggestedProfiles, setSuggestedProfiles] = useState<Profile[]>([]);
+  const [suggestedLoaded, setSuggestedLoaded] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchSeqRef = useRef(0);
   const [loadingConvos, setLoadingConvos] = useState(true);
   const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set());
   const [otherProfileFresh, setOtherProfileFresh] = useState<Profile | null>(null);
@@ -959,6 +1038,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const recordingMimeTypeRef = useRef<string>("audio/webm");
 
   const [statuses, setStatuses] = useState<Status[]>([]);
+  const [statusesLoaded, setStatusesLoaded] = useState(false); // first load only, so realtime refreshes never flash a skeleton
   const [myViewedStatusIds, setMyViewedStatusIds] = useState<Set<string>>(new Set());
   const [statusViewerUserId, setStatusViewerUserId] = useState<string | null>(null);
   const [statusViewerIndex, setStatusViewerIndex] = useState(0);
@@ -1709,8 +1789,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   };
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId) { setMessagesLoadedFor(null); return; }
     let cancelled = false;
+    setMessagesLoadedFor(null);
     setMessages([]); setHasMore(true); setReplyingTo(null); setReactionsByMsg({});
     setPeerTyping(false);
     lastMessageCreatedAtRef.current = null;
@@ -1721,6 +1802,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (cancelled) return;
       const ordered = (data ?? []).slice().reverse();
       setMessages(ordered);
+      setMessagesLoadedFor(activeId);
       setHasMore((data ?? []).length === PAGE_SIZE);
       if (ordered.length > 0) {
         lastMessageCreatedAtRef.current = ordered[ordered.length - 1].created_at;
@@ -1904,14 +1986,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function loadMoreMessages() {
     if (!activeId || loadingMore || !hasMore || messages.length === 0) return;
+    const container = scrollRef.current;
+    const prevHeight = container?.scrollHeight ?? 0; // measured before the skeleton bubbles are inserted
     setLoadingMore(true);
     const oldest = messages[0];
     const { data } = await supabase.from("messages").select("*").eq("conversation_id", activeId).lt("created_at", oldest.created_at).order("created_at", { ascending: false }).limit(PAGE_SIZE);
     const older = (data ?? []).slice().reverse();
     if (older.length < PAGE_SIZE) setHasMore(false);
     if (older.length > 0) {
-      const container = scrollRef.current;
-      const prevHeight = container?.scrollHeight ?? 0;
       isPrependingRef.current = true;
       setMessages((prev) => [...older, ...prev]);
       loadReactionsFor(older.map((m) => m.id));
@@ -2031,9 +2113,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function handleSearch(q: string) {
     setSearch(q);
-    if (q.trim().length < 2) { setSearchResults([]); return; }
+    const seq = ++searchSeqRef.current; // ignore out-of-date responses while typing
+    if (q.trim().length < 2) { setSearchResults([]); setSearchLoading(false); return; }
+    setSearchLoading(true);
     const { data } = await supabase.from("profiles").select("*").ilike("username", `%${q.trim()}%`).neq("id", myProfile.id).limit(8);
+    if (seq !== searchSeqRef.current) return;
     setSearchResults(data ?? []);
+    setSearchLoading(false);
   }
 
   async function loadSuggestedProfiles() {
@@ -2049,6 +2135,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       );
       setSuggestedProfiles(sorted);
     }
+    setSuggestedLoaded(true);
   }
 
   async function openConnectPopup(other: Profile) {
@@ -2798,6 +2885,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const loadStatuses = useCallback(async () => {
     const { data } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
     setStatuses((data ?? []) as any);
+    setStatusesLoaded(true);
   }, [supabase]);
 
   useEffect(() => { loadStatuses(); }, [loadStatuses]);
@@ -4034,9 +4122,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </button>
 
               {profileViewStatus === "loading" && (
-                <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white/60">
-                  <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 40" strokeLinecap="round" /></svg>
-                </div>
+                <div className="h-[46px] w-[46px] shrink-0 animate-pulse rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06]" aria-busy="true" aria-label="Loading" />
               )}
               {profileViewStatus === "none" && (
                 <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white transition active:scale-95 hover:bg-[#3A3A3A]">
@@ -4404,9 +4490,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
             {statusMediaLoading && (
-              <div className="absolute inset-0 z-[5] flex items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white" />
-              </div>
+              <div className="absolute inset-0 z-[5] animate-pulse bg-white/[0.07]" aria-busy="true" aria-label="Loading status" />
             )}
             {statusHeartBurst && (
               <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
@@ -4534,7 +4618,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </p>
             <div className="max-h-80 overflow-y-auto px-2">
               {statusViewersList.length === 0 && statusViewersLoading ? (
-                <p className="px-3 py-6 text-center text-sm text-mist">Loading…</p>
+                <PersonRowsSkeleton count={4} />
               ) : statusViewersList.length === 0 ? (
                 <p className="px-3 py-6 text-center text-sm text-mist">No views yet.</p>
               ) : (
@@ -4576,7 +4660,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
             <div className="max-h-80 overflow-y-auto px-2">
               {mentionSearchLoading ? (
-                <p className="px-3 py-6 text-center text-sm text-mist">Loading…</p>
+                <PersonRowsSkeleton count={4} />
               ) : mentionSearchResults.length === 0 ? (
                 <p className="px-3 py-6 text-center text-sm text-mist">No connections found.</p>
               ) : (
@@ -5040,7 +5124,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </>
                 );
               })()}
-              {Object.keys(otherStatusesGrouped).length === 0 && myStatuses.length === 0 && (
+              {!statusesLoaded && <StatusListSkeleton />}
+              {statusesLoaded && Object.keys(otherStatusesGrouped).length === 0 && myStatuses.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-mist">No status updates yet.</p>
               )}
             </div>
@@ -5048,7 +5133,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
           {mobileTab === "chats" && (
             <div className="px-2 pb-4">
-              {loadingConvos && <p className="px-3 py-2 text-xs text-mist">Loading…</p>}
+              {loadingConvos && <ChatListSkeleton />}
               {!loadingConvos && conversations.length === 0 && (
                 <p className="px-3 py-6 text-center text-sm text-mist">No conversations yet. Tap Search to start one.</p>
               )}
@@ -5111,9 +5196,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 style={{ fontSize: 16 }}
                 className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-ink-800 px-3 py-2 text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
               />
-              {search.trim().length === 0 && suggestedProfiles.length > 0 && (
+              {search.trim().length === 0 && (!suggestedLoaded || suggestedProfiles.length > 0) && (
                 <div className="glass mt-4 rounded-2xl px-4 py-3.5">
                   <p className="mb-3 text-xs font-semibold text-mist">Suggestions for you</p>
+                  {!suggestedLoaded && <PersonRowsSkeleton count={2} avatar={44} padX="px-1" action />}
                   <div className="space-y-1">
                     {suggestedProfiles.map((s) => (
                       <div key={s.id} className="flex items-center gap-3 rounded-xl px-1 py-2 transition hover:bg-black/5 dark:hover:bg-white/5">
@@ -5138,6 +5224,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
               )}
               <div className="mt-3">
+                {searchLoading && searchResults.length === 0 && <PersonRowsSkeleton count={4} avatar={36} padX="px-2" />}
                 {searchResults.map((r) => (
                   <button key={r.id} onClick={() => openProfileView(r)} className="flex w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left text-sm transition hover:bg-black/5 dark:hover:bg-white/5">
                     <Avatar name={r.display_name} color={r.avatar_color} size={36} avatarUrl={r.avatar_url} />
@@ -5147,7 +5234,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     </div>
                   </button>
                 ))}
-                {search.trim().length >= 2 && searchResults.length === 0 && (
+                {search.trim().length >= 2 && !searchLoading && searchResults.length === 0 && (
                   <p className="px-2 py-2 text-xs text-mist">No users found.</p>
                 )}
               </div>
@@ -5443,14 +5530,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 backgroundSize: "auto, auto, 22px 22px",
               }}
             >
-              {loadingMore && (
-                <p className="pb-2 text-center text-xs text-mist">
-                  <span className="glass inline-flex items-center gap-1.5 rounded-full px-3 py-1">
-                    <span className="h-1.5 w-1.5 animate-spin rounded-full border border-mist border-t-transparent" />
-                    Loading older messages…
-                  </span>
-                </p>
-              )}
+              {loadingMore && <MessagesSkeleton compact />}
               {messages.map((m, idx) => {
                 const mine = m.sender_id === myProfile.id;
                 const isImage = m.message_type === "image" && !!m.media_url;
@@ -5622,7 +5702,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <TypingBubble />
                 </div>
               )}
-              {messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
+              {messagesLoadedFor !== activeId && messages.length === 0 && <MessagesSkeleton />}
+              {messagesLoadedFor === activeId && messages.length === 0 && !peerTyping && <p className="pt-10 text-center text-sm text-mist">No messages yet — say hello 👋</p>}
             </div>
 
             {showScrollToBottom && (
