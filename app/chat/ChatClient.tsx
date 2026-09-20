@@ -684,6 +684,21 @@ function formatCount(n: number): string {
   return fmt(n / 1_000_000, "M");
 }
 
+// Notifications the user has dismissed with the X. Remembered on the device so a
+// dismissed one can never come back — not from the 4-second refresh, not from a
+// slow request that was already in flight, and not if the database delete is
+// blocked by a permission rule.
+function readDismissedAppIds(userId: string): Set<string> {
+  try {
+    return new Set<string>(JSON.parse(localStorage.getItem(`ci_dismissed_app_notifs:${userId}`) || "[]"));
+  } catch {
+    return new Set<string>();
+  }
+}
+function writeDismissedAppIds(userId: string, ids: Set<string>) {
+  try { localStorage.setItem(`ci_dismissed_app_notifs:${userId}`, JSON.stringify(Array.from(ids).slice(-500))); } catch {}
+}
+
 // Soft placeholder for a number that hasn't been fetched yet (first ever visit only)
 function CountSkeleton() {
   return <span className="inline-block h-[15px] w-7 animate-pulse rounded-md bg-white/10" />;
@@ -794,6 +809,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   const [notifications, setNotifications] = useState<ConnectionRequest[]>([]);
   const [appNotifications, setAppNotifications] = useState<AppNotification[]>([]);
+  const dismissedAppIdsRef = useRef<Set<string> | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [dismissedRequestIds, setDismissedRequestIds] = useState<Set<string>>(new Set());
   const visibleNotifications = useMemo(
@@ -1286,7 +1302,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       .neq("type", "message") // chat messages only get a push, never a bell entry
       .order("created_at", { ascending: false })
       .limit(30);
-    setAppNotifications(((appData ?? []) as any[]).filter((n) => n.type !== "message") as any);
+    if (!dismissedAppIdsRef.current) dismissedAppIdsRef.current = readDismissedAppIds(myProfile.id);
+    const hidden = dismissedAppIdsRef.current;
+    setAppNotifications(((appData ?? []) as any[]).filter((n) => n.type !== "message" && !hidden.has(n.id)) as any);
   }, [myProfile.id, supabase]);
 
   // Central helper: writes an in-app notification row (so it shows up in the
@@ -1397,7 +1415,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setDismissedRequestIds((prev) => new Set(prev).add(id));
   }
   async function dismissAppNotification(id: string) {
+    if (!dismissedAppIdsRef.current) dismissedAppIdsRef.current = readDismissedAppIds(myProfile.id);
+    dismissedAppIdsRef.current.add(id);
+    writeDismissedAppIds(myProfile.id, dismissedAppIdsRef.current);
     setAppNotifications((prev) => prev.filter((n) => n.id !== id));
+    // also remove it from the database (best effort)
     await supabase.from("app_notifications").delete().eq("id", id);
   }
 
