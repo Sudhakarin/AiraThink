@@ -19,6 +19,7 @@ type Profile = {
   bio?: string | null;
   bio_link?: string | null;
   verified?: boolean | null;
+  status_total?: number | null;
 };
 
 type MessageType = "text" | "image" | "voice";
@@ -2015,7 +2016,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewFollowing(cached?.isFollowing ?? false);
     setProfileViewFollowerCount(cached?.followers ?? null);
     setProfileViewFollowingCount(cached?.following ?? null);
-    setProfileViewStatusCount(cached?.statusCount ?? null);
+    const knownStatusTotal = Math.max(cached?.statusCount ?? -1, typeof other.status_total === "number" ? other.status_total : -1);
+    setProfileViewStatusCount(knownStatusTotal >= 0 ? knownStatusTotal : null);
     setProfileViewBlocked(cached?.blocked ?? false);
     setProfileMenuOpen(false);
 
@@ -2031,10 +2033,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (isCurrent()) setProfileViewFollowingCount(count);
     });
     const activeStatusCount = statuses.filter((s) => s.user_id === other.id).length;
-    supabase.from("statuses").select("id", { count: "exact", head: true }).eq("user_id", other.id).then(({ count, error }) => {
-      const n = error || count === null ? activeStatusCount : Math.max(count, activeStatusCount);
-      // never overwrite a saved number with a lower fallback if the query failed
-      if ((error || count === null) && cached?.statusCount !== undefined) return;
+    fetchStatusTotal(other.id).then((total) => {
+      if (total === null) return;
+      // the count only goes up — never show less than what was already seen
+      const n = Math.max(total, activeStatusCount, cached?.statusCount ?? 0);
       saveProfileCache(other.id, { statusCount: n });
       if (isCurrent()) setProfileViewStatusCount(n);
     });
@@ -2169,14 +2171,30 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   // ---- Own followers / following (Profile tab) ----
   async function loadMyFollowCounts() {
-    const [f1, f2, f3] = await Promise.all([
+    const [f1, f2] = await Promise.all([
       supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("followed_id", myProfile.id),
       supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("follower_id", myProfile.id),
-      supabase.from("statuses").select("id", { count: "exact", head: true }).eq("user_id", myProfile.id),
     ]);
     if (f1.count !== null) setMyFollowerCount(f1.count);
     if (f2.count !== null) setMyFollowingCount(f2.count);
-    if (!f3.error && f3.count !== null) setMyStatusCount(f3.count);
+    loadMyStatusTotal();
+  }
+
+  // Lifetime number of statuses a user has posted. It only ever goes up:
+  // profiles.status_total is bumped by a DB trigger on every new status and is
+  // untouched when a status expires or is deleted. Until that column exists we
+  // fall back to the statuses still in the table.
+  async function fetchStatusTotal(userId: string): Promise<number | null> {
+    const { data, error } = await supabase.from("profiles").select("status_total").eq("id", userId).maybeSingle();
+    const v = (data as any)?.status_total;
+    if (!error && typeof v === "number") return v;
+    const r = await supabase.from("statuses").select("id", { count: "exact", head: true }).eq("user_id", userId);
+    return !r.error && r.count !== null ? r.count : null;
+  }
+
+  async function loadMyStatusTotal() {
+    const n = await fetchStatusTotal(myProfile.id);
+    if (n !== null) setMyStatusCount((prev) => Math.max(prev ?? 0, n));
   }
 
   // Returns null on error so a failed request never wipes what's already shown
@@ -2245,6 +2263,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }
     setFollowBusyId(null);
   }
+
+  const myActiveStatusCount = statuses.filter((st) => st.user_id === myProfile.id).length;
+  useEffect(() => {
+    loadMyStatusTotal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myActiveStatusCount]);
 
   // Show saved numbers instantly, then refresh quietly
   useEffect(() => {
