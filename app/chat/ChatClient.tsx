@@ -958,7 +958,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [statusReplyText, setStatusReplyText] = useState("");
   const [sendingStatusReply, setSendingStatusReply] = useState(false);
   const [statusViewersOpen, setStatusViewersOpen] = useState(false);
-  const [statusViewersList, setStatusViewersList] = useState<StatusViewer[]>([]);
+  // Viewers are cached per status so re-opening the list is instant (no "Loading…" flash)
+  const [statusViewersByStatus, setStatusViewersByStatus] = useState<Record<string, StatusViewer[]>>({});
   const [statusViewersLoading, setStatusViewersLoading] = useState(false);
   const statusViewersSwipeStartRef = useRef<number | null>(null);
   const statusViewersSwipeFiredRef = useRef(false);
@@ -2777,7 +2778,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   useEffect(() => {
     supabase.from("status_views").select("status_id").eq("viewer_id", myProfile.id)
-      .then(({ data }) => setMyViewedStatusIds(new Set((data ?? []).map((r: any) => r.status_id))));
+      .then(({ data, error }) => {
+        if (error || !data) return;
+        setMyViewedStatusIds((prev) => {
+          const next = new Set(prev);
+          data.forEach((r: any) => next.add(r.status_id));
+          return next;
+        });
+      });
   }, [myProfile.id, supabase, statuses.length]);
 
   useEffect(() => {
@@ -2911,7 +2919,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setTimeout(() => {
       setStatusViewerUserId(null); setStatusViewerIndex(0);
       setShowStatusReplyInput(false); setStatusReplyText("");
-      setStatusViewersOpen(false); setStatusViewersList([]);
+      setStatusViewersOpen(false);
       setStatusPaused(false); statusPausedRef.current = false;
       setStatusDragY(0); setStatusClosing(false); statusDragStartRef.current = null;
     }, 180);
@@ -2969,27 +2977,46 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     if (statusViewersOpen) fetchStatusViewers(status.id);
   }
 
+  // Silent refresh: never toggles a loading state and never wipes the list on error,
+  // so whatever is already shown stays and new viewers/likes just get added.
   async function fetchStatusViewers(statusId: string) {
-    const [{ data: views }, { data: likes }] = await Promise.all([
+    const [viewsRes, likesRes] = await Promise.all([
       supabase.from("status_views").select("viewer_id, created_at, profile:profiles(*)").eq("status_id", statusId).order("created_at", { ascending: false }),
       supabase.from("status_likes").select("user_id").eq("status_id", statusId),
     ]);
-    const likedSet = new Set((likes ?? []).map((l: any) => l.user_id));
-    setStatusViewersList(
-      (views ?? []).map((v: any) => ({ viewer_id: v.viewer_id, created_at: v.created_at, liked: likedSet.has(v.viewer_id), profile: v.profile as Profile }))
-    );
+    if (viewsRes.error || !viewsRes.data) return;
+    const likedSet = new Set(((likesRes.data ?? []) as any[]).map((l) => l.user_id));
+    const fresh: StatusViewer[] = (viewsRes.data as any[]).map((v) => ({
+      viewer_id: v.viewer_id,
+      created_at: v.created_at,
+      liked: likedSet.has(v.viewer_id),
+      profile: v.profile as Profile,
+    }));
+    setStatusViewersByStatus((prev) => {
+      // keep anyone already shown who isn't in the response yet (replication lag)
+      const freshIds = new Set(fresh.map((f) => f.viewer_id));
+      const kept = (prev[statusId] ?? []).filter((p) => !freshIds.has(p.viewer_id));
+      const merged = [...fresh, ...kept].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      return { ...prev, [statusId]: merged };
+    });
+    setMyStatusViewCounts((prev) => (myStatusIdsRef.current.has(statusId) ? { ...prev, [statusId]: Math.max(prev[statusId] || 0, fresh.length) } : prev));
   }
 
   async function openStatusViewersList(statusId: string) {
     setStatusViewersOpen(true);
-    setStatusViewersLoading(true);
     setStatusPaused(true); statusPausedRef.current = true;
-    await fetchStatusViewers(statusId);
-    setStatusViewersLoading(false);
+    // Show "Loading…" only the very first time, when there is nothing cached yet
+    if (!statusViewersByStatus[statusId]) setStatusViewersLoading(true);
+    try {
+      await fetchStatusViewers(statusId);
+    } finally {
+      setStatusViewersLoading(false);
+    }
   }
 
   const activeStatusListForEffects = statusViewerUserId ? (statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? []) : [];
   const activeStatusIdForEffects = activeStatusListForEffects[statusViewerIndex]?.id ?? null;
+  const statusViewersList: StatusViewer[] = activeStatusIdForEffects ? statusViewersByStatus[activeStatusIdForEffects] ?? [] : [];
 
   useEffect(() => {
     if (!statusViewersOpen || !activeStatusIdForEffects) return;
@@ -3004,7 +3031,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   function closeStatusViewersList() {
     setStatusViewersOpen(false);
-    setStatusViewersList([]);
     setStatusPaused(false); statusPausedRef.current = false;
   }
 
@@ -3816,10 +3842,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             <Avatar name={pr.display_name} color={pr.avatar_color} avatarUrl={pr.avatar_url} size={48} />
                             <div className="min-w-0 leading-tight">
                               <p className="flex items-center truncate text-[14px] font-semibold text-white">
-                                {pr.username}
+                                <span className="truncate">{pr.display_name}</span>
                                 {isVerified(pr.username, pr.verified) && <VerifiedBadge size={13} />}
                               </p>
-                              <p className="mt-0.5 truncate text-[14px] text-white/50">{pr.display_name}</p>
+                              <p className="mt-0.5 truncate text-[14px] text-white/50">{pr.username}</p>
                             </div>
                           </button>
                           {!isMeRow && (
@@ -4476,7 +4502,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               {statusViewersList.length} {statusViewersList.length === 1 ? "view" : "views"}
             </p>
             <div className="max-h-80 overflow-y-auto px-2">
-              {statusViewersLoading ? (
+              {statusViewersList.length === 0 && statusViewersLoading ? (
                 <p className="px-3 py-6 text-center text-sm text-mist">Loading…</p>
               ) : statusViewersList.length === 0 ? (
                 <p className="px-3 py-6 text-center text-sm text-mist">No views yet.</p>
