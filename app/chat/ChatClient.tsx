@@ -964,9 +964,9 @@ function useUsageTracker(userId: string | undefined) {
   }, [userId]);
 }
 
-type SettingsScreenId = "home" | "time" | "verify" | "blocked" | "mentions" | "invite" | "account";
+type SettingsScreenId = "home" | "time" | "verify" | "blocked" | "mentions" | "invite" | "account" | "subscription";
 type SettingsGlyphName =
-  | "clock" | "badge" | "ban" | "at" | "invite" | "shield"
+  | "clock" | "badge" | "ban" | "at" | "invite" | "shield" | "one"
   | "chevron-right" | "chevron-left" | "copy" | "share" | "check" | "alert" | "camera";
 
 function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: number }) {
@@ -978,6 +978,7 @@ function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: nu
       {name === "at" && (<><circle cx="12" cy="12" r="4" /><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" /></>)}
       {name === "invite" && (<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></>)}
       {name === "shield" && (<><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>)}
+      {name === "one" && (<><circle cx="12" cy="12" r="10" /><path d="m10 9.5 2.5-1.5V16" /></>)}
       {name === "chevron-right" && <path d="m9 18 6-6-6-6" />}
       {name === "chevron-left" && <path d="m15 18-6-6 6-6" />}
       {name === "copy" && (<><rect x="8" y="8" width="14" height="14" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>)}
@@ -1005,6 +1006,8 @@ function SettingsScreen({
 }) {
   const [screen, setScreen] = useState<SettingsScreenId>("home");
   const verified = isVerified(myProfile.username, myProfile.verified);
+  // TODO: drive this from the database once subscriptions are wired up.
+  const subscribed: boolean = false;
 
   const titles: Record<SettingsScreenId, string> = {
     home: "Settings",
@@ -1014,6 +1017,7 @@ function SettingsScreen({
     mentions: "Tag & mention",
     invite: "Invite friends",
     account: "Account status",
+    subscription: "Aira One",
   };
 
   const rows: { id: Exclude<SettingsScreenId, "home">; icon: SettingsGlyphName; title: string; subtitle: string }[] = [
@@ -1041,24 +1045,42 @@ function SettingsScreen({
 
         <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
           {screen === "home" && (
-            <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
-              {rows.map((row) => (
+            <>
+              <p className="px-1 pb-2 text-xs font-semibold text-mist">General</p>
+              <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+                {rows.map((row) => (
+                  <button
+                    key={row.id}
+                    onClick={() => setScreen(row.id)}
+                    className="flex w-full items-center gap-3 px-3.5 py-3.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06]"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-violet-light">
+                      <SettingsGlyph name={row.icon} size={19} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[15px] font-semibold text-white">{row.title}</span>
+                      <span className="block truncate text-xs text-mist">{row.subtitle}</span>
+                    </span>
+                    <span className="shrink-0 text-white/30"><SettingsGlyph name="chevron-right" size={18} /></span>
+                  </button>
+                ))}
+              </div>
+
+              <p className="px-1 pb-2 pt-6 text-xs font-semibold text-mist">Subscription</p>
+              <div className="overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
                 <button
-                  key={row.id}
-                  onClick={() => setScreen(row.id)}
+                  onClick={() => setScreen("subscription")}
                   className="flex w-full items-center gap-3 px-3.5 py-3.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06]"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-violet-light">
-                    <SettingsGlyph name={row.icon} size={19} />
+                    <SettingsGlyph name="one" size={19} />
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-semibold text-white">{row.title}</span>
-                    <span className="block truncate text-xs text-mist">{row.subtitle}</span>
-                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-white">Aira One</span>
+                  <span className="shrink-0 text-sm text-mist">{subscribed ? "Subscribed" : "Unsubscribed"}</span>
                   <span className="shrink-0 text-white/30"><SettingsGlyph name="chevron-right" size={18} /></span>
                 </button>
-              ))}
-            </div>
+              </div>
+            </>
           )}
           {screen === "time" && <TimeManagementPanel userId={myProfile.id} />}
           {screen === "verify" && <VerificationPanel supabase={supabase} myProfile={myProfile} verified={verified} />}
@@ -1066,6 +1088,7 @@ function SettingsScreen({
           {screen === "mentions" && <MentionPrivacyPanel supabase={supabase} myId={myProfile.id} />}
           {screen === "invite" && <InvitePanel />}
           {screen === "account" && <AccountStatusPanel />}
+          {screen === "subscription" && <SubscriptionPanel subscribed={subscribed} />}
         </div>
       </div>
     </div>
@@ -1601,6 +1624,45 @@ function AccountStatusPanel() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ---- 7. Subscription (Aira One) ----
+const AIRA_ONE_FEATURES = ["Regional Languages", "Priority Access", "Support 24/7", "Ads Free in News Feed"];
+
+function SubscriptionPanel({ subscribed }: { subscribed: boolean }) {
+  function handleSubscribe() {
+    // TODO: start the Aira One checkout here.
+  }
+
+  return (
+    <div>
+      <p className="px-1 pb-2 text-xs font-semibold text-mist">Features</p>
+      <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+        {AIRA_ONE_FEATURES.map((feature) => (
+          <div key={feature} className="flex items-center gap-3 px-4 py-4">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet/20 text-violet-light">
+              <SettingsGlyph name="check" size={14} />
+            </span>
+            <span className="text-[15px] font-medium text-white">{feature}</span>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-6 px-1 text-sm text-mist">Cost</p>
+      <p className="mt-1 px-1">
+        <span className="font-display text-3xl font-bold text-white">$2</span>
+        <span className="ml-1.5 text-sm text-mist">per month</span>
+      </p>
+
+      <button
+        onClick={handleSubscribe}
+        disabled={subscribed}
+        className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition active:scale-[0.99] disabled:opacity-60 disabled:shadow-none"
+      >
+        {subscribed ? "Subscribed" : "Subscribe Now"}
+      </button>
     </div>
   );
 }
