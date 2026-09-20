@@ -823,6 +823,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   // Logged-in user's own follower / following numbers + the list popup
   const [myFollowerCount, setMyFollowerCount] = useState<number | null>(null);
   const [myFollowingCount, setMyFollowingCount] = useState<number | null>(null);
+  const [myStatusCount, setMyStatusCount] = useState<number | null>(null);
   const [followSheet, setFollowSheet] = useState<"followers" | "following" | null>(null);
   const [followLists, setFollowLists] = useState<{ followers: Profile[]; following: Profile[] } | null>(null);
   const [myFollowingIds, setMyFollowingIds] = useState<Set<string>>(new Set());
@@ -2168,12 +2169,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   // ---- Own followers / following (Profile tab) ----
   async function loadMyFollowCounts() {
-    const [f1, f2] = await Promise.all([
+    const [f1, f2, f3] = await Promise.all([
       supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("followed_id", myProfile.id),
       supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("follower_id", myProfile.id),
+      supabase.from("statuses").select("id", { count: "exact", head: true }).eq("user_id", myProfile.id),
     ]);
     if (f1.count !== null) setMyFollowerCount(f1.count);
     if (f2.count !== null) setMyFollowingCount(f2.count);
+    if (!f3.error && f3.count !== null) setMyStatusCount(f3.count);
   }
 
   // Returns null on error so a failed request never wipes what's already shown
@@ -2248,6 +2251,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const c = getProfileCache()[myProfile.id];
     if (c?.followers !== undefined) setMyFollowerCount(c.followers);
     if (c?.following !== undefined) setMyFollowingCount(c.following);
+    if (c?.statusCount !== undefined) setMyStatusCount(c.statusCount);
     loadMyFollowCounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [myProfile.id]);
@@ -2260,8 +2264,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   useEffect(() => {
     if (myFollowerCount !== null) saveProfileCache(myProfile.id, { followers: myFollowerCount });
     if (myFollowingCount !== null) saveProfileCache(myProfile.id, { following: myFollowingCount });
+    if (myStatusCount !== null) saveProfileCache(myProfile.id, { statusCount: myStatusCount });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myFollowerCount, myFollowingCount]);
+  }, [myFollowerCount, myFollowingCount, myStatusCount]);
 
   useEffect(() => {
     const channel = supabase
@@ -4938,41 +4943,62 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
           {mobileTab === "profile" && (
             <div className="px-5 py-6">
-              <h2 className="mb-6 text-center font-display text-lg font-bold text-white">Edit Profile</h2>
+              <p className="mb-5 flex items-center font-display text-[22px] font-bold leading-none text-white">
+                {myProfile.username}
+                {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={18} />}
+              </p>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
-              <div className="flex items-center gap-6">
-                <button onClick={() => fileInputRef.current?.click()} className="group relative shrink-0" disabled={uploading} aria-label="Change profile photo">
-                  <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={88} avatarUrl={myProfile.avatar_url} />
-                  <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
+              {(() => {
+                const ownActive = statuses.filter((st) => st.user_id === myProfile.id).length;
+                const statusShown = myStatusCount === null ? null : Math.max(myStatusCount, ownActive);
+                const stats: { label: string; n: number | null; onClick: () => void; aria: string }[] = [
+                  { label: "status", n: statusShown, onClick: () => setMobileTab("status"), aria: "Open status" },
+                  { label: "followers", n: myFollowerCount, onClick: () => openFollowSheet("followers"), aria: "View followers" },
+                  { label: "following", n: myFollowingCount, onClick: () => openFollowSheet("following"), aria: "View following" },
+                ];
+                return (
+                  <div className="flex items-center gap-5">
+                    <button onClick={() => fileInputRef.current?.click()} className="relative shrink-0" disabled={uploading} aria-label="Change profile photo">
+                      <span className="block rounded-full p-[2.5px]" style={{ background: ownActive > 0 ? "linear-gradient(135deg, #7C5CFF, #22D3B8)" : "rgba(255,255,255,0.12)" }}>
+                        <span className="block rounded-full bg-ink-900 p-[2.5px]">
+                          <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={82} avatarUrl={myProfile.avatar_url} />
+                        </span>
+                      </span>
+                      {uploading && (
+                        <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55">
+                          <svg className="animate-spin" width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2.2" strokeDasharray="14 40" strokeLinecap="round" /></svg>
+                        </span>
+                      )}
+                  <span className="absolute bottom-0.5 right-0.5 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink-900 bg-violet text-white shadow-lg">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="white" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" /></svg>
                   </span>
-                </button>
-                <div className="grid min-w-0 flex-1 grid-cols-2 text-center">
-                  {([
-                    { key: "followers", label: "followers", n: myFollowerCount },
-                    { key: "following", label: "following", n: myFollowingCount },
-                  ] as const).map((item) => (
-                    <button
-                      key={item.key}
-                      onClick={() => openFollowSheet(item.key)}
-                      aria-label={`View ${item.label}`}
-                      className="flex flex-col items-center py-1 transition active:opacity-60"
-                    >
-                      <span className="flex h-7 items-center font-display text-[19px] font-bold tabular-nums text-white">
-                        {item.n === null ? <CountSkeleton /> : formatCount(item.n)}
-                      </span>
-                      <span className="text-[13px] text-white/70">{item.label}</span>
                     </button>
-                  ))}
-                </div>
-              </div>
-              <div className="mt-3 mb-2">
-                <p className="flex items-center text-[14.5px] font-semibold text-white">
-                  {myProfile.display_name}
-                  {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={14} />}
-                </p>
-                <p className="text-[13px] text-mist">@{myProfile.username}</p>
-                <p className="mt-1 text-[11px] text-mist/70">{uploading ? "Uploading…" : "Tap photo to change"}</p>
+                    <div className="grid min-w-0 flex-1 grid-cols-3 items-center text-center">
+                      {stats.map((item) => (
+                        <button key={item.label} onClick={item.onClick} aria-label={item.aria} className="flex flex-col items-center gap-0.5 py-1 transition active:opacity-60">
+                          <span className="flex h-6 items-center font-display text-[18px] font-bold leading-none tabular-nums text-white">
+                            {item.n === null ? <CountSkeleton /> : formatCount(item.n)}
+                          </span>
+                          <span className="text-[13px] leading-tight text-white/70">{item.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="mb-1 mt-3">
+                <p className="text-[14.5px] font-semibold leading-tight text-white">{myProfile.display_name}</p>
+                {myProfile.bio && <p className="mt-1 whitespace-pre-wrap text-[14px] leading-snug text-white/85">{myProfile.bio}</p>}
+                {myProfile.bio_link && (
+                  <a
+                    href={myProfile.bio_link.startsWith("http") ? myProfile.bio_link : `https://${myProfile.bio_link}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block text-[14px] font-semibold text-teal"
+                  >
+                    {myProfile.bio_link.replace(/^https?:\/\//, "")}
+                  </a>
+                )}
               </div>
 
               <div className="glass mt-4 divide-y divide-black/5 dark:divide-white/5 overflow-hidden rounded-2xl">
