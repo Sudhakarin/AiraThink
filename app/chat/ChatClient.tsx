@@ -675,6 +675,31 @@ function ActiveStatusSwitch({ on, onChange }: { on: boolean; onChange: () => voi
   );
 }
 
+// 1234 -> "1.2K", 84000 -> "84K", 1500000 -> "1.5M" (same style as the reference)
+function formatCount(n: number): string {
+  if (n < 1000) return String(n);
+  const fmt = (v: number, unit: string) => `${(v < 10 ? Math.round(v * 10) / 10 : Math.round(v)).toString().replace(/\.0$/, "")}${unit}`;
+  if (n < 1_000_000) return fmt(n / 1000, "K");
+  return fmt(n / 1_000_000, "M");
+}
+
+// Soft placeholder for a number that hasn't been fetched yet (first ever visit only)
+function CountSkeleton() {
+  return <span className="inline-block h-[15px] w-7 animate-pulse rounded-md bg-white/10" />;
+}
+
+type ProfileCacheEntry = {
+  followers?: number;
+  following?: number;
+  statusCount?: number;
+  isFollowing?: boolean;
+  blocked?: boolean;
+  status?: "none" | "pending" | "declined" | "connected";
+  convoId?: string | null;
+  mutuals?: { profiles: Profile[]; count: number };
+  t?: number;
+};
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   // Memoized so the Supabase client keeps a stable identity across re-renders.
   // Without this, every render created a brand-new client, which made every
@@ -792,6 +817,33 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [profileViewBlocked, setProfileViewBlocked] = useState(false);
   const [blockToggling, setBlockToggling] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileViewStatusCount, setProfileViewStatusCount] = useState<number | null>(null);
+  const profileViewIdRef = useRef<string | null>(null);
+  const profileCacheRef = useRef<Record<string, ProfileCacheEntry> | null>(null);
+
+  // Profile numbers/state are remembered per user (in memory + localStorage), so
+  // re-opening a profile shows the last known values instantly and refreshes
+  // them silently in the background instead of restarting from 0 / loading.
+  function getProfileCache(): Record<string, ProfileCacheEntry> {
+    if (!profileCacheRef.current) {
+      try {
+        profileCacheRef.current = JSON.parse(localStorage.getItem(`ci_profile_cache_v1:${myProfile.id}`) || "{}") ?? {};
+      } catch {
+        profileCacheRef.current = {};
+      }
+    }
+    return profileCacheRef.current as Record<string, ProfileCacheEntry>;
+  }
+
+  function saveProfileCache(userId: string, patch: Partial<ProfileCacheEntry>) {
+    const cache = getProfileCache();
+    cache[userId] = { ...cache[userId], ...patch, t: Date.now() };
+    const ids = Object.keys(cache);
+    if (ids.length > 80) {
+      ids.sort((a, b) => (cache[a].t ?? 0) - (cache[b].t ?? 0)).slice(0, ids.length - 80).forEach((id) => delete cache[id]);
+    }
+    try { localStorage.setItem(`ci_profile_cache_v1:${myProfile.id}`, JSON.stringify(cache)); } catch {}
+  }
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
@@ -1286,6 +1338,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function acceptRequest(req: ConnectionRequest) {
     await supabase.from("connection_requests").update({ status: "accepted" }).eq("id", req.id);
+    saveProfileCache(req.from_user_id, { status: "connected" });
     const { data: existing } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
     const myConvoIds = (existing ?? []).map((r: any) => r.conversation_id);
     let convoId: string | null = null;
@@ -1935,48 +1988,80 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   async function openProfileView(other: Profile) {
+    const cached = getProfileCache()[other.id];
+    profileViewIdRef.current = other.id;
+    const isCurrent = () => profileViewIdRef.current === other.id;
+
+    // Show whatever we already know right away (no reset to 0 / spinner)
     setProfileView(other);
-    setProfileViewStatus("loading");
-    setProfileViewConvoId(null);
+    setProfileViewStatus(cached?.status ?? "loading");
+    setProfileViewConvoId(cached?.convoId ?? null);
     setProfileViewConnCount(null);
     setProfileViewAnimCount(0);
-    setProfileViewMutuals({ profiles: [], count: 0 });
-    setProfileViewFollowing(false);
-    setProfileViewFollowerCount(null);
-    setProfileViewFollowingCount(null);
-    setProfileViewBlocked(false);
+    setProfileViewMutuals(cached?.mutuals ?? { profiles: [], count: 0 });
+    setProfileViewFollowing(cached?.isFollowing ?? false);
+    setProfileViewFollowerCount(cached?.followers ?? null);
+    setProfileViewFollowingCount(cached?.following ?? null);
+    setProfileViewStatusCount(cached?.statusCount ?? null);
+    setProfileViewBlocked(cached?.blocked ?? false);
     setProfileMenuOpen(false);
 
+    // Silent background refresh — only touches the UI if a value actually came back
     supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("followed_id", other.id).then(({ count }) => {
-      setProfileViewFollowerCount(count ?? 0);
+      if (count === null) return;
+      saveProfileCache(other.id, { followers: count });
+      if (isCurrent()) setProfileViewFollowerCount(count);
     });
     supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("follower_id", other.id).then(({ count }) => {
-      setProfileViewFollowingCount(count ?? 0);
+      if (count === null) return;
+      saveProfileCache(other.id, { following: count });
+      if (isCurrent()) setProfileViewFollowingCount(count);
     });
-    supabase.from("follows").select("follower_id").eq("follower_id", myProfile.id).eq("followed_id", other.id).maybeSingle().then(({ data }) => {
-      setProfileViewFollowing(!!data);
+    const activeStatusCount = statuses.filter((s) => s.user_id === other.id).length;
+    supabase.from("statuses").select("id", { count: "exact", head: true }).eq("user_id", other.id).then(({ count, error }) => {
+      const n = error || count === null ? activeStatusCount : Math.max(count, activeStatusCount);
+      // never overwrite a saved number with a lower fallback if the query failed
+      if ((error || count === null) && cached?.statusCount !== undefined) return;
+      saveProfileCache(other.id, { statusCount: n });
+      if (isCurrent()) setProfileViewStatusCount(n);
     });
-    supabase.from("blocked_users").select("blocker_id").eq("blocker_id", myProfile.id).eq("blocked_id", other.id).maybeSingle().then(({ data }) => {
-      setProfileViewBlocked(!!data);
+    supabase.from("follows").select("follower_id").eq("follower_id", myProfile.id).eq("followed_id", other.id).maybeSingle().then(({ data, error }) => {
+      if (error) return;
+      saveProfileCache(other.id, { isFollowing: !!data });
+      if (isCurrent()) setProfileViewFollowing(!!data);
+    });
+    supabase.from("blocked_users").select("blocker_id").eq("blocker_id", myProfile.id).eq("blocked_id", other.id).maybeSingle().then(({ data, error }) => {
+      if (error) return;
+      saveProfileCache(other.id, { blocked: !!data });
+      if (isCurrent()) setProfileViewBlocked(!!data);
     });
 
     fetchAcceptedConnectionIds(other.id).then(async (theirIds) => {
-      setProfileViewConnCount(theirIds.length);
+      if (isCurrent()) setProfileViewConnCount(theirIds.length);
       const myIds = await fetchAcceptedConnectionIds(myProfile.id);
       const mutualIds = myIds.filter((id) => theirIds.includes(id));
+      let mutuals: { profiles: Profile[]; count: number } = { profiles: [], count: 0 };
       if (mutualIds.length > 0) {
         const { data: mutualProfiles } = await supabase.from("profiles").select("*").in("id", mutualIds.slice(0, 3));
-        setProfileViewMutuals({ profiles: (mutualProfiles ?? []) as Profile[], count: mutualIds.length });
+        mutuals = { profiles: (mutualProfiles ?? []) as Profile[], count: mutualIds.length };
       }
+      saveProfileCache(other.id, { mutuals });
+      if (isCurrent()) setProfileViewMutuals(mutuals);
     });
+
+    const applyConnection = (status: "none" | "pending" | "declined" | "connected", convoId: string | null) => {
+      saveProfileCache(other.id, { status, convoId });
+      if (!isCurrent()) return;
+      setProfileViewStatus(status);
+      setProfileViewConvoId(convoId);
+    };
 
     const { data: mine } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", myProfile.id);
     const myConvoIds = (mine ?? []).map((r) => r.conversation_id);
     if (myConvoIds.length > 0) {
       const { data: theirs } = await supabase.from("conversation_participants").select("conversation_id").eq("user_id", other.id).in("conversation_id", myConvoIds);
       if (theirs && theirs.length > 0) {
-        setProfileViewStatus("connected");
-        setProfileViewConvoId(theirs[0].conversation_id);
+        applyConnection("connected", theirs[0].conversation_id);
         return;
       }
     }
@@ -1989,19 +2074,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (existing.status === "accepted") {
         // Connected, but no conversation row exists yet (e.g. an older
         // connection) — let the "Message" button create one on demand.
-        setProfileViewStatus("connected");
-        setProfileViewConvoId(null);
+        applyConnection("connected", null);
         return;
       }
-      if (existing.status === "pending") setProfileViewStatus("pending");
-      else if (existing.status === "declined") setProfileViewStatus("declined");
-      else setProfileViewStatus("none");
+      if (existing.status === "pending") applyConnection("pending", null);
+      else if (existing.status === "declined") applyConnection("declined", null);
+      else applyConnection("none", null);
       return;
     }
-    setProfileViewStatus("none");
+    applyConnection("none", null);
   }
 
   function closeProfileView() {
+    profileViewIdRef.current = null;
+    setProfileViewStatusCount(null);
     setProfileView(null);
     setProfileViewStatus(null);
     setProfileViewConvoId(null);
@@ -2076,12 +2162,14 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       if (!error) {
         setProfileViewFollowing(false);
         setProfileViewFollowerCount((c) => (c === null ? c : Math.max(0, c - 1)));
+        saveProfileCache(target.id, { isFollowing: false, ...(profileViewFollowerCount !== null ? { followers: Math.max(0, profileViewFollowerCount - 1) } : {}) });
       }
     } else {
       const { error } = await supabase.from("follows").insert({ follower_id: myProfile.id, followed_id: target.id });
       if (!error) {
         setProfileViewFollowing(true);
         setProfileViewFollowerCount((c) => (c === null ? c : c + 1));
+        saveProfileCache(target.id, { isFollowing: true, ...(profileViewFollowerCount !== null ? { followers: profileViewFollowerCount + 1 } : {}) });
         notifyUser({
           userId: target.id,
           type: "follow",
@@ -2098,10 +2186,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setBlockToggling(true);
     if (profileViewBlocked) {
       const { error } = await supabase.from("blocked_users").delete().eq("blocker_id", myProfile.id).eq("blocked_id", target.id);
-      if (!error) setProfileViewBlocked(false);
+      if (!error) { setProfileViewBlocked(false); saveProfileCache(target.id, { blocked: false }); }
     } else {
       const { error } = await supabase.from("blocked_users").insert({ blocker_id: myProfile.id, blocked_id: target.id });
-      if (!error) setProfileViewBlocked(true);
+      if (!error) { setProfileViewBlocked(true); saveProfileCache(target.id, { blocked: true }); }
     }
     setBlockToggling(false);
     setProfileMenuOpen(false);
@@ -2122,6 +2210,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setConnectSending(false);
     if (error) { setErrorMsg("Could not send request. Please try again."); setConnectPopupMode(null); setConnectPopupTarget(null); return; }
     sendPushNotification({ userId: connectPopupTarget.id, title: myProfile.display_name, body: `${myProfile.display_name} wants to connect with you!`, url: "/" });
+    saveProfileCache(connectPopupTarget.id, { status: "pending" });
     if (profileView?.id === connectPopupTarget.id) { setProfileViewStatus("pending"); }
     setConnectPopupMode(null);
     setConnectPopupTarget(null);
@@ -3436,19 +3525,69 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </div>
             <div className="mt-5 flex items-center gap-6">
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewFollowerCount === null ? "—" : profileViewFollowerCount}</span>
+                <span className="flex h-6 items-center text-[17px] font-bold text-white tx1 tabular-nums">{profileViewFollowerCount === null ? <CountSkeleton /> : formatCount(profileViewFollowerCount)}</span>
                 <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Followers</span>
               </div>
               <div className="h-8 w-px bg-white/8" />
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{profileViewFollowingCount === null ? "—" : profileViewFollowingCount}</span>
+                <span className="flex h-6 items-center text-[17px] font-bold text-white tx1 tabular-nums">{profileViewFollowingCount === null ? <CountSkeleton /> : formatCount(profileViewFollowingCount)}</span>
                 <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Following</span>
               </div>
               <div className="h-8 w-px bg-white/8" />
               <div className="flex flex-col items-center">
-                <span className="text-[17px] font-bold text-white tx1 tabular-nums">{statuses.filter((s) => s.user_id === profileView.id).length}</span>
+                <span className="flex h-6 items-center text-[17px] font-bold text-white tx1 tabular-nums">{profileViewStatusCount === null ? <CountSkeleton /> : formatCount(profileViewStatusCount)}</span>
                 <span className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-white/40 tx2">Status</span>
               </div>
+            </div>
+            <div className="mt-6 flex items-center justify-center gap-1.5">
+              <button
+                onClick={() => toggleFollow(profileView)}
+                disabled={followToggling}
+                className={`h-[46px] w-[170px] rounded-xl text-[15px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-60 ${
+                  profileViewFollowing ? "bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] hover:bg-[#3A3A3A]" : "bg-[#E54E60] shadow-[0_8px_20px_-8px_rgba(229,78,96,0.65)] hover:bg-[#EC5C6D]"
+                }`}
+              >
+                {followToggling ? "…" : profileViewFollowing ? "Following" : "Follow"}
+              </button>
+
+              {profileViewStatus === "loading" && (
+                <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white/60">
+                  <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 40" strokeLinecap="round" /></svg>
+                </div>
+              )}
+              {profileViewStatus === "none" && (
+                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white transition active:scale-95 hover:bg-[#3A3A3A]">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  <span className="text-[9px] font-medium leading-none">Connect</span>
+                </button>
+              )}
+              {profileViewStatus === "pending" && (
+                <button disabled aria-label="Request sent" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white transition active:scale-95 text-white/60 active:scale-100">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+                  <span className="text-[9px] font-medium leading-none">Pending</span>
+                </button>
+              )}
+              {profileViewStatus === "declined" && (
+                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white transition active:scale-95 !text-red-400 hover:bg-[#3A3A3A]">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  <span className="text-[9px] font-medium leading-none">Declined</span>
+                </button>
+              )}
+              {profileViewStatus === "connected" && (
+                <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white transition active:scale-95 hover:bg-[#3A3A3A] disabled:opacity-60">
+                  <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+                  <span className="text-[9px] font-medium leading-none">Message</span>
+                </button>
+              )}
+
+              <button
+                onClick={() => setProfileMenuOpen(true)}
+                aria-label="More options"
+                aria-haspopup="dialog"
+                className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] text-white transition hover:bg-[#3A3A3A] active:scale-95"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M1.5 3.5h9L6 9.5z" /></svg>
+              </button>
             </div>
             {profileView.bio && (
               <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{profileView.bio}</p>
@@ -3479,56 +3618,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </p>
               </div>
             )}
-          </div>
-          <div className="relative z-10 flex items-center justify-center gap-1 px-6 pb-8">
-            <button
-              onClick={() => toggleFollow(profileView)}
-              disabled={followToggling}
-              className={`h-[46px] w-[170px] rounded-md text-[15px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-60 ${
-                profileViewFollowing ? "bg-[#2E2E2E] hover:bg-[#3A3A3A]" : "bg-[#E54E60] hover:bg-[#EC5C6D]"
-              }`}
-            >
-              {followToggling ? "…" : profileViewFollowing ? "Following" : "Follow"}
-            </button>
-
-            {profileViewStatus === "loading" && (
-              <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md bg-[#2E2E2E] text-white/60">
-                <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 40" strokeLinecap="round" /></svg>
-              </div>
-            )}
-            {profileViewStatus === "none" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 hover:bg-[#3A3A3A]">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <span className="text-[9px] font-medium leading-none">Connect</span>
-              </button>
-            )}
-            {profileViewStatus === "pending" && (
-              <button disabled aria-label="Request sent" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 text-white/60 active:scale-100">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
-                <span className="text-[9px] font-medium leading-none">Pending</span>
-              </button>
-            )}
-            {profileViewStatus === "declined" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 !text-red-400 hover:bg-[#3A3A3A]">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <span className="text-[9px] font-medium leading-none">Declined</span>
-              </button>
-            )}
-            {profileViewStatus === "connected" && (
-              <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 hover:bg-[#3A3A3A] disabled:opacity-60">
-                <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
-                <span className="text-[9px] font-medium leading-none">Message</span>
-              </button>
-            )}
-
-            <button
-              onClick={() => setProfileMenuOpen(true)}
-              aria-label="More options"
-              aria-haspopup="dialog"
-              className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md bg-[#2E2E2E] text-white transition hover:bg-[#3A3A3A] active:scale-95"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M1.5 3.5h9L6 9.5z" /></svg>
-            </button>
           </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
             <div className="relative z-10 px-6 pb-8">
