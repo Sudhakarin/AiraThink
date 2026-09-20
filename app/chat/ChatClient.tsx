@@ -699,6 +699,28 @@ function writeDismissedAppIds(userId: string, ids: Set<string>) {
   try { localStorage.setItem(`ci_dismissed_app_notifs:${userId}`, JSON.stringify(Array.from(ids).slice(-500))); } catch {}
 }
 
+// Card-suit style heart (♥) drawn as SVG so it looks the same on every device.
+// filled = liked (red), outline = not liked yet.
+function HeartSuit({ size = 22, filled = false, className = "" }: { size?: number; filled?: boolean; className?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <defs>
+        <linearGradient id="ciHeartSuitGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FF5468" />
+          <stop offset="1" stopColor="#D90F2E" />
+        </linearGradient>
+      </defs>
+      <path
+        d="M12 21C10 19.6 3 14.4 3 9C3 5.9 5.3 3.8 8 3.8C9.7 3.8 11.2 4.7 12 6.2C12.8 4.7 14.3 3.8 16 3.8C18.7 3.8 21 5.9 21 9C21 14.4 14 19.6 12 21Z"
+        fill={filled ? "url(#ciHeartSuitGrad)" : "none"}
+        stroke={filled ? "none" : "white"}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // Soft placeholder for a number that hasn't been fetched yet (first ever visit only)
 function CountSkeleton() {
   return <span className="inline-block h-[15px] w-7 animate-pulse rounded-md bg-white/10" />;
@@ -3430,6 +3452,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes ciSlideIn { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes ciLikePop { 0% { transform: scale(0.6); } 55% { transform: scale(1.25); } 100% { transform: scale(1); } }
         @keyframes ciSheetUp { from { opacity: 0; transform: translateY(40px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .animate-floatSlow { animation: floatSlow 4s ease-in-out infinite; }
@@ -4302,6 +4325,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               onClick={(e) => { e.stopPropagation(); advanceStatus(1); }}
               aria-label="Next status"
             />
+            {activeStatusItem.user_id === myProfile.id && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center pb-3">
+                <button
+                  onClick={(e) => { e.stopPropagation(); openStatusViewersList(activeStatusItem.id); }}
+                  onPointerDown={(e) => { e.stopPropagation(); onStatusViewersBarPointerDown(e); }}
+                  onPointerMove={(e) => { e.stopPropagation(); onStatusViewersBarPointerMove(e, activeStatusItem.id); }}
+                  onPointerUp={(e) => { e.stopPropagation(); onStatusViewersBarPointerUp(); }}
+                  className="pointer-events-auto touch-none px-6 py-2"
+                  aria-label="Tap or swipe up to see who viewed"
+                >
+                  <span
+                    className="flex items-center gap-2 rounded-full border border-white/25 bg-white/15 py-2 pl-3.5 pr-3 text-[13px] font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3),0_10px_30px_-10px_rgba(0,0,0,0.6)] transition active:scale-95"
+                    style={{ backdropFilter: "blur(20px) saturate(160%)", WebkitBackdropFilter: "blur(20px) saturate(160%)" }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
+                    <span className="tabular-nums">{myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" className="opacity-70"><path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </span>
+                </button>
+              </div>
+            )}
             {statusMediaLoading && (
               <div className="absolute inset-0 z-[5] flex items-center justify-center">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/25 border-t-white" />
@@ -4309,7 +4353,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
             {statusHeartBurst && (
               <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-                <span className="text-7xl status-heart-pop">❤️</span>
+                <span className="status-heart-pop"><HeartSuit size={104} filled /></span>
               </div>
             )}
             <div
@@ -4346,22 +4390,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
 
           {/* Footer with proper connection check */}
-          {activeStatusItem.user_id === myProfile.id ? (
-            <button
-              onClick={() => openStatusViewersList(activeStatusItem.id)}
-              onPointerDown={onStatusViewersBarPointerDown}
-              onPointerMove={(e) => onStatusViewersBarPointerMove(e, activeStatusItem.id)}
-              onPointerUp={onStatusViewersBarPointerUp}
-              className="flex flex-col items-center gap-1 px-4 pb-3 pt-1 text-sm font-medium text-white/80 transition hover:text-white touch-none"
-              aria-label="Swipe up to see who viewed"
-            >
-              <span className="h-1 w-9 rounded-full bg-white/30" />
-              <span className="flex items-center gap-1.5">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" /></svg>
-                {myStatusViewCounts[activeStatusItem.id] ?? 0} {(myStatusViewCounts[activeStatusItem.id] ?? 0) === 1 ? "view" : "views"}
-              </span>
-            </button>
-          ) : (
+          {activeStatusItem.user_id === myProfile.id ? null : (
             <div className="flex items-center gap-2 px-4 pb-4 pt-2">
               {(() => {
                 // Check if connected
@@ -4419,10 +4448,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     )}
                     <button
                       onClick={() => toggleStatusLike(activeStatusItem)}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl transition active:scale-90"
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 transition active:scale-90"
+                      style={{ backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)" }}
                       aria-label={myLikedStatusIds.has(activeStatusItem.id) ? "Unlike status" : "Like status"}
                     >
-                      {myLikedStatusIds.has(activeStatusItem.id) ? "❤️" : "🤍"}
+                      <span key={myLikedStatusIds.has(activeStatusItem.id) ? "liked" : "not-liked"} style={myLikedStatusIds.has(activeStatusItem.id) ? { animation: "ciLikePop 0.32s cubic-bezier(0.2, 0.9, 0.3, 1)" } : undefined} className="flex">
+                        <HeartSuit size={22} filled={myLikedStatusIds.has(activeStatusItem.id)} />
+                      </span>
                     </button>
                   </>
                 );
@@ -4434,7 +4466,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
       {statusViewersOpen && (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/60" onClick={closeStatusViewersList}>
-          <div className="w-full max-w-md rounded-t-2xl bg-ink-900 pb-6 pt-3" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="w-full max-w-md rounded-t-3xl border-t border-white/15 bg-ink-900/70 pb-6 pt-3 shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.7)]"
+            style={{ backdropFilter: "blur(28px) saturate(160%)", WebkitBackdropFilter: "blur(28px) saturate(160%)", animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
             <p className="px-5 pb-2 text-sm font-semibold text-white">
               {statusViewersList.length} {statusViewersList.length === 1 ? "view" : "views"}
@@ -4455,7 +4491,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                       </p>
                       <p className="text-xs text-mist">{formatLastSeen(v.created_at)}</p>
                     </div>
-                    {v.liked && <span className="text-lg" aria-label="Liked">❤️</span>}
+                    {v.liked && <span className="flex" aria-label="Liked"><HeartSuit size={20} filled /></span>}
                   </div>
                 ))
               )}
