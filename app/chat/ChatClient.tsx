@@ -3553,33 +3553,69 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <div className="flex items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">You've blocked this account</div>
             </div>
           ) : (
-            <div className="relative z-10 flex gap-3 px-6 pb-8">
+            <div className="relative z-10 flex items-center gap-2.5 px-6 pb-8">
               <button
                 onClick={() => toggleFollow(profileView)}
                 disabled={profileViewFollowBusy}
                 className={`flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 ${
                   profileViewIsFollowing
                     ? "border border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70"
-                    : "border border-white/15 bg-white/10 text-white hover:bg-white/15"
+                    : "bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 hover:shadow-violet/50"
                 }`}
               >
                 {profileViewIsFollowing ? "Following" : "Follow"}
               </button>
+
               {profileViewStatus === "loading" && (
-                <div className="flex flex-1 items-center justify-center rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Checking…</div>
+                <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
+                </div>
               )}
               {profileViewStatus === "none" && (
-                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50">Connect</button>
+                <button
+                  onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }}
+                  aria-label="Connect"
+                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/15"
+                >
+                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" /><path d="M18.5 8v4M20.5 10h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                </button>
               )}
               {profileViewStatus === "pending" && (
-                <button disabled className="flex-1 rounded-full border border-white/10 bg-white/5 py-3 text-sm font-semibold text-mist">Request Sent</button>
+                <button disabled aria-label="Request Sent" className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M12 7v5l3.2 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
               )}
               {profileViewStatus === "declined" && (
-                <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} className="flex-1 rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">Request Declined</button>
+                <button
+                  onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }}
+                  aria-label="Request Declined"
+                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-red-400"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                </button>
               )}
               {profileViewStatus === "connected" && (
-                <button onClick={goToProfileChat} disabled={startingProfileChat} className="flex-1 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60">{startingProfileChat ? "Starting…" : "Message"}</button>
+                <button
+                  onClick={goToProfileChat}
+                  disabled={startingProfileChat}
+                  aria-label="Message"
+                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
+                >
+                  {startingProfileChat ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  ) : (
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 4v-4H5.5A1.5 1.5 0 0 1 4 14.5v-9Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+                  )}
+                </button>
               )}
+
+              <button
+                onClick={() => setProfileMenuOpen((v) => !v)}
+                aria-label="More options"
+                className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist transition hover:bg-white/10 hover:text-white"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              </button>
             </div>
           )}
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
