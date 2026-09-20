@@ -17,7 +17,7 @@ type Profile = {
   last_seen?: string;
   avatar_url?: string | null;
   bio?: string | null;
-  website?: string | null;
+  bio_link?: string | null;
   verified?: boolean | null;
 };
 
@@ -103,7 +103,8 @@ type AppNotification = {
     | "message"
     | "status_like"
     | "status_mention"
-    | "status_reply";
+    | "status_reply"
+    | "follow";
   title: string;
   body: string;
   actor_id?: string | null;
@@ -156,7 +157,6 @@ const SWIPE_REPLY_MAX = 64;
 const CHAT_SWIPE_MAX = 84;
 const CHAT_SWIPE_DELETE_THRESHOLD = 60;
 const MAX_BIO_LENGTH = 160;
-const MAX_WEBSITE_LENGTH = 100;
 const STATUS_DURATION_MS = 15000;
 const STATUS_MAX_VIDEO_MS = 30000;
 const STATUS_COLORS = ["#7C5CFF", "#22D3B8", "#EF4444", "#F59E0B", "#3B82F6", "#EC4899", "#111827"];
@@ -737,7 +737,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
-  const [websiteDraft, setWebsiteDraft] = useState(initialProfile.website ?? "");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -786,17 +785,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [profileViewConnCount, setProfileViewConnCount] = useState<number | null>(null);
   const [profileViewAnimCount, setProfileViewAnimCount] = useState(0);
   const [profileViewMutuals, setProfileViewMutuals] = useState<{ profiles: Profile[]; count: number }>({ profiles: [], count: 0 });
+  const [profileViewFollowing, setProfileViewFollowing] = useState(false);
   const [profileViewFollowerCount, setProfileViewFollowerCount] = useState<number | null>(null);
   const [profileViewFollowingCount, setProfileViewFollowingCount] = useState<number | null>(null);
-  const [profileViewIsFollowing, setProfileViewIsFollowing] = useState(false);
-  const [profileViewFollowBusy, setProfileViewFollowBusy] = useState(false);
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [followToggling, setFollowToggling] = useState(false);
   const [profileViewBlocked, setProfileViewBlocked] = useState(false);
-  const [profileViewRestricted, setProfileViewRestricted] = useState(false);
-  const [profileViewBlockBusy, setProfileViewBlockBusy] = useState(false);
-  const [profileViewRestrictBusy, setProfileViewRestrictBusy] = useState(false);
-  const [myBlockedIds, setMyBlockedIds] = useState<string[]>([]);
-  const [myRestrictedIds, setMyRestrictedIds] = useState<string[]>([]);
+  const [blockToggling, setBlockToggling] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionsByMsg, setReactionsByMsg] = useState<Record<string, Reaction[]>>({});
@@ -1939,86 +1934,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return (data ?? []).map((r: any) => (r.from_user_id === userId ? r.to_user_id : r.from_user_id));
   }
 
-  async function fetchFollowCounts(userId: string): Promise<{ followers: number; following: number }> {
-    const [{ count: followers }, { count: following }] = await Promise.all([
-      supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("following_id", userId),
-      supabase.from("follows").select("following_id", { count: "exact", head: true }).eq("follower_id", userId),
-    ]);
-    return { followers: followers ?? 0, following: following ?? 0 };
-  }
-
-  async function toggleFollow(other: Profile) {
-    if (profileViewFollowBusy) return;
-    setProfileViewFollowBusy(true);
-    const wasFollowing = profileViewIsFollowing;
-    // optimistic update
-    setProfileViewIsFollowing(!wasFollowing);
-    setProfileViewFollowerCount((prev) => (prev === null ? prev : prev + (wasFollowing ? -1 : 1)));
-    if (wasFollowing) {
-      const { error } = await supabase.from("follows").delete().eq("follower_id", myProfile.id).eq("following_id", other.id);
-      if (error) {
-        setProfileViewIsFollowing(true);
-        setProfileViewFollowerCount((prev) => (prev === null ? prev : prev + 1));
-        setErrorMsg("Could not unfollow. Please try again.");
-      }
-    } else {
-      const { error } = await supabase.from("follows").insert({ follower_id: myProfile.id, following_id: other.id });
-      if (error) {
-        setProfileViewIsFollowing(false);
-        setProfileViewFollowerCount((prev) => (prev === null ? prev : prev - 1));
-        setErrorMsg("Could not follow. Please try again.");
-      } else {
-        notifyUser({ userId: other.id, type: "new_follower", title: myProfile.display_name, body: `${myProfile.display_name} started following you` });
-      }
-    }
-    setProfileViewFollowBusy(false);
-  }
-
-  async function loadMyModerationLists() {
-    const [{ data: blocked }, { data: restricted }] = await Promise.all([
-      supabase.from("blocked_users").select("blocked_id").eq("blocker_id", myProfile.id),
-      supabase.from("restricted_users").select("restricted_id").eq("restrictor_id", myProfile.id),
-    ]);
-    setMyBlockedIds((blocked ?? []).map((r: any) => r.blocked_id));
-    setMyRestrictedIds((restricted ?? []).map((r: any) => r.restricted_id));
-  }
-
-  async function toggleBlockUser(other: Profile) {
-    if (profileViewBlockBusy) return;
-    setProfileViewBlockBusy(true);
-    const wasBlocked = profileViewBlocked;
-    setProfileViewBlocked(!wasBlocked);
-    setProfileMenuOpen(false);
-    if (wasBlocked) {
-      const { error } = await supabase.from("blocked_users").delete().eq("blocker_id", myProfile.id).eq("blocked_id", other.id);
-      if (error) { setProfileViewBlocked(true); setErrorMsg("Could not unblock. Please try again."); }
-      else setMyBlockedIds((prev) => prev.filter((id) => id !== other.id));
-    } else {
-      const { error } = await supabase.from("blocked_users").insert({ blocker_id: myProfile.id, blocked_id: other.id });
-      if (error) { setProfileViewBlocked(false); setErrorMsg("Could not block. Please try again."); }
-      else setMyBlockedIds((prev) => [...prev, other.id]);
-    }
-    setProfileViewBlockBusy(false);
-  }
-
-  async function toggleRestrictUser(other: Profile) {
-    if (profileViewRestrictBusy) return;
-    setProfileViewRestrictBusy(true);
-    const wasRestricted = profileViewRestricted;
-    setProfileViewRestricted(!wasRestricted);
-    setProfileMenuOpen(false);
-    if (wasRestricted) {
-      const { error } = await supabase.from("restricted_users").delete().eq("restrictor_id", myProfile.id).eq("restricted_id", other.id);
-      if (error) { setProfileViewRestricted(true); setErrorMsg("Could not unrestrict. Please try again."); }
-      else setMyRestrictedIds((prev) => prev.filter((id) => id !== other.id));
-    } else {
-      const { error } = await supabase.from("restricted_users").insert({ restrictor_id: myProfile.id, restricted_id: other.id });
-      if (error) { setProfileViewRestricted(false); setErrorMsg("Could not restrict. Please try again."); }
-      else setMyRestrictedIds((prev) => [...prev, other.id]);
-    }
-    setProfileViewRestrictBusy(false);
-  }
-
   async function openProfileView(other: Profile) {
     setProfileView(other);
     setProfileViewStatus("loading");
@@ -2026,19 +1941,23 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewConnCount(null);
     setProfileViewAnimCount(0);
     setProfileViewMutuals({ profiles: [], count: 0 });
+    setProfileViewFollowing(false);
     setProfileViewFollowerCount(null);
     setProfileViewFollowingCount(null);
-    setProfileViewIsFollowing(false);
+    setProfileViewBlocked(false);
     setProfileMenuOpen(false);
-    setProfileViewBlocked(myBlockedIds.includes(other.id));
-    setProfileViewRestricted(myRestrictedIds.includes(other.id));
 
-    fetchFollowCounts(other.id).then(({ followers, following }) => {
-      setProfileViewFollowerCount(followers);
-      setProfileViewFollowingCount(following);
+    supabase.from("follows").select("follower_id", { count: "exact", head: true }).eq("followed_id", other.id).then(({ count }) => {
+      setProfileViewFollowerCount(count ?? 0);
     });
-    supabase.from("follows").select("follower_id").eq("follower_id", myProfile.id).eq("following_id", other.id).maybeSingle().then(({ data }) => {
-      setProfileViewIsFollowing(!!data);
+    supabase.from("follows").select("followed_id", { count: "exact", head: true }).eq("follower_id", other.id).then(({ count }) => {
+      setProfileViewFollowingCount(count ?? 0);
+    });
+    supabase.from("follows").select("follower_id").eq("follower_id", myProfile.id).eq("followed_id", other.id).maybeSingle().then(({ data }) => {
+      setProfileViewFollowing(!!data);
+    });
+    supabase.from("blocked_users").select("blocker_id").eq("blocker_id", myProfile.id).eq("blocked_id", other.id).maybeSingle().then(({ data }) => {
+      setProfileViewBlocked(!!data);
     });
 
     fetchAcceptedConnectionIds(other.id).then(async (theirIds) => {
@@ -2088,12 +2007,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setProfileViewConvoId(null);
     setProfileViewConnCount(null);
     setProfileViewMutuals({ profiles: [], count: 0 });
+    setProfileViewFollowing(false);
     setProfileViewFollowerCount(null);
     setProfileViewFollowingCount(null);
-    setProfileViewIsFollowing(false);
-    setProfileMenuOpen(false);
     setProfileViewBlocked(false);
-    setProfileViewRestricted(false);
+    setProfileMenuOpen(false);
   }
 
   const [startingProfileChat, setStartingProfileChat] = useState(false);
@@ -2148,6 +2066,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     }
     setProfileView((prev) => (prev && prev.id === target.id ? { ...prev, verified: makeVerified } : prev));
     setGrantingVerification(false);
+  }
+
+  async function toggleFollow(target: Profile) {
+    if (followToggling) return;
+    setFollowToggling(true);
+    if (profileViewFollowing) {
+      const { error } = await supabase.from("follows").delete().eq("follower_id", myProfile.id).eq("followed_id", target.id);
+      if (!error) {
+        setProfileViewFollowing(false);
+        setProfileViewFollowerCount((c) => (c === null ? c : Math.max(0, c - 1)));
+      }
+    } else {
+      const { error } = await supabase.from("follows").insert({ follower_id: myProfile.id, followed_id: target.id });
+      if (!error) {
+        setProfileViewFollowing(true);
+        setProfileViewFollowerCount((c) => (c === null ? c : c + 1));
+        notifyUser({
+          userId: target.id,
+          type: "follow",
+          title: "New follower",
+          body: `${myProfile.display_name} started following you.`,
+        });
+      }
+    }
+    setFollowToggling(false);
+  }
+
+  async function toggleProfileBlock(target: Profile) {
+    if (blockToggling) return;
+    setBlockToggling(true);
+    if (profileViewBlocked) {
+      const { error } = await supabase.from("blocked_users").delete().eq("blocker_id", myProfile.id).eq("blocked_id", target.id);
+      if (!error) setProfileViewBlocked(false);
+    } else {
+      const { error } = await supabase.from("blocked_users").insert({ blocker_id: myProfile.id, blocked_id: target.id });
+      if (!error) setProfileViewBlocked(true);
+    }
+    setBlockToggling(false);
+    setProfileMenuOpen(false);
   }
 
   async function confirmConnect() {
@@ -2486,21 +2443,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
-  async function saveWebsite() {
-    const trimmed = websiteDraft.trim();
-    if (trimmed === (myProfile.website ?? "")) return;
-    const { error } = await supabase.from("profiles").update({ website: trimmed }).eq("id", myProfile.id);
-    if (error) { setErrorMsg("Failed to save link. Please try again."); return; }
-    setMyProfile((prev) => ({ ...prev, website: trimmed }));
-  }
-
   const loadStatuses = useCallback(async () => {
     const { data } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
     setStatuses((data ?? []) as any);
   }, [supabase]);
 
   useEffect(() => { loadStatuses(); }, [loadStatuses]);
-  useEffect(() => { if (myProfile?.id) loadMyModerationLists(); }, [myProfile?.id]);
 
   useEffect(() => {
     const channel = supabase.channel("statuses-realtime").on("postgres_changes", { event: "*", schema: "public", table: "statuses" }, () => loadStatuses()).subscribe();
@@ -3443,26 +3391,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </button>
             <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
             <div className="relative">
-              <button onClick={() => setProfileMenuOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="More options">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.8" fill="currentColor" /><circle cx="12" cy="12" r="1.8" fill="currentColor" /><circle cx="19" cy="12" r="1.8" fill="currentColor" /></svg>
+              <button onClick={() => setProfileMenuOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="More">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
               </button>
               {profileMenuOpen && (
                 <>
-                  <div className="fixed inset-0 z-20" onClick={() => setProfileMenuOpen(false)} />
-                  <div className="absolute right-0 top-11 z-30 flex min-w-[180px] flex-col gap-0.5 rounded-2xl border border-white/10 bg-ink-800 p-1.5 shadow-2xl" style={{ animation: "ciSlideUp 0.15s ease-out forwards" }}>
+                  <div className="fixed inset-0 z-10" onClick={() => setProfileMenuOpen(false)} />
+                  <div className="absolute right-0 top-11 z-20 min-w-[170px] rounded-2xl border border-white/10 bg-ink-800 p-1.5 shadow-2xl">
                     <button
-                      onClick={() => toggleRestrictUser(profileView)}
-                      disabled={profileViewRestrictBusy}
-                      className="rounded-xl px-3 py-2.5 text-left text-[13.5px] font-medium text-yellow-400 transition hover:bg-white/5 disabled:opacity-50"
+                      onClick={() => toggleProfileBlock(profileView)}
+                      disabled={blockToggling}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
                     >
-                      {profileViewRestricted ? "Unrestrict" : "Restrict"}
-                    </button>
-                    <button
-                      onClick={() => toggleBlockUser(profileView)}
-                      disabled={profileViewBlockBusy}
-                      className="rounded-xl px-3 py-2.5 text-left text-[13.5px] font-medium text-red-400 transition hover:bg-white/5 disabled:opacity-50"
-                    >
-                      {profileViewBlocked ? "Unblock" : "Block"}
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                      {profileViewBlocked ? "Unblock User" : "Block User"}
                     </button>
                   </div>
                 </>
@@ -3521,15 +3463,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             {profileView.bio && (
               <p className="mt-4 max-w-xs whitespace-pre-wrap text-sm leading-relaxed text-white/60 tx2">{profileView.bio}</p>
             )}
-            {profileView.website && (
+            {profileView.bio_link && (
               <a
-                href={/^https?:\/\//i.test(profileView.website) ? profileView.website : `https://${profileView.website}`}
+                href={profileView.bio_link.startsWith("http") ? profileView.bio_link : `https://${profileView.bio_link}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-violet-light"
+                className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-teal"
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 15l6-6M10 6l1-1a4 4 0 015.5 5.5L15 12M14 18l-1 1a4 4 0 01-5.5-5.5L9 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                {profileView.website.replace(/^https?:\/\//i, "")}
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 0 0 7.07 0l2.83-2.83a5 5 0 0 0-7.07-7.07l-1.5 1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><path d="M14 11a5 5 0 0 0-7.07 0L4.1 13.83a5 5 0 0 0 7.07 7.07l1.5-1.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                {profileView.bio_link.replace(/^https?:\/\//, "")}
               </a>
             )}
             {profileViewMutuals.count > 0 && (
@@ -3548,76 +3490,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
           </div>
-          {profileViewBlocked ? (
-            <div className="relative z-10 px-6 pb-8">
-              <div className="flex items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 py-3 text-sm font-semibold text-red-400">You've blocked this account</div>
-            </div>
-          ) : (
-            <div className="relative z-10 flex items-center gap-2.5 px-6 pb-8">
-              <button
-                onClick={() => toggleFollow(profileView)}
-                disabled={profileViewFollowBusy}
-                className={`flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 ${
-                  profileViewIsFollowing
-                    ? "border border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70"
-                    : "bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 hover:shadow-violet/50"
-                }`}
-              >
-                {profileViewIsFollowing ? "Following" : "Follow"}
-              </button>
+          <div className="relative z-10 flex items-center gap-3 px-6 pb-8">
+            <button
+              onClick={() => toggleFollow(profileView)}
+              disabled={followToggling}
+              className={`flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 ${
+                profileViewFollowing
+                  ? "border border-white/12 bg-white/6 text-white hover:bg-white/10"
+                  : "bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 hover:shadow-violet/50"
+              }`}
+            >
+              {followToggling ? "…" : profileViewFollowing ? "Following" : "Follow"}
+            </button>
 
-              {profileViewStatus === "loading" && (
-                <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5">
-                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/20 border-t-white/70" />
-                </div>
-              )}
-              {profileViewStatus === "none" && (
-                <button
-                  onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }}
-                  aria-label="Connect"
-                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/15"
-                >
-                  <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M16 19v-1.5a3.5 3.5 0 0 0-3.5-3.5h-5A3.5 3.5 0 0 0 4 17.5V19" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="8" r="3" stroke="currentColor" strokeWidth="1.8" /><path d="M18.5 8v4M20.5 10h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                </button>
-              )}
-              {profileViewStatus === "pending" && (
-                <button disabled aria-label="Request Sent" className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M12 7v5l3.2 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                </button>
-              )}
-              {profileViewStatus === "declined" && (
-                <button
-                  onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }}
-                  aria-label="Request Declined"
-                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-red-400"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                </button>
-              )}
-              {profileViewStatus === "connected" && (
-                <button
-                  onClick={goToProfileChat}
-                  disabled={startingProfileChat}
-                  aria-label="Message"
-                  className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60"
-                >
-                  {startingProfileChat ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  ) : (
-                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v9a1.5 1.5 0 0 1-1.5 1.5H9l-4 4v-4H5.5A1.5 1.5 0 0 1 4 14.5v-9Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /></svg>
-                  )}
-                </button>
-              )}
-
-              <button
-                onClick={() => setProfileMenuOpen((v) => !v)}
-                aria-label="More options"
-                className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist transition hover:bg-white/10 hover:text-white"
-              >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            {profileViewStatus === "loading" && (
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="14 40" /></svg>
+              </div>
+            )}
+            {profileViewStatus === "none" && (
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/6 text-white transition hover:bg-white/10">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
               </button>
-            </div>
-          )}
+            )}
+            {profileViewStatus === "pending" && (
+              <button disabled aria-label="Request sent" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+              </button>
+            )}
+            {profileViewStatus === "declined" && (
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-red-400">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              </button>
+            )}
+            {profileViewStatus === "connected" && (
+              <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60">
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+              </button>
+            )}
+          </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
             <div className="relative z-10 px-6 pb-8">
               {isVerified(profileView.username, false) ? (
@@ -4665,25 +4576,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 </div>
                 <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none" />
               </div>
-              <div className="glass mt-4 rounded-2xl px-4 py-3.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-mist">Link</span>
-                  <span className="text-[10px] text-mist/70">{websiteDraft.length}/{MAX_WEBSITE_LENGTH}</span>
-                </div>
-                <input
-                  value={websiteDraft}
-                  onChange={(e) => setWebsiteDraft(e.target.value.slice(0, MAX_WEBSITE_LENGTH))}
-                  placeholder="yourwebsite.com"
-                  className="mt-2 w-full bg-transparent text-sm text-white placeholder:text-mist/50 outline-none"
-                />
-              </div>
               <button
-                onClick={() => { saveDisplayName(); saveBio(); saveWebsite(); }}
-                disabled={
-                  (!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) &&
-                  bioDraft.trim() === (myProfile.bio ?? "") &&
-                  websiteDraft.trim() === (myProfile.website ?? "")
-                }
+                onClick={() => { saveDisplayName(); saveBio(); }}
+                disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "")}
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
               >
                 Save Changes
