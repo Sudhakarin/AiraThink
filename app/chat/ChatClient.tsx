@@ -827,6 +827,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [followLists, setFollowLists] = useState<{ followers: Profile[]; following: Profile[] } | null>(null);
   const [myFollowingIds, setMyFollowingIds] = useState<Set<string>>(new Set());
   const [followBusyId, setFollowBusyId] = useState<string | null>(null);
+  const [followSearch, setFollowSearch] = useState("");
+  const [unfollowTarget, setUnfollowTarget] = useState<Profile | null>(null);
   const followSheetRef = useRef<"followers" | "following" | null>(null);
   followSheetRef.current = followSheet;
   const profileCacheRef = useRef<Record<string, ProfileCacheEntry> | null>(null);
@@ -2210,6 +2212,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   function openFollowSheet(tab: "followers" | "following") {
+    setFollowSearch("");
     setFollowSheet(tab);
     loadFollowLists();
   }
@@ -3342,6 +3345,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           30% { opacity: 1; transform: translateY(-5px); }
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes ciSlideIn { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes ciSheetUp { from { opacity: 0; transform: translateY(40px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .animate-floatSlow { animation: floatSlow 4s ease-in-out infinite; }
@@ -3591,94 +3595,155 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       )}
 
-      {followSheet && (
+      {followSheet && (() => {
+        const q = followSearch.trim().toLowerCase();
+        const fullList = followLists ? followLists[followSheet] : null;
+        const shown = fullList ? fullList.filter((pr) => !q || pr.username.toLowerCase().includes(q) || pr.display_name.toLowerCase().includes(q)) : null;
+        return (
+          <div
+            className="fixed inset-0 z-[55] flex justify-center sm:items-center sm:p-6 sm:bg-black/60 sm:backdrop-blur-md"
+            onClick={() => setFollowSheet(null)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={followSheet === "followers" ? "Followers" : "Following"}
+              onClick={(e) => e.stopPropagation()}
+              className="flex h-full w-full max-w-md flex-col bg-ink-900 sm:h-[82vh] sm:rounded-3xl sm:border sm:border-white/10 sm:shadow-2xl"
+              style={{ animation: "ciSlideIn 0.22s cubic-bezier(0.2, 0.9, 0.3, 1) both", paddingTop: "env(safe-area-inset-top)" }}
+            >
+              <div className="relative flex h-12 shrink-0 items-center justify-center px-2">
+                <button onClick={() => setFollowSheet(null)} aria-label="Back" className="absolute left-2 flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:bg-white/10">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </button>
+                <p className="flex items-center font-display text-[16px] font-bold text-white">
+                  {myProfile.username}
+                  {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={14} />}
+                </p>
+              </div>
+
+              <div className="grid shrink-0 grid-cols-2 border-b border-white/10">
+                {(["followers", "following"] as const).map((tab) => {
+                  const on = followSheet === tab;
+                  const n = tab === "followers" ? myFollowerCount : myFollowingCount;
+                  return (
+                    <button
+                      key={tab}
+                      onClick={() => { setFollowSheet(tab); setFollowSearch(""); }}
+                      className={`relative py-3 text-[14px] font-semibold transition ${on ? "text-white" : "text-white/45 hover:text-white/70"}`}
+                    >
+                      <span className="tabular-nums">{n === null ? "" : `${formatCount(n)} `}</span>{tab}
+                      {on && <span className="absolute inset-x-0 bottom-[-1px] h-[1.5px] bg-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="shrink-0 px-4 pb-2 pt-3">
+                <div className="flex h-9 items-center gap-2 rounded-xl bg-white/8 px-3">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="shrink-0 text-white/45"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" /><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                  <input
+                    value={followSearch}
+                    onChange={(e) => setFollowSearch(e.target.value)}
+                    placeholder="Search"
+                    className="min-w-0 flex-1 bg-transparent text-[14px] text-white outline-none placeholder:text-white/40"
+                  />
+                  {followSearch && (
+                    <button onClick={() => setFollowSearch("")} aria-label="Clear search" className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white/40 text-ink-900">
+                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" /></svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
+                {shown === null ? (
+                  Array.from({ length: 7 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                      <div className="h-12 w-12 animate-pulse rounded-full bg-white/10" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 w-28 animate-pulse rounded bg-white/10" />
+                        <div className="h-3 w-20 animate-pulse rounded bg-white/5" />
+                      </div>
+                      <div className="h-8 w-24 animate-pulse rounded-lg bg-white/10" />
+                    </div>
+                  ))
+                ) : shown.length === 0 ? (
+                  <div className="flex h-full flex-col items-center justify-center px-8 pb-16 text-center">
+                    <p className="text-[15px] font-semibold text-white">
+                      {q ? "No results found" : followSheet === "followers" ? "No followers yet" : "Not following anyone yet"}
+                    </p>
+                    <p className="mt-1 text-[13px] text-white/50">
+                      {q ? "Try a different name or username." : followSheet === "followers" ? "When someone follows you, they'll show up here." : "People you follow will show up here."}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="px-4 pb-1 pt-2 text-[14px] font-semibold text-white">{followSheet === "followers" ? "All followers" : "All following"}</p>
+                    {shown.map((pr) => {
+                      const iFollow = myFollowingIds.has(pr.id);
+                      const followsMe = !!followLists && followLists.followers.some((f) => f.id === pr.id);
+                      return (
+                        <div key={pr.id} className="flex items-center gap-3 px-4 py-2">
+                          <button onClick={() => openProfileView(pr)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                            <Avatar name={pr.display_name} color={pr.avatar_color} avatarUrl={pr.avatar_url} size={48} />
+                            <div className="min-w-0 leading-tight">
+                              <p className="flex items-center truncate text-[14px] font-semibold text-white">
+                                {pr.username}
+                                {isVerified(pr.username, pr.verified) && <VerifiedBadge size={13} />}
+                              </p>
+                              <p className="mt-0.5 truncate text-[14px] text-white/50">{pr.display_name}</p>
+                            </div>
+                          </button>
+                          <button
+                            onClick={() => (iFollow ? setUnfollowTarget(pr) : toggleFollowFromList(pr))}
+                            disabled={followBusyId === pr.id}
+                            className={`h-8 min-w-[96px] shrink-0 rounded-lg px-4 text-[13.5px] font-semibold text-white transition active:scale-95 disabled:opacity-60 ${
+                              iFollow ? "bg-white/10 hover:bg-white/15" : "bg-[#E54E60] hover:bg-[#EC5C6D]"
+                            }`}
+                          >
+                            {followBusyId === pr.id ? "…" : iFollow ? "Following" : followsMe ? "Follow back" : "Follow"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {unfollowTarget && (
         <div
-          className="fixed inset-0 z-[55] flex items-end justify-center sm:items-center sm:p-6"
+          className="fixed inset-0 z-[56] flex items-end justify-center sm:items-center sm:p-6"
           style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)", animation: "statusFadeIn 160ms ease-out" }}
-          onClick={() => setFollowSheet(null)}
+          onClick={() => setUnfollowTarget(null)}
         >
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={followSheet === "followers" ? "Followers" : "Following"}
             onClick={(e) => e.stopPropagation()}
-            className="flex h-[78vh] w-full max-w-md flex-col rounded-t-3xl border border-white/10 bg-ink-800 shadow-2xl sm:h-[70vh] sm:rounded-3xl"
-            style={{ animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
+            className="w-full max-w-sm rounded-t-3xl border border-white/10 bg-ink-800 px-4 pt-3 shadow-2xl sm:rounded-3xl sm:pt-5"
+            style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))", animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
           >
-            <div className="px-4 pt-3">
-              <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
-              <div className="flex items-center justify-between pb-1">
-                <p className="font-display text-[15px] font-bold text-white">@{myProfile.username}</p>
-                <button onClick={() => setFollowSheet(null)} aria-label="Close" className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-                </button>
-              </div>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
+            <div className="flex flex-col items-center pb-4 text-center">
+              <Avatar name={unfollowTarget.display_name} color={unfollowTarget.avatar_color} avatarUrl={unfollowTarget.avatar_url} size={64} />
+              <p className="mt-3 text-[14px] text-white/70">Unfollow @{unfollowTarget.username}?</p>
             </div>
-            <div className="grid grid-cols-2 border-b border-white/10">
-              {(["followers", "following"] as const).map((tab) => {
-                const on = followSheet === tab;
-                const n = tab === "followers" ? myFollowerCount : myFollowingCount;
-                return (
-                  <button
-                    key={tab}
-                    onClick={() => setFollowSheet(tab)}
-                    className={`relative py-3 text-[13.5px] font-semibold transition ${on ? "text-white" : "text-white/45 hover:text-white/70"}`}
-                  >
-                    {tab === "followers" ? "Followers" : "Following"}
-                    {n !== null && <span className="ml-1.5 tabular-nums text-white/45">{formatCount(n)}</span>}
-                    {on && <span className="absolute inset-x-6 bottom-0 h-[2px] rounded-full bg-[#E54E60]" />}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto py-1" style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}>
-              {followLists === null ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 px-4 py-2.5">
-                    <div className="h-11 w-11 animate-pulse rounded-full bg-white/10" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 w-32 animate-pulse rounded bg-white/10" />
-                      <div className="h-2.5 w-20 animate-pulse rounded bg-white/5" />
-                    </div>
-                  </div>
-                ))
-              ) : followLists[followSheet].length === 0 ? (
-                <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-                  <p className="text-sm font-semibold text-white">{followSheet === "followers" ? "No followers yet" : "Not following anyone yet"}</p>
-                  <p className="mt-1 text-xs text-mist">
-                    {followSheet === "followers" ? "When someone follows you, they'll show up here." : "People you follow will show up here."}
-                  </p>
-                </div>
-              ) : (
-                followLists[followSheet].map((pr) => {
-                  const iFollow = myFollowingIds.has(pr.id);
-                  const followsMe = followLists.followers.some((f) => f.id === pr.id);
-                  return (
-                    <div key={pr.id} className="flex items-center gap-3 px-4 py-2.5">
-                      <button onClick={() => openProfileView(pr)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                        <Avatar name={pr.display_name} color={pr.avatar_color} avatarUrl={pr.avatar_url} size={44} />
-                        <div className="min-w-0">
-                          <p className="flex items-center truncate text-[14.5px] font-semibold text-white tx1">
-                            {pr.display_name}
-                            {isVerified(pr.username, pr.verified) && <VerifiedBadge size={14} />}
-                          </p>
-                          <p className="truncate text-xs text-mist">@{pr.username}</p>
-                        </div>
-                      </button>
-                      <button
-                        onClick={() => toggleFollowFromList(pr)}
-                        disabled={followBusyId === pr.id}
-                        className={`h-8 min-w-[92px] shrink-0 rounded-[10px] px-3 text-[13px] font-semibold text-white transition active:scale-95 disabled:opacity-60 ${
-                          iFollow ? "bg-[#2E2E2E] ring-1 ring-inset ring-white/[0.06] hover:bg-[#3A3A3A]" : "bg-[#E54E60] hover:bg-[#EC5C6D]"
-                        }`}
-                      >
-                        {followBusyId === pr.id ? "…" : iFollow ? "Following" : followsMe ? "Follow back" : "Follow"}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+            <div className="h-px w-full bg-white/10" />
+            <button
+              onClick={() => { const t = unfollowTarget; setUnfollowTarget(null); toggleFollowFromList(t); }}
+              className="w-full py-3.5 text-[15px] font-semibold text-red-400 transition hover:bg-white/5"
+            >
+              Unfollow
+            </button>
+            <div className="h-px w-full bg-white/10" />
+            <button onClick={() => setUnfollowTarget(null)} className="w-full py-3.5 text-[15px] text-white transition hover:bg-white/5">
+              Cancel
+            </button>
           </div>
         </div>
       )}
@@ -4874,36 +4939,40 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           {mobileTab === "profile" && (
             <div className="px-5 py-6">
               <h2 className="mb-6 text-center font-display text-lg font-bold text-white">Edit Profile</h2>
-              <div className="flex flex-col items-center">
-                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
-                <button onClick={() => fileInputRef.current?.click()} className="group relative" disabled={uploading}>
-                  <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={96} avatarUrl={myProfile.avatar_url} />
-                  <span className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
+              <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
+              <div className="flex items-center gap-6">
+                <button onClick={() => fileInputRef.current?.click()} className="group relative shrink-0" disabled={uploading} aria-label="Change profile photo">
+                  <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={88} avatarUrl={myProfile.avatar_url} />
+                  <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border-2 border-ink-800 bg-violet text-white shadow-lg">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="white" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" /></svg>
                   </span>
                 </button>
-                <p className="mt-2 text-xs text-mist">{uploading ? "Uploading…" : "Tap photo to change"}</p>
-              </div>
-
-              <div className="glass mt-6 overflow-hidden rounded-2xl">
-                <div className="grid grid-cols-2 divide-x divide-black/5 dark:divide-white/5">
+                <div className="grid min-w-0 flex-1 grid-cols-2 text-center">
                   {([
-                    { key: "followers", label: "Followers", n: myFollowerCount },
-                    { key: "following", label: "Following", n: myFollowingCount },
+                    { key: "followers", label: "followers", n: myFollowerCount },
+                    { key: "following", label: "following", n: myFollowingCount },
                   ] as const).map((item) => (
                     <button
                       key={item.key}
                       onClick={() => openFollowSheet(item.key)}
-                      aria-label={`View ${item.label.toLowerCase()}`}
-                      className="flex flex-col items-center py-4 transition hover:bg-black/5 active:bg-black/10 dark:hover:bg-white/5 dark:active:bg-white/10"
+                      aria-label={`View ${item.label}`}
+                      className="flex flex-col items-center py-1 transition active:opacity-60"
                     >
-                      <span className="flex h-7 items-center font-display text-[22px] font-bold tabular-nums text-white">
+                      <span className="flex h-7 items-center font-display text-[19px] font-bold tabular-nums text-white">
                         {item.n === null ? <CountSkeleton /> : formatCount(item.n)}
                       </span>
-                      <span className="mt-0.5 text-[12px] font-medium text-mist">{item.label}</span>
+                      <span className="text-[13px] text-white/70">{item.label}</span>
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="mt-3 mb-2">
+                <p className="flex items-center text-[14.5px] font-semibold text-white">
+                  {myProfile.display_name}
+                  {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={14} />}
+                </p>
+                <p className="text-[13px] text-mist">@{myProfile.username}</p>
+                <p className="mt-1 text-[11px] text-mist/70">{uploading ? "Uploading…" : "Tap photo to change"}</p>
               </div>
 
               <div className="glass mt-4 divide-y divide-black/5 dark:divide-white/5 overflow-hidden rounded-2xl">
