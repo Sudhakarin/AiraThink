@@ -4971,7 +4971,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     </button>
                     <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
                       <p className="flex min-w-0 items-center font-display text-[20px] font-bold leading-none text-white">
-                        <span className="truncate">{myProfile.username}</span>
+                        <span className="truncate">{myProfile.display_name}</span>
                         {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={18} />}
                       </p>
                       <div className="grid grid-cols-3 text-left">
@@ -4989,7 +4989,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                 );
               })()}
               <div className="mb-1 mt-3">
-                <p className="text-[14.5px] font-semibold leading-tight text-white">{myProfile.display_name}</p>
+                <p className="text-[14.5px] font-semibold leading-tight text-white">@{myProfile.username}</p>
                 {myProfile.bio && <p className="mt-1 whitespace-pre-wrap text-[14px] leading-snug text-white/85">{myProfile.bio}</p>}
                 {myProfile.bio_link && (
                   <a
