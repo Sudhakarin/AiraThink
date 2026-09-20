@@ -3131,6 +3131,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           30% { opacity: 1; transform: translateY(-5px); }
         }
         @keyframes ciSlideUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes ciSheetUp { from { opacity: 0; transform: translateY(40px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         @keyframes floatSlow { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
         .animate-floatSlow { animation: floatSlow 4s ease-in-out infinite; }
         @keyframes statusFadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -3390,26 +3391,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
             </button>
             <p className="text-sm font-semibold text-white/70 tx2">@{profileView.username}</p>
-            <div className="relative">
-              <button onClick={() => setProfileMenuOpen((v) => !v)} className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white" aria-label="More">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
-              </button>
-              {profileMenuOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setProfileMenuOpen(false)} />
-                  <div className="absolute right-0 top-11 z-20 min-w-[170px] rounded-2xl border border-white/10 bg-ink-800 p-1.5 shadow-2xl">
-                    <button
-                      onClick={() => toggleProfileBlock(profileView)}
-                      disabled={blockToggling}
-                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-[13.5px] font-semibold text-red-400 transition hover:bg-red-500/10 disabled:opacity-50"
-                    >
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                      {profileViewBlocked ? "Unblock User" : "Block User"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            <button
+              onClick={() => setProfileMenuOpen(true)}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/5 text-mist transition hover:bg-white/10 hover:text-white"
+              aria-label="More"
+              aria-haspopup="dialog"
+              aria-expanded={profileMenuOpen}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="19" cy="12" r="1.8" /></svg>
+            </button>
           </header>
           <div className="relative z-10 flex flex-col items-center px-6 pt-2 pb-6 text-center" style={{ animation: "ciSlideUp 0.3s ease-out forwards" }}>
             <div className="relative">
@@ -3490,11 +3480,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
           </div>
-          <div className="relative z-10 flex items-center gap-3 px-6 pb-8">
+          <div className="relative z-10 flex items-center justify-center gap-2 px-6 pb-8">
             <button
               onClick={() => toggleFollow(profileView)}
               disabled={followToggling}
-              className={`flex-1 rounded-full py-3 text-sm font-semibold transition disabled:opacity-60 ${
+              className={`h-14 w-44 rounded-xl text-sm font-semibold transition disabled:opacity-60 ${
                 profileViewFollowing
                   ? "border border-white/12 bg-white/6 text-white hover:bg-white/10"
                   : "bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 hover:shadow-violet/50"
@@ -3504,28 +3494,32 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             </button>
 
             {profileViewStatus === "loading" && (
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="14 40" /></svg>
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-mist">
+                <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="14 40" strokeLinecap="round" /></svg>
               </div>
             )}
             {profileViewStatus === "none" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/6 text-white transition hover:bg-white/10">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-white/12 bg-white/6 text-white transition hover:bg-white/10 active:scale-95">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <span className="text-[10px] font-medium leading-none">Connect</span>
               </button>
             )}
             {profileViewStatus === "pending" && (
-              <button disabled aria-label="Request sent" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-mist">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+              <button disabled aria-label="Request sent" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 text-mist">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+                <span className="text-[9.5px] font-medium leading-none">Requested</span>
               </button>
             )}
             {profileViewStatus === "declined" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-red-500/25 bg-red-500/10 text-red-400">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-red-500/25 bg-red-500/10 text-red-400 active:scale-95">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <span className="text-[10px] font-medium leading-none">Declined</span>
               </button>
             )}
             {profileViewStatus === "connected" && (
-              <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 disabled:opacity-60">
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+              <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 active:scale-95 disabled:opacity-60">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+                <span className="text-[10px] font-medium leading-none">Message</span>
               </button>
             )}
           </div>
@@ -3550,6 +3544,54 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   {grantingVerification ? "Verifying…" : "Grant Verification"}
                 </button>
               )}
+            </div>
+          )}
+
+          {profileMenuOpen && (
+            <div
+              className="fixed inset-0 z-30 flex items-end justify-center sm:items-center sm:p-6"
+              style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)", animation: "statusFadeIn 160ms ease-out" }}
+              onClick={() => setProfileMenuOpen(false)}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-label="Profile options"
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-sm rounded-t-3xl border border-white/10 bg-ink-800 px-4 pt-3 shadow-2xl sm:rounded-3xl sm:pt-4"
+                style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))", animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
+              >
+                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
+                <div className="flex items-center gap-3 px-1 pb-3">
+                  <Avatar name={profileView.display_name} color={profileView.avatar_color} avatarUrl={profileView.avatar_url} size={40} />
+                  <div className="min-w-0">
+                    <p className="flex items-center truncate font-display text-[15px] font-bold text-white tx1">
+                      {profileView.display_name}
+                      {isVerified(profileView.username, profileView.verified) && <VerifiedBadge size={14} />}
+                    </p>
+                    <p className="truncate text-xs text-mist">@{profileView.username}</p>
+                  </div>
+                </div>
+                <div className="h-px w-full bg-white/10" />
+                <button
+                  onClick={() => toggleProfileBlock(profileView)}
+                  disabled={blockToggling}
+                  className="mt-3 flex w-full items-center gap-3 rounded-2xl px-2 py-2.5 text-left transition hover:bg-red-500/10 active:bg-red-500/10 disabled:opacity-50"
+                >
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/10 text-red-400">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  </span>
+                  <span className="text-[14.5px] font-semibold text-red-400">
+                    {blockToggling ? "Please wait…" : profileViewBlocked ? "Unblock User" : "Block User"}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setProfileMenuOpen(false)}
+                  className="mt-2 w-full rounded-full border border-white/10 py-3 text-sm font-semibold text-mist transition hover:border-white/30 hover:text-white"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           )}
         </div>
