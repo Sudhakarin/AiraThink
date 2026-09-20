@@ -20,6 +20,7 @@ type Profile = {
   bio_link?: string | null;
   verified?: boolean | null;
   status_total?: number | null;
+  mention_privacy?: "connections" | "everyone" | null;
 };
 
 type MessageType = "text" | "image" | "voice";
@@ -864,6 +865,746 @@ type ProfileCacheEntry = {
   t?: number;
 };
 
+// =====================================================================
+// Settings (opened from the gear icon on the Profile tab)
+// =====================================================================
+type SupabaseClientLike = ReturnType<typeof createClient>;
+
+const INVITE_URL = "https://airalance.com";
+const INVITE_LABEL = "Airalance.com";
+const VERIFICATION_BUCKET = "verification-docs";
+
+// ---- Time spent in the app (stored per user, per day, on this device) ----
+const USAGE_STORAGE_PREFIX = "airalance-usage:";
+const USAGE_KEEP_DAYS = 60;
+let flushUsageNow: (() => void) | null = null;
+
+function localDateKey(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function readUsage(userId: string): Record<string, number> {
+  try {
+    const raw = localStorage.getItem(USAGE_STORAGE_PREFIX + userId);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function formatUsageDuration(sec: number) {
+  if (sec <= 0) return "0m";
+  if (sec < 60) return "<1m";
+  const totalMin = Math.round(sec / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+// Counts seconds while the app is visible and saves them per day.
+function useUsageTracker(userId: string | undefined) {
+  useEffect(() => {
+    if (!userId || typeof window === "undefined") return;
+    let pending = 0;
+    let pendingDay = localDateKey(new Date());
+    let last = Date.now();
+    let ticks = 0;
+
+    const flush = () => {
+      const whole = Math.floor(pending);
+      if (whole <= 0) return;
+      try {
+        const data = readUsage(userId);
+        data[pendingDay] = (data[pendingDay] ?? 0) + whole;
+        const days = Object.keys(data).sort();
+        for (const k of days.slice(0, Math.max(0, days.length - USAGE_KEEP_DAYS))) delete data[k];
+        localStorage.setItem(USAGE_STORAGE_PREFIX + userId, JSON.stringify(data));
+        pending -= whole;
+      } catch {}
+    };
+
+    const tick = () => {
+      const now = Date.now();
+      // Cap the step so a throttled/sleeping timer can't inflate the total.
+      const delta = Math.min(now - last, 5000) / 1000;
+      last = now;
+      const day = localDateKey(new Date(now));
+      if (day !== pendingDay) {
+        flush();
+        pending = 0;
+        pendingDay = day;
+      }
+      if (document.visibilityState === "visible") pending += delta;
+      ticks += 1;
+      if (ticks % 15 === 0) flush();
+    };
+
+    const onVisibility = () => {
+      last = Date.now();
+      if (document.visibilityState === "hidden") flush();
+    };
+    const onHide = () => flush();
+
+    const interval = setInterval(tick, 1000);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", onHide);
+    flushUsageNow = flush;
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", onHide);
+      flush();
+      if (flushUsageNow === flush) flushUsageNow = null;
+    };
+  }, [userId]);
+}
+
+type SettingsScreenId = "home" | "time" | "verify" | "blocked" | "mentions" | "invite" | "account";
+type SettingsGlyphName =
+  | "clock" | "badge" | "ban" | "at" | "invite" | "shield"
+  | "chevron-right" | "chevron-left" | "copy" | "share" | "check" | "alert" | "camera";
+
+function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {name === "clock" && (<><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></>)}
+      {name === "badge" && (<><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" /><path d="m9 12 2 2 4-4" /></>)}
+      {name === "ban" && (<><circle cx="12" cy="12" r="10" /><path d="m4.9 4.9 14.2 14.2" /></>)}
+      {name === "at" && (<><circle cx="12" cy="12" r="4" /><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" /></>)}
+      {name === "invite" && (<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></>)}
+      {name === "shield" && (<><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>)}
+      {name === "chevron-right" && <path d="m9 18 6-6-6-6" />}
+      {name === "chevron-left" && <path d="m15 18-6-6 6-6" />}
+      {name === "copy" && (<><rect x="8" y="8" width="14" height="14" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>)}
+      {name === "share" && (<><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></>)}
+      {name === "check" && <path d="M20 6 9 17l-5-5" />}
+      {name === "alert" && (<><line x1="12" y1="7" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></>)}
+      {name === "camera" && (<><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" /><circle cx="12" cy="13" r="3" /></>)}
+    </svg>
+  );
+}
+
+const SETTINGS_FIELD_CLASS =
+  "w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-violet";
+
+function SettingsScreen({
+  supabase,
+  myProfile,
+  onClose,
+  onUnblocked,
+}: {
+  supabase: SupabaseClientLike;
+  myProfile: Profile;
+  onClose: () => void;
+  onUnblocked?: (userId: string) => void;
+}) {
+  const [screen, setScreen] = useState<SettingsScreenId>("home");
+  const verified = isVerified(myProfile.username, myProfile.verified);
+
+  const titles: Record<SettingsScreenId, string> = {
+    home: "Settings",
+    time: "Time management",
+    verify: "Request verification",
+    blocked: "Blocked",
+    mentions: "Tag & mention",
+    invite: "Invite friends",
+    account: "Account status",
+  };
+
+  const rows: { id: Exclude<SettingsScreenId, "home">; icon: SettingsGlyphName; title: string; subtitle: string }[] = [
+    { id: "time", icon: "clock", title: "Time management", subtitle: "See how much time you spend on Airalance" },
+    { id: "verify", icon: "badge", title: "Request verification", subtitle: verified ? "Your account is verified" : "Apply for the verified badge" },
+    { id: "blocked", icon: "ban", title: "Blocked", subtitle: "Accounts you've blocked" },
+    { id: "mentions", icon: "at", title: "Tag & mention", subtitle: "Choose who can tag or mention you" },
+    { id: "invite", icon: "invite", title: "Invite friends", subtitle: "Share Airalance with your friends" },
+    { id: "account", icon: "shield", title: "Account status", subtitle: "Check your account's standing" },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-center bg-ink-900" style={{ height: "100dvh" }}>
+      <div className="flex h-full w-full max-w-lg flex-col">
+        <header className="flex items-center gap-1 border-b border-white/5 px-2 pb-2.5" style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}>
+          <button
+            onClick={() => (screen === "home" ? onClose() : setScreen("home"))}
+            aria-label="Back"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:bg-white/5 active:scale-95"
+          >
+            <SettingsGlyph name="chevron-left" size={22} />
+          </button>
+          <h2 className="font-display text-lg font-bold text-white">{titles[screen]}</h2>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
+          {screen === "home" && (
+            <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+              {rows.map((row) => (
+                <button
+                  key={row.id}
+                  onClick={() => setScreen(row.id)}
+                  className="flex w-full items-center gap-3 px-3.5 py-3.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06]"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-violet-light">
+                    <SettingsGlyph name={row.icon} size={19} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[15px] font-semibold text-white">{row.title}</span>
+                    <span className="block truncate text-xs text-mist">{row.subtitle}</span>
+                  </span>
+                  <span className="shrink-0 text-white/30"><SettingsGlyph name="chevron-right" size={18} /></span>
+                </button>
+              ))}
+            </div>
+          )}
+          {screen === "time" && <TimeManagementPanel userId={myProfile.id} />}
+          {screen === "verify" && <VerificationPanel supabase={supabase} myProfile={myProfile} verified={verified} />}
+          {screen === "blocked" && <BlockedPanel supabase={supabase} myId={myProfile.id} onUnblocked={onUnblocked} />}
+          {screen === "mentions" && <MentionPrivacyPanel supabase={supabase} myId={myProfile.id} />}
+          {screen === "invite" && <InvitePanel />}
+          {screen === "account" && <AccountStatusPanel />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- 1. Time management ----
+function TimeManagementPanel({ userId }: { userId: string }) {
+  const [data, setData] = useState<Record<string, number>>({});
+  const [selected, setSelected] = useState(6);
+
+  useEffect(() => {
+    const load = () => { flushUsageNow?.(); setData(readUsage(userId)); };
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  const days = useMemo(() => {
+    const today = new Date();
+    today.setHours(12, 0, 0, 0);
+    const out: { key: string; date: Date; secs: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const key = localDateKey(d);
+      out.push({ key, date: d, secs: data[key] ?? 0 });
+    }
+    return out;
+  }, [data]);
+
+  const firstIdx = days.findIndex((d) => d.secs > 0);
+  const total = days.reduce((a, d) => a + d.secs, 0);
+  const avg = firstIdx === -1 ? 0 : total / (7 - firstIdx);
+  const yMax = Math.max(...days.map((d) => d.secs), 900);
+  const sel = days[selected];
+  const selLabel = selected === 6
+    ? "Today"
+    : sel.date.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "short" });
+
+  return (
+    <div>
+      <p className="text-sm text-mist">Daily average</p>
+      <p className="mt-1 font-display text-4xl font-bold tabular-nums text-white">{formatUsageDuration(avg)}</p>
+
+      <div className="mt-6 rounded-2xl bg-white/[0.04] p-4 ring-1 ring-inset ring-white/[0.06]">
+        <div className="relative h-44">
+          {avg > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-white/30" style={{ bottom: `${(avg / yMax) * 100}%` }}>
+              <span className="absolute -top-4 right-0 text-[10px] text-white/50">avg</span>
+            </div>
+          )}
+          <div className="flex h-full items-end gap-2">
+            {days.map((d, i) => {
+              const pct = (d.secs / yMax) * 100;
+              const isSel = i === selected;
+              return (
+                <button
+                  key={d.key}
+                  onClick={() => setSelected(i)}
+                  aria-label={`${d.date.toLocaleDateString(undefined, { weekday: "long" })}: ${formatUsageDuration(d.secs)}`}
+                  className="flex h-full flex-1 flex-col justify-end"
+                >
+                  <span
+                    className={`block w-full rounded-t-md transition-all duration-200 ${isSel ? "" : d.secs > 0 ? "bg-violet/40" : "bg-white/10"}`}
+                    style={{
+                      height: d.secs > 0 ? `${Math.max(pct, 3)}%` : "3px",
+                      background: isSel ? "linear-gradient(180deg, #A78BFA 0%, #7C5CFF 100%)" : undefined,
+                    }}
+                  />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="mt-2 flex gap-2">
+          {days.map((d, i) => (
+            <span key={d.key} className={`flex-1 text-center text-[11px] ${i === selected ? "font-semibold text-white" : "text-white/45"}`}>
+              {d.date.toLocaleDateString(undefined, { weekday: "short" })}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between rounded-2xl bg-white/[0.04] px-4 py-3.5 ring-1 ring-inset ring-white/[0.06]">
+        <span className="text-sm text-mist">{selLabel}</span>
+        <span className="font-display text-lg font-bold tabular-nums text-white">{formatUsageDuration(sel.secs)}</span>
+      </div>
+
+      <p className="mt-4 px-1 text-xs leading-relaxed text-white/45">Time is counted while Airalance is open on this device.</p>
+    </div>
+  );
+}
+
+// ---- 2. Request verification ----
+function VerificationPanel({ supabase, myProfile, verified }: { supabase: SupabaseClientLike; myProfile: Profile; verified: boolean }) {
+  const [requestStatus, setRequestStatus] = useState<"loading" | "none" | "pending" | "rejected">("loading");
+  const [name, setName] = useState(myProfile.display_name ?? "");
+  const [age, setAge] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [about, setAbout] = useState("");
+  const [links, setLinks] = useState("");
+  const [selfie, setSelfie] = useState<File | null>(null);
+  const [selfieUrl, setSelfieUrl] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const selfieInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (verified) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error: qErr } = await supabase
+        .from("verification_requests")
+        .select("status")
+        .eq("user_id", myProfile.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (cancelled) return;
+      const status = !qErr ? (data as { status?: string } | null)?.status : undefined;
+      setRequestStatus(status === "pending" ? "pending" : status === "rejected" ? "rejected" : "none");
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, myProfile.id, verified]);
+
+  useEffect(() => () => { if (selfieUrl) URL.revokeObjectURL(selfieUrl); }, [selfieUrl]);
+
+  function pickSelfie(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setError("Please choose a photo."); return; }
+    if (file.size > MAX_IMAGE_BYTES) { setError("Photo is too large. Maximum size is 8 MB."); return; }
+    setError("");
+    setSelfie(file);
+    setSelfieUrl(URL.createObjectURL(file));
+  }
+
+  const ageNum = Number(age);
+  const canSubmit =
+    name.trim().length >= 2 &&
+    Number.isInteger(ageNum) && ageNum >= 13 && ageNum <= 120 &&
+    nationality.trim().length >= 2 &&
+    !!selfie;
+
+  async function submit() {
+    if (!canSubmit || !selfie || submitting) return;
+    setSubmitting(true);
+    setError("");
+    const ext = (selfie.name.split(".").pop() ?? "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const path = `${myProfile.id}/verification-${Date.now()}.${ext}`;
+    const { error: uploadError } = await supabase.storage
+      .from(VERIFICATION_BUCKET)
+      .upload(path, selfie, { cacheControl: "3600", upsert: false, contentType: selfie.type || undefined });
+    if (uploadError) {
+      setSubmitting(false);
+      setError("Couldn't upload your photo. Please try again.");
+      return;
+    }
+    const { error: insertError } = await supabase.from("verification_requests").insert({
+      user_id: myProfile.id,
+      full_name: name.trim(),
+      age: ageNum,
+      nationality: nationality.trim(),
+      about: about.trim() || null,
+      links: links.trim() || null,
+      selfie_path: path,
+      status: "pending",
+    });
+    setSubmitting(false);
+    if (insertError) {
+      setError("Couldn't submit your request. Please try again.");
+      return;
+    }
+    setRequestStatus("pending");
+  }
+
+  if (verified) {
+    return (
+      <div className="flex flex-col items-center rounded-2xl bg-white/[0.04] px-6 py-10 text-center ring-1 ring-inset ring-white/[0.06]">
+        <VerifiedBadge size={44} />
+        <p className="mt-4 font-display text-lg font-bold text-white">You're verified</p>
+        <p className="mt-1 text-sm text-mist">Your account already has the verified badge.</p>
+      </div>
+    );
+  }
+
+  if (requestStatus === "loading") {
+    return (
+      <div className="flex flex-col gap-4" aria-busy="true">
+        {[0, 1, 2, 3].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-white/10" />)}
+      </div>
+    );
+  }
+
+  if (requestStatus === "pending") {
+    return (
+      <div className="flex flex-col items-center rounded-2xl bg-white/[0.04] px-6 py-10 text-center ring-1 ring-inset ring-white/[0.06]">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-violet/15 text-violet-light"><SettingsGlyph name="clock" size={24} /></span>
+        <p className="mt-4 font-display text-lg font-bold text-white">Request submitted</p>
+        <p className="mt-1 text-sm text-mist">Your verification request is under review.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {requestStatus === "rejected" && (
+        <p className="rounded-xl bg-red-500/10 px-3.5 py-3 text-sm text-red-300 ring-1 ring-inset ring-red-500/20">
+          Your last request wasn't approved. You can submit a new one.
+        </p>
+      )}
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-mist">Full name</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" autoComplete="name" className={SETTINGS_FIELD_CLASS} />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-mist">Age</label>
+        <input value={age} onChange={(e) => setAge(e.target.value.replace(/\D/g, "").slice(0, 3))} placeholder="Your age" inputMode="numeric" className={SETTINGS_FIELD_CLASS} />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-mist">Selfie with document</label>
+        <input ref={selfieInputRef} type="file" accept="image/*" className="hidden" onChange={pickSelfie} />
+        {selfieUrl ? (
+          <div className="relative overflow-hidden rounded-2xl ring-1 ring-inset ring-white/10">
+            <img src={selfieUrl} alt="Selfie with document" className="max-h-72 w-full object-cover" />
+            <button
+              type="button"
+              onClick={() => selfieInputRef.current?.click()}
+              className="absolute bottom-2 right-2 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md transition active:scale-95"
+            >
+              Change photo
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => selfieInputRef.current?.click()}
+            className="flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-7 text-center transition hover:bg-white/[0.05] active:scale-[0.99]"
+          >
+            <span className="text-violet-light"><SettingsGlyph name="camera" size={26} /></span>
+            <span className="text-sm font-semibold text-white">Add a selfie holding your document</span>
+            <span className="text-xs text-mist">Your face and the document must both be clearly visible.</span>
+          </button>
+        )}
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-mist">Nationality</label>
+        <input value={nationality} onChange={(e) => setNationality(e.target.value)} placeholder="Your nationality" autoComplete="country-name" className={SETTINGS_FIELD_CLASS} />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-mist">About (optional)</label>
+        <textarea value={about} onChange={(e) => setAbout(e.target.value)} rows={3} maxLength={500} placeholder="Tell us why your account should be verified" className={`${SETTINGS_FIELD_CLASS} resize-none`} />
+      </div>
+
+      <div>
+        <label className="mb-1.5 block text-xs font-semibold text-mist">Links (optional)</label>
+        <textarea value={links} onChange={(e) => setLinks(e.target.value)} rows={2} maxLength={500} placeholder="Website or social profiles, one per line" className={`${SETTINGS_FIELD_CLASS} resize-none`} />
+      </div>
+
+      {error && <p className="text-sm text-red-400">{error}</p>}
+
+      {canSubmit && (
+        <button
+          onClick={submit}
+          disabled={submitting}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition active:scale-[0.99] disabled:opacity-60"
+        >
+          {submitting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+          {submitting ? "Submitting" : "Submit request"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---- 3. Blocked ----
+function BlockedPanel({ supabase, myId, onUnblocked }: { supabase: SupabaseClientLike; myId: string; onUnblocked?: (userId: string) => void }) {
+  const [people, setPeople] = useState<Profile[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data: rows, error } = await supabase.from("blocked_users").select("blocked_id").eq("blocker_id", myId);
+      if (cancelled) return;
+      if (error) { setLoadFailed(true); setPeople([]); return; }
+      const ids = (rows ?? []).map((r: { blocked_id: string }) => r.blocked_id);
+      if (ids.length === 0) { setPeople([]); return; }
+      const { data: profs } = await supabase.from("profiles").select("*").in("id", ids);
+      if (!cancelled) setPeople((profs ?? []) as Profile[]);
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, myId]);
+
+  async function unblock(target: Profile) {
+    if (busyId) return;
+    setBusyId(target.id);
+    const { error } = await supabase.from("blocked_users").delete().eq("blocker_id", myId).eq("blocked_id", target.id);
+    setBusyId(null);
+    if (error) return;
+    setPeople((prev) => (prev ?? []).filter((p) => p.id !== target.id));
+    onUnblocked?.(target.id);
+  }
+
+  if (people === null) {
+    return (
+      <div className="flex flex-col gap-3" aria-busy="true">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex items-center gap-3 px-1 py-1.5">
+            <div className="h-11 w-11 animate-pulse rounded-full bg-white/10" />
+            <div className="flex-1">
+              <div className="h-3.5 w-32 animate-pulse rounded bg-white/10" />
+              <div className="mt-2 h-3 w-20 animate-pulse rounded bg-white/10" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (loadFailed) {
+    return <p className="px-2 py-10 text-center text-sm text-mist">Couldn't load your blocked accounts. Please try again later.</p>;
+  }
+
+  if (people.length === 0) {
+    return (
+      <div className="flex flex-col items-center px-6 py-14 text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.06] text-white/60"><SettingsGlyph name="ban" size={24} /></span>
+        <p className="mt-4 text-[15px] font-semibold text-white">No blocked accounts</p>
+        <p className="mt-1 text-sm text-mist">People you block will show up here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {people.map((p) => (
+        <div key={p.id} className="flex items-center gap-3 px-1 py-2.5">
+          <Avatar name={p.display_name} color={p.avatar_color} avatarUrl={p.avatar_url} size={44} />
+          <div className="min-w-0 flex-1">
+            <p className="flex items-center truncate text-[15px] font-semibold text-white">
+              <span className="truncate">{p.display_name}</span>
+              {isVerified(p.username, p.verified) && <VerifiedBadge size={15} />}
+            </p>
+            <p className="truncate text-xs text-mist">@{p.username}</p>
+          </div>
+          <button
+            onClick={() => unblock(p)}
+            disabled={busyId === p.id}
+            className="shrink-0 rounded-full bg-white/[0.08] px-4 py-1.5 text-xs font-semibold text-white ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.12] active:scale-95 disabled:opacity-50"
+          >
+            Unblock
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- 4. Tag & mention ----
+function MentionPrivacyPanel({ supabase, myId }: { supabase: SupabaseClientLike; myId: string }) {
+  const [value, setValue] = useState<"connections" | "everyone" | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { data, error: qErr } = await supabase.from("profiles").select("mention_privacy").eq("id", myId).maybeSingle();
+      if (cancelled) return;
+      const v = !qErr ? (data as { mention_privacy?: string | null } | null)?.mention_privacy : null;
+      setValue(v === "everyone" ? "everyone" : "connections");
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, myId]);
+
+  async function choose(next: "connections" | "everyone") {
+    if (saving || next === value) return;
+    const prev = value;
+    setValue(next);
+    setSaving(true);
+    setError("");
+    const { error: upErr } = await supabase.from("profiles").update({ mention_privacy: next }).eq("id", myId);
+    setSaving(false);
+    if (upErr) {
+      setValue(prev);
+      setError("Couldn't save your choice. Please try again.");
+    }
+  }
+
+  const options: { id: "connections" | "everyone"; title: string; desc: string }[] = [
+    { id: "connections", title: "Only connections", desc: "Only people you're connected with can tag or mention you." },
+    { id: "everyone", title: "Everyone", desc: "Anyone on Airalance can tag or mention you." },
+  ];
+
+  return (
+    <div>
+      <p className="mb-3 px-1 text-sm text-mist">Choose who can tag or mention you in their status.</p>
+      {value === null ? (
+        <div className="flex flex-col gap-3" aria-busy="true">
+          {[0, 1].map((i) => <div key={i} className="h-[76px] animate-pulse rounded-2xl bg-white/10" />)}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {options.map((o) => {
+            const on = value === o.id;
+            return (
+              <button
+                key={o.id}
+                onClick={() => choose(o.id)}
+                role="radio"
+                aria-checked={on}
+                className={`flex items-center gap-3 rounded-2xl px-4 py-4 text-left ring-1 ring-inset transition active:scale-[0.99] ${on ? "bg-violet/10 ring-violet/50" : "bg-white/[0.04] ring-white/[0.06] hover:bg-white/[0.06]"}`}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-semibold text-white">{o.title}</span>
+                  <span className="mt-0.5 block text-xs leading-snug text-mist">{o.desc}</span>
+                </span>
+                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition ${on ? "border-violet bg-violet text-white" : "border-white/25"}`}>
+                  {on && <SettingsGlyph name="check" size={14} />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {error && <p className="mt-3 px-1 text-sm text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+// ---- 5. Invite friends ----
+function InvitePanel() {
+  const [copied, setCopied] = useState(false);
+  const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(INVITE_URL);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = INVITE_URL;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function shareLink() {
+    try {
+      await navigator.share({ title: "Airalance", text: "Join me on Airalance!", url: INVITE_URL });
+    } catch {}
+  }
+
+  return (
+    <div className="flex flex-col items-center rounded-2xl bg-white/[0.04] px-5 py-8 text-center ring-1 ring-inset ring-white/[0.06]">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-light via-violet to-violet-dark text-white shadow-[0_8px_24px_-8px_rgba(124,92,255,0.7)]">
+        <SettingsGlyph name="invite" size={26} />
+      </span>
+      <p className="mt-4 font-display text-lg font-bold text-white">Invite your friends</p>
+      <p className="mt-1 text-sm text-mist">Share this link and bring them to Airalance.</p>
+
+      <div className="mt-5 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[15px] font-semibold text-white select-all">{INVITE_LABEL}</div>
+
+      <div className="mt-3 flex w-full gap-3">
+        <button
+          onClick={copyLink}
+          className="flex flex-1 items-center justify-center gap-2 rounded-full bg-white/[0.08] py-3 text-sm font-semibold text-white ring-1 ring-inset ring-white/10 transition hover:bg-white/[0.12] active:scale-95"
+        >
+          <SettingsGlyph name={copied ? "check" : "copy"} size={16} />
+          {copied ? "Copied" : "Copy link"}
+        </button>
+        {canShare && (
+          <button
+            onClick={shareLink}
+            className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition active:scale-95"
+          >
+            <SettingsGlyph name="share" size={16} />
+            Share
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- 6. Account status ----
+// `ok: true` shows the green tick. Drive these from the database later.
+const ACCOUNT_STATUS_ITEMS: { id: string; title: string; ok: boolean }[] = [
+  { id: "messaging", title: "Messaging restrictions", ok: true },
+  { id: "features", title: "Feature restrictions", ok: true },
+  { id: "shadowban", title: "Shadowban", ok: true },
+  { id: "locked", title: "Account locked", ok: true },
+];
+
+function AccountStatusPanel() {
+  const allGood = ACCOUNT_STATUS_ITEMS.every((i) => i.ok);
+  return (
+    <div>
+      <div className="mb-4 flex items-center gap-3 rounded-2xl bg-white/[0.04] px-4 py-4 ring-1 ring-inset ring-white/[0.06]">
+        <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${allGood ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"}`}>
+          <SettingsGlyph name={allGood ? "shield" : "alert"} size={20} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold text-white">{allGood ? "Everything looks good" : "Your account needs attention"}</p>
+          <p className="text-xs text-mist">{allGood ? "Your account is in good standing." : "Some features are limited on your account."}</p>
+        </div>
+      </div>
+
+      <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+        {ACCOUNT_STATUS_ITEMS.map((item) => (
+          <div key={item.id} className="flex items-center gap-3 px-4 py-4">
+            <span className="min-w-0 flex-1 text-[15px] font-medium text-white">{item.title}</span>
+            <span
+              className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 ${item.ok ? "border-emerald-400 text-emerald-400" : "border-red-400 text-red-400"}`}
+              aria-label={item.ok ? "No issues" : "Needs attention"}
+            >
+              <SettingsGlyph name={item.ok ? "check" : "alert"} size={13} />
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   // Memoized so the Supabase client keeps a stable identity across re-renders.
   // Without this, every render created a brand-new client, which made every
@@ -1636,6 +2377,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const interval = setInterval(update, 20000);
     return () => clearInterval(interval);
   }, [myProfile.id, supabase, activeStatusOn]);
+
+  // Time management (Settings): counts time the app is open, per day, on this device.
+  useUsageTracker(myProfile.id);
 
   useEffect(() => {
     const otherId = active?.otherProfile?.id;
@@ -3196,12 +3940,31 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   // ---- Mentions ----
   async function loadMentionCandidates(q: string) {
     setMentionSearchLoading(true);
+    const term = q.trim();
     const connectionIds = await fetchAcceptedConnectionIds(myProfile.id);
-    if (connectionIds.length === 0) { setMentionSearchResults([]); setMentionSearchLoading(false); return; }
-    let query = supabase.from("profiles").select("*").in("id", connectionIds);
-    if (q.trim()) query = query.or(`username.ilike.%${q.trim()}%,display_name.ilike.%${q.trim()}%`);
-    const { data } = await query.limit(20);
-    setMentionSearchResults((data ?? []) as Profile[]);
+    let people: Profile[] = [];
+    if (connectionIds.length > 0) {
+      let query = supabase.from("profiles").select("*").in("id", connectionIds);
+      if (term) query = query.or(`username.ilike.%${term}%,display_name.ilike.%${term}%`);
+      const { data } = await query.limit(20);
+      people = (data ?? []) as Profile[];
+    }
+    // People who set "Tag & mention" to Everyone can be mentioned even when
+    // you're not connected (found by searching their name or username).
+    if (term) {
+      const { data: open, error: openErr } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("mention_privacy", "everyone")
+        .neq("id", myProfile.id)
+        .or(`username.ilike.%${term}%,display_name.ilike.%${term}%`)
+        .limit(10);
+      if (!openErr && open) {
+        const have = new Set(people.map((p) => p.id));
+        for (const p of open as Profile[]) if (!have.has(p.id)) people.push(p);
+      }
+    }
+    setMentionSearchResults(people);
     setMentionSearchLoading(false);
   }
 
@@ -3243,8 +4006,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     const content = encodeStatusMention(status, myProfile);
     for (const profile of mentioned) {
       const convoId = await findConversationWith(profile.id);
-      if (!convoId) continue;
-      await supabase.from("messages").insert({ conversation_id: convoId, sender_id: myProfile.id, content, message_type: "text" });
+      // Not connected (no chat yet): they still get the bell notification, just no chat preview.
+      if (convoId) await supabase.from("messages").insert({ conversation_id: convoId, sender_id: myProfile.id, content, message_type: "text" });
       notifyUser({ userId: profile.id, type: "status_mention", title: myProfile.display_name, body: `${myProfile.display_name} mentioned you in their status` });
     }
   }
@@ -5857,42 +6620,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       </section>
 
       {showSettings && typeof document !== "undefined" && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
-          style={{ height: "100dvh" }}
-          onClick={() => setShowSettings(false)}
-        >
-          <div
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-lg font-bold text-white">Settings</h3>
-              <button
-                type="button"
-                onClick={() => setShowSettings(false)}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3 rounded-2xl bg-white/[0.04] p-3 ring-1 ring-inset ring-white/[0.06]">
-              <Avatar name={myProfile.display_name} color={myProfile.avatar_color} avatarUrl={myProfile.avatar_url} size={48} />
-              <div className="min-w-0 flex-1">
-                <p className="flex items-center truncate text-[15px] font-semibold text-white">
-                  <span className="truncate">{myProfile.display_name}</span>
-                  {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={16} />}
-                </p>
-                <p className="truncate text-xs text-mist">@{myProfile.username}</p>
-              </div>
-            </div>
-
-            {/* TODO: settings rows / sections go here (account, privacy, notifications, etc.) */}
-            <p className="px-1 pb-2 pt-6 text-center text-xs text-mist">More settings are on the way.</p>
-          </div>
-        </div>,
+        <SettingsScreen
+          supabase={supabase}
+          myProfile={myProfile}
+          onClose={() => setShowSettings(false)}
+          onUnblocked={(id) => saveProfileCache(id, { blocked: false })}
+        />,
         document.body
       )}
 
