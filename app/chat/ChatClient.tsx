@@ -801,7 +801,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
   const [editingBio, setEditingBio] = useState(false);
-  const bioBoxRef = useRef<HTMLDivElement | null>(null);
+  const [savingBio, setSavingBio] = useState(false);
+  const [bioError, setBioError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -2767,12 +2768,27 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     return true;
   }
 
-  // When the bio editor opens, bring it into view (above the keyboard)
-  useEffect(() => {
-    if (!editingBio) return;
-    const t = setTimeout(() => bioBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 120);
-    return () => clearTimeout(t);
-  }, [editingBio]);
+  function openBioModal() {
+    setBioDraft(myProfile.bio ?? "");
+    setBioError("");
+    setEditingBio(true);
+  }
+
+  function closeBioModal() {
+    setEditingBio(false);
+    setBioError("");
+    setBioDraft(myProfile.bio ?? "");
+  }
+
+  async function handleSaveBioModal() {
+    if (savingBio) return;
+    setSavingBio(true);
+    setBioError("");
+    const ok = await saveBio();
+    setSavingBio(false);
+    if (ok) setEditingBio(false);
+    else setBioError("Bio save nahi hua. Dobara try karo.");
+  }
 
   const loadStatuses = useCallback(async () => {
     const { data } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
@@ -5212,39 +5228,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <span className="text-sm font-medium text-red-400">Log out</span>
                 </button>
               </div>
-              {editingBio ? (
-                <div
-                  ref={bioBoxRef}
-                  className="glass mt-4 rounded-2xl px-4 py-3.5"
-                  style={{ animation: "statusFadeIn 160ms ease-out" }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-mist">Bio</span>
-                    <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
-                  </div>
-                  <textarea
-                    autoFocus
-                    value={bioDraft}
-                    onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))}
-                    onFocus={(e) => { const l = e.target.value.length; e.target.setSelectionRange(l, l); }}
-                    placeholder="Write something about yourself…"
-                    rows={4}
-                    className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none"
-                  />
-                  <div className="mt-2 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => { setBioDraft(myProfile.bio ?? ""); setEditingBio(false); }}
-                      className="rounded-full px-3 py-1 text-xs font-semibold text-mist transition hover:text-white active:scale-95"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
                 <button
                   type="button"
-                  onClick={() => setEditingBio(true)}
+                  onClick={openBioModal}
                   aria-label="Edit bio"
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3.5 text-sm font-semibold text-white ring-1 ring-inset ring-white/5 backdrop-blur-xl transition hover:bg-white/[0.11] active:scale-[0.98]"
                   style={{
@@ -5259,13 +5245,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   </svg>
                   Edit bio
                 </button>
-              )}
               <button
-                onClick={async () => {
-                  await saveDisplayName();
-                  const ok = await saveBio();
-                  if (ok) setEditingBio(false);
-                }}
+                onClick={() => { saveDisplayName(); saveBio(); }}
                 disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "")}
                 className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-40"
               >
@@ -5758,6 +5739,64 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </>
         )}
       </section>
+
+      {editingBio && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
+          style={{ height: "100dvh", animation: "statusFadeIn 140ms ease-out" }}
+          onClick={closeBioModal}
+        >
+          <div
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl"
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))", animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-display text-lg font-bold text-white">Edit bio</h3>
+              <button
+                type="button"
+                onClick={closeBioModal}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              <div>
+                <div className="mb-1 flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-mist">Bio</label>
+                  <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
+                </div>
+                <textarea
+                  autoFocus
+                  value={bioDraft}
+                  onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))}
+                  onFocus={(e) => { const l = e.target.value.length; e.target.setSelectionRange(l, l); }}
+                  placeholder="Write something about yourself…"
+                  rows={6}
+                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
+                />
+              </div>
+
+              {bioError && (
+                <p className="text-xs font-medium text-red-400">{bioError}</p>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSaveBioModal}
+                disabled={savingBio || bioDraft.trim() === (myProfile.bio ?? "")}
+                className="mt-1 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
+              >
+                {savingBio ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {showPublishModal && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" style={{ height: "100dvh" }}>
