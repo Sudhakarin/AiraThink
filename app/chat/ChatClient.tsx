@@ -5850,6 +5850,28 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                             </div>
                           </button>
 
+                          {/* Live */}
+                          <div className="mb-4">
+                            <div className="mb-2 flex items-center gap-2 px-1">
+                              <span className="relative flex h-2 w-2">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75 motion-reduce:animate-none" />
+                                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                              </span>
+                              <h3 className="font-display text-sm font-bold text-white">Live</h3>
+                            </div>
+                            <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
+                              <iframe
+                                src="https://www.youtube.com/embed/Nq2wYlWFucg?autoplay=1&mute=1&playsinline=1&rel=0"
+                                title="Live"
+                                className="absolute inset-0 h-full w-full"
+                                frameBorder="0"
+                                allow="autoplay; encrypted-media; picture-in-picture"
+                                allowFullScreen
+                                referrerPolicy="strict-origin-when-cross-origin"
+                              />
+                            </div>
+                          </div>
+
                           <div className="flex flex-col">
                             {rest.map((article) => (
                               <button
