@@ -4943,10 +4943,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
           {mobileTab === "profile" && (
             <div className="px-5 py-6">
-              <p className="mb-5 flex items-center font-display text-[22px] font-bold leading-none text-white">
-                {myProfile.username}
-                {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={18} />}
-              </p>
               <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarPick} />
               {(() => {
                 const ownActive = statuses.filter((st) => st.user_id === myProfile.id).length;
@@ -4973,15 +4969,21 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1Z" stroke="white" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="white" strokeWidth="1.6" /></svg>
                   </span>
                     </button>
-                    <div className="grid min-w-0 flex-1 grid-cols-3 items-center text-center">
-                      {stats.map((item) => (
-                        <button key={item.label} onClick={item.onClick} aria-label={item.aria} className="flex flex-col items-center gap-0.5 py-1 transition active:opacity-60">
-                          <span className="flex h-6 items-center font-display text-[18px] font-bold leading-none tabular-nums text-white">
-                            {item.n === null ? <CountSkeleton /> : formatCount(item.n)}
-                          </span>
-                          <span className="text-[13px] leading-tight text-white/70">{item.label}</span>
-                        </button>
-                      ))}
+                    <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+                      <p className="flex min-w-0 items-center font-display text-[20px] font-bold leading-none text-white">
+                        <span className="truncate">{myProfile.username}</span>
+                        {isVerified(myProfile.username, myProfile.verified) && <VerifiedBadge size={18} />}
+                      </p>
+                      <div className="grid grid-cols-3 text-left">
+                        {stats.map((item) => (
+                          <button key={item.label} onClick={item.onClick} aria-label={item.aria} className="flex flex-col items-start gap-0.5 transition active:opacity-60">
+                            <span className="flex h-6 items-center font-display text-[18px] font-bold leading-none tabular-nums text-white">
+                              {item.n === null ? <CountSkeleton /> : formatCount(item.n)}
+                            </span>
+                            <span className="text-[13px] leading-tight text-white/70">{item.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
