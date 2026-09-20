@@ -3480,48 +3480,55 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
           </div>
-          <div className="relative z-10 flex items-center justify-center gap-2 px-6 pb-8">
+          <div className="relative z-10 flex items-center justify-center gap-1 px-6 pb-8">
             <button
               onClick={() => toggleFollow(profileView)}
               disabled={followToggling}
-              className={`h-14 w-44 rounded-xl text-sm font-semibold transition disabled:opacity-60 ${
-                profileViewFollowing
-                  ? "border border-white/12 bg-white/6 text-white hover:bg-white/10"
-                  : "bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 hover:shadow-violet/50"
+              className={`h-[46px] w-[170px] rounded-md text-[15px] font-semibold text-white transition active:scale-[0.98] disabled:opacity-60 ${
+                profileViewFollowing ? "bg-[#2E2E2E] hover:bg-[#3A3A3A]" : "bg-[#E54E60] hover:bg-[#EC5C6D]"
               }`}
             >
               {followToggling ? "…" : profileViewFollowing ? "Following" : "Follow"}
             </button>
 
             {profileViewStatus === "loading" && (
-              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-mist">
-                <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" strokeDasharray="14 40" strokeLinecap="round" /></svg>
+              <div className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md bg-[#2E2E2E] text-white/60">
+                <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" strokeDasharray="14 40" strokeLinecap="round" /></svg>
               </div>
             )}
             {profileViewStatus === "none" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-white/12 bg-white/6 text-white transition hover:bg-white/10 active:scale-95">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <span className="text-[10px] font-medium leading-none">Connect</span>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("ask"); }} aria-label="Connect" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 hover:bg-[#3A3A3A]">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="9" cy="7" r="4" stroke="currentColor" strokeWidth="1.8" /><path d="M19 8v6M22 11h-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <span className="text-[9px] font-medium leading-none">Connect</span>
               </button>
             )}
             {profileViewStatus === "pending" && (
-              <button disabled aria-label="Request sent" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 text-mist">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
-                <span className="text-[9.5px] font-medium leading-none">Requested</span>
+              <button disabled aria-label="Request sent" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 text-white/60 active:scale-100">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 7v5l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /></svg>
+                <span className="text-[9px] font-medium leading-none">Pending</span>
               </button>
             )}
             {profileViewStatus === "declined" && (
-              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-red-500/25 bg-red-500/10 text-red-400 active:scale-95">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <span className="text-[10px] font-medium leading-none">Declined</span>
+              <button onClick={() => { setConnectPopupTarget(profileView); setConnectPopupMode("declined"); }} aria-label="Request declined" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 !text-red-400 hover:bg-[#3A3A3A]">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" /><path d="M5.5 5.5l13 13" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                <span className="text-[9px] font-medium leading-none">Declined</span>
               </button>
             )}
             {profileViewStatus === "connected" && (
-              <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-14 w-14 shrink-0 flex-col items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-violet to-violet-light text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50 active:scale-95 disabled:opacity-60">
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
-                <span className="text-[10px] font-medium leading-none">Message</span>
+              <button onClick={goToProfileChat} disabled={startingProfileChat} aria-label="Message" className="flex h-[46px] w-[46px] shrink-0 flex-col items-center justify-center gap-[3px] rounded-md bg-[#2E2E2E] text-white transition active:scale-95 hover:bg-[#3A3A3A] disabled:opacity-60">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>
+                <span className="text-[9px] font-medium leading-none">Message</span>
               </button>
             )}
+
+            <button
+              onClick={() => setProfileMenuOpen(true)}
+              aria-label="More options"
+              aria-haspopup="dialog"
+              className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-md bg-[#2E2E2E] text-white transition hover:bg-[#3A3A3A] active:scale-95"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><path d="M1.5 3.5h9L6 9.5z" /></svg>
+            </button>
           </div>
           {myEmail && myEmail.toLowerCase() === (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "").toLowerCase() && (
             <div className="relative z-10 px-6 pb-8">
