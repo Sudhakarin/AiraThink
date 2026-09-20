@@ -800,9 +800,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [readerProgress, setReaderProgress] = useState(0);
   const [nameDraft, setNameDraft] = useState(initialProfile.display_name);
   const [bioDraft, setBioDraft] = useState(initialProfile.bio ?? "");
-  const [editingBio, setEditingBio] = useState(false);
-  const [savingBio, setSavingBio] = useState(false);
-  const [bioError, setBioError] = useState("");
   const [uploading, setUploading] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -2759,35 +2756,12 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, display_name: trimmed }));
   }
 
-  async function saveBio(): Promise<boolean> {
+  async function saveBio() {
     const trimmed = bioDraft.trim();
-    if (trimmed === (myProfile.bio ?? "")) return true;
+    if (trimmed === (myProfile.bio ?? "")) return;
     const { error } = await supabase.from("profiles").update({ bio: trimmed }).eq("id", myProfile.id);
-    if (error) { setErrorMsg("Failed to save bio. Please try again."); return false; }
+    if (error) { setErrorMsg("Failed to save bio. Please try again."); return; }
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
-    return true;
-  }
-
-  function openBioModal() {
-    setBioDraft(myProfile.bio ?? "");
-    setBioError("");
-    setEditingBio(true);
-  }
-
-  function closeBioModal() {
-    setEditingBio(false);
-    setBioError("");
-    setBioDraft(myProfile.bio ?? "");
-  }
-
-  async function handleSaveBioModal() {
-    if (savingBio) return;
-    setSavingBio(true);
-    setBioError("");
-    const ok = await saveBio();
-    setSavingBio(false);
-    if (ok) setEditingBio(false);
-    else setBioError("Bio save nahi hua. Dobara try karo.");
   }
 
   const loadStatuses = useCallback(async () => {
@@ -5228,23 +5202,13 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                   <span className="text-sm font-medium text-red-400">Log out</span>
                 </button>
               </div>
-                <button
-                  type="button"
-                  onClick={openBioModal}
-                  aria-label="Edit bio"
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-3.5 text-sm font-semibold text-white ring-1 ring-inset ring-white/5 backdrop-blur-xl transition hover:bg-white/[0.11] active:scale-[0.98]"
-                  style={{
-                    WebkitBackdropFilter: "blur(20px) saturate(160%)",
-                    backdropFilter: "blur(20px) saturate(160%)",
-                    boxShadow: "0 8px 30px -12px rgba(124,92,255,0.55), inset 0 1px 0 rgba(255,255,255,0.12)",
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M4 20h4l10.5-10.5a2.12 2.12 0 0 0-3-3L5 17v3Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                    <path d="M13.5 8.5l2 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                  Edit bio
-                </button>
+              <div className="glass mt-4 rounded-2xl px-4 py-3.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-mist">Bio</span>
+                  <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
+                </div>
+                <textarea value={bioDraft} onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))} placeholder="Write something about yourself…" rows={3} className="mt-2 w-full resize-none bg-transparent text-sm text-white placeholder:text-mist/50 outline-none" />
+              </div>
               <button
                 onClick={() => { saveDisplayName(); saveBio(); }}
                 disabled={(!nameDraft.trim() || nameDraft.trim() === myProfile.display_name) && bioDraft.trim() === (myProfile.bio ?? "")}
@@ -5739,64 +5703,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </>
         )}
       </section>
-
-      {editingBio && typeof document !== "undefined" && createPortal(
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
-          style={{ height: "100dvh", animation: "statusFadeIn 140ms ease-out" }}
-          onClick={closeBioModal}
-        >
-          <div
-            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-t-3xl border border-white/10 bg-ink-900 p-5 sm:rounded-3xl"
-            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))", animation: "ciSheetUp 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both" }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="font-display text-lg font-bold text-white">Edit bio</h3>
-              <button
-                type="button"
-                onClick={closeBioModal}
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-mist hover:text-white"
-                aria-label="Close"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-3">
-              <div>
-                <div className="mb-1 flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-mist">Bio</label>
-                  <span className="text-[10px] text-mist/70">{bioDraft.length}/{MAX_BIO_LENGTH}</span>
-                </div>
-                <textarea
-                  autoFocus
-                  value={bioDraft}
-                  onChange={(e) => setBioDraft(e.target.value.slice(0, MAX_BIO_LENGTH))}
-                  onFocus={(e) => { const l = e.target.value.length; e.target.setSelectionRange(l, l); }}
-                  placeholder="Write something about yourself…"
-                  rows={6}
-                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none placeholder:text-white/30 focus:border-violet"
-                />
-              </div>
-
-              {bioError && (
-                <p className="text-xs font-medium text-red-400">{bioError}</p>
-              )}
-
-              <button
-                type="button"
-                onClick={handleSaveBioModal}
-                disabled={savingBio || bioDraft.trim() === (myProfile.bio ?? "")}
-                className="mt-1 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3 text-sm font-semibold text-white shadow-lg shadow-violet/30 disabled:opacity-50"
-              >
-                {savingBio ? "Saving…" : "Save changes"}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
 
       {showPublishModal && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center" style={{ height: "100dvh" }}>
