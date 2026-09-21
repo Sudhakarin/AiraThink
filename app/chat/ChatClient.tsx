@@ -1224,6 +1224,9 @@ type ChatTheme = {
   bubble: string; // your message bubble (CSS background)
   bubbleShadow: string;
   incoming: string; // other person's bubble colour
+  accent: string; // 6-digit hex used for glows / focus
+  glass: string; // header + composer glass tint (translucent)
+  glassBorder: string;
 };
 
 const DOODLE_ICONS: Record<string, string> = {
@@ -1267,6 +1270,9 @@ const CHAT_THEMES: ChatTheme[] = [
     bubble: "linear-gradient(135deg, #A78BFA 0%, #7C5CFF 55%, #5B3FE0 100%)",
     bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 16px -4px rgba(124,92,255,0.5)",
     incoming: "#171A24",
+    accent: "#7C5CFF",
+    glass: "rgba(11,13,20,0.85)",
+    glassBorder: "rgba(255,255,255,0.06)",
   },
   {
     id: "ocean",
@@ -1277,6 +1283,9 @@ const CHAT_THEMES: ChatTheme[] = [
     bubble: "linear-gradient(135deg, #4F8DFF 0%, #2F6BFF 55%, #2050D8 100%)",
     bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px -4px rgba(47,107,255,0.55)",
     incoming: "#14284A",
+    accent: "#4F8DFF",
+    glass: "rgba(12,36,70,0.55)",
+    glassBorder: "rgba(140,190,255,0.18)",
   },
   {
     id: "forest",
@@ -1287,6 +1296,9 @@ const CHAT_THEMES: ChatTheme[] = [
     bubble: "linear-gradient(135deg, #1FBF83 0%, #0F9E69 55%, #0B7F55 100%)",
     bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px -4px rgba(15,158,105,0.5)",
     incoming: "#12332A",
+    accent: "#1FBF83",
+    glass: "rgba(10,44,34,0.55)",
+    glassBorder: "rgba(110,231,183,0.18)",
   },
   {
     id: "sunset",
@@ -1297,6 +1309,9 @@ const CHAT_THEMES: ChatTheme[] = [
     bubble: "linear-gradient(135deg, #F2664F 0%, #E63E69 55%, #C4305F 100%)",
     bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px -4px rgba(230,62,105,0.5)",
     incoming: "#36192F",
+    accent: "#F2664F",
+    glass: "rgba(58,20,48,0.55)",
+    glassBorder: "rgba(255,170,140,0.18)",
   },
   {
     id: "midnight",
@@ -1307,6 +1322,9 @@ const CHAT_THEMES: ChatTheme[] = [
     bubble: "linear-gradient(135deg, #4B5163 0%, #2C303C 100%)",
     bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px -6px rgba(0,0,0,0.6)",
     incoming: "#14151B",
+    accent: "#8B93A7",
+    glass: "rgba(14,15,20,0.6)",
+    glassBorder: "rgba(255,255,255,0.11)",
   },
 ];
 
@@ -1316,6 +1334,18 @@ function chatThemeById(id: string | null | undefined): ChatTheme {
 
 function chatWallpaperStyle(theme: ChatTheme, tile = 260): React.CSSProperties {
   return { backgroundColor: theme.bg, backgroundImage: theme.image, backgroundSize: theme.sizes(tile) };
+}
+
+// Frosted-glass look for the chat header / composer, tinted to match the theme.
+function chatGlassStyle(theme: ChatTheme): React.CSSProperties {
+  return {
+    backgroundColor: theme.glass,
+    backgroundImage: "linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.02) 100%)",
+    borderColor: theme.glassBorder,
+    backdropFilter: "blur(22px) saturate(1.6)",
+    WebkitBackdropFilter: "blur(22px) saturate(1.6)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.10)",
+  };
 }
 
 function ChatThemeThumb({ theme, selected, onSelect }: { theme: ChatTheme; selected: boolean; onSelect: () => void }) {
@@ -1341,11 +1371,20 @@ function ChatThemeThumb({ theme, selected, onSelect }: { theme: ChatTheme; selec
 
 function AppearancePanel({ chatThemeId, onChange }: { chatThemeId: string; onChange: (id: string) => void }) {
   const theme = chatThemeById(chatThemeId);
+  const glass = chatGlassStyle(theme);
   const bubbleBase = "max-w-[78%] rounded-[18px] px-3.5 py-2 text-[13.5px] leading-snug text-white";
   return (
     <div>
-      <div className="overflow-hidden rounded-3xl ring-1 ring-inset ring-white/[0.08]" style={{ height: 232, ...chatWallpaperStyle(theme) }}>
-        <div className="flex h-full flex-col justify-end gap-2 p-4">
+      <div className="flex flex-col overflow-hidden rounded-3xl ring-1 ring-inset ring-white/[0.08]" style={{ height: 320, ...chatWallpaperStyle(theme) }}>
+        <div className="flex items-center gap-2.5 border-b px-3.5 py-2.5" style={glass}>
+          <span className="h-8 w-8 shrink-0 rounded-full" style={{ background: theme.bubble }} />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold leading-tight text-white">Aira</p>
+            <p className="text-[11px] leading-tight text-white/60">Active now</p>
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col justify-end gap-2 px-4 pb-3">
           <div className={`${bubbleBase} self-start rounded-bl-md ring-1 ring-white/[0.07]`} style={{ background: theme.incoming }}>
             Hey! Are we still on for tonight?
           </div>
@@ -1355,6 +1394,13 @@ function AppearancePanel({ chatThemeId, onChange }: { chatThemeId: string; onCha
           <div className={`${bubbleBase} self-start rounded-bl-md ring-1 ring-white/[0.07]`} style={{ background: theme.incoming }}>
             Perfect, can&apos;t wait 😄
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 border-t px-3 py-2.5" style={glass}>
+          <span className="flex-1 rounded-full border px-4 py-2 text-[13px] text-white/50" style={{ background: "rgba(255,255,255,0.09)", borderColor: "rgba(255,255,255,0.14)" }}>Message</span>
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-white" style={{ background: theme.bubble }}>
+            <SettingsGlyph name="share" size={14} />
+          </span>
         </div>
       </div>
 
@@ -1366,7 +1412,7 @@ function AppearancePanel({ chatThemeId, onChange }: { chatThemeId: string; onCha
             ))}
           </div>
         </div>
-        <p className="mt-3 px-2 text-xs leading-relaxed text-white/45">The chat bubble and wallpaper will both change.</p>
+        <p className="mt-3 px-2 text-xs leading-relaxed text-white/45">The chat bubble, wallpaper, header and message bar will all change.</p>
       </SettingsSection>
     </div>
   );
@@ -2141,6 +2187,114 @@ function SubscriptionPanel({ subscribed }: { subscribed: boolean }) {
   );
 }
 
+// =====================================================================
+// Background loading & caches — nothing should be fetched twice
+// =====================================================================
+const STATUS_CACHE_PREFIX = "airalance-status-cache:";
+const NEWS_CACHE_KEY = "airalance-news-cache";
+const PREFETCH_CHAT_COUNT = 8;
+const MESSAGES_CACHE_LIMIT = 40;
+
+type ChatCacheEntry = { messages: Message[]; hasMore: boolean; reactions: Record<string, Reaction[]> };
+
+function readStatusCache(userId: string): Status[] | null {
+  try {
+    const raw = localStorage.getItem(STATUS_CACHE_PREFIX + userId);
+    if (!raw) return null;
+    const list = JSON.parse(raw) as Status[];
+    if (!Array.isArray(list)) return null;
+    const now = Date.now();
+    return list.filter((s) => s && new Date(s.expires_at).getTime() > now);
+  } catch {
+    return null;
+  }
+}
+
+function writeStatusCache(userId: string, list: Status[]) {
+  try { localStorage.setItem(STATUS_CACHE_PREFIX + userId, JSON.stringify(list)); } catch {}
+}
+
+function readNewsCache(): NewsArticle[] | null {
+  try {
+    const raw = localStorage.getItem(NEWS_CACHE_KEY);
+    if (!raw) return null;
+    const list = JSON.parse(raw) as NewsArticle[];
+    return Array.isArray(list) ? list : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeNewsCache(list: NewsArticle[]) {
+  try { localStorage.setItem(NEWS_CACHE_KEY, JSON.stringify(list)); } catch {}
+}
+
+function messageTime(m: Message) {
+  return new Date(m.created_at).getTime();
+}
+
+// Merge the newest page from the server into what we already have (cache / realtime).
+// Server copy wins; older pages, in-flight sends and newer realtime arrivals are kept.
+function mergeFreshMessages(prev: Message[], fresh: Message[], freshIsComplete: boolean): Message[] {
+  const isTemp = (m: Message) => m.id.startsWith("temp-");
+  if (fresh.length === 0) return prev.filter(isTemp);
+  const freshIds = new Set(fresh.map((m) => m.id));
+  const oldest = messageTime(fresh[0]);
+  const newest = messageTime(fresh[fresh.length - 1]);
+  const older = freshIsComplete ? [] : prev.filter((m) => !isTemp(m) && !freshIds.has(m.id) && messageTime(m) < oldest);
+  const newer = prev.filter((m) => !isTemp(m) && !freshIds.has(m.id) && messageTime(m) > newest);
+  const temps = prev.filter(
+    (m) => isTemp(m) && !fresh.some((f) => f.sender_id === m.sender_id && (f.content === m.content || (!!f.media_url && f.media_url === m.media_url)))
+  );
+  return [...older, ...fresh, ...newer, ...temps];
+}
+
+function sameMessages(a: Message[], b: Message[]) {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
+}
+
+function runWhenIdle(fn: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const w = window as any;
+  if (typeof w.requestIdleCallback === "function") {
+    const id = w.requestIdleCallback(fn, { timeout: 2500 });
+    return () => w.cancelIdleCallback?.(id);
+  }
+  const t = setTimeout(fn, 400);
+  return () => clearTimeout(t);
+}
+
+// Downloads images / clips in the background and keeps a reference, so opening them later is instant.
+const warmedMedia = new Map<string, HTMLImageElement | HTMLVideoElement>();
+const WARM_LIMIT = 80;
+const WARM_VIDEO_LIMIT = 6;
+let warmedVideoCount = 0;
+
+function warmMedia(url: string | null | undefined, kind: "image" | "video" = "image") {
+  if (!url || typeof window === "undefined" || warmedMedia.has(url)) return;
+  const conn = (navigator as any).connection;
+  if (conn?.saveData) return; // respect Data Saver
+  if (kind === "video") {
+    if (warmedVideoCount >= WARM_VIDEO_LIMIT) return;
+    warmedVideoCount += 1;
+    const v = document.createElement("video");
+    v.preload = "auto";
+    v.muted = true;
+    v.playsInline = true;
+    v.src = url;
+    warmedMedia.set(url, v);
+  } else {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    warmedMedia.set(url, img);
+  }
+  if (warmedMedia.size > WARM_LIMIT) {
+    const first = warmedMedia.keys().next().value;
+    if (first) warmedMedia.delete(first);
+  }
+}
+
 export default function ChatClient({ profile: initialProfile }: { profile: Profile }) {
   // Memoized so the Supabase client keeps a stable identity across re-renders.
   // Without this, every render created a brand-new client, which made every
@@ -2174,6 +2328,10 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [loadingMore, setLoadingMore] = useState(false);
   // which conversation's first page of messages has finished loading (drives the skeleton bubbles)
   const [messagesLoadedFor, setMessagesLoadedFor] = useState<string | null>(null);
+  // Chats that were already loaded stay in memory, so re-opening one is instant (no reload, no skeleton).
+  const messagesCacheRef = useRef<Map<string, ChatCacheEntry>>(new Map());
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
   const [input, setInput] = useState("");
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Profile[]>([]);
@@ -2539,6 +2697,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   async function deleteConversation(convoId: string) {
     setChatSwipeState(null);
+    messagesCacheRef.current.delete(convoId);
     // Remove only my own membership row — hides the chat from my list without
     // deleting it for the other participant(s).
     setConversations(prev => prev.filter(c => c.id !== convoId));
@@ -2603,9 +2762,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       return;
     }
 
-    setNewsArticles((data ?? []) as NewsArticle[]);
+    const next = (data ?? []) as NewsArticle[];
+    setNewsArticles(next);
+    writeNewsCache(next);
+    next.slice(0, 8).forEach((a) => warmMedia(a.image_url));
     setLoadingNews(false);
   }, [supabase]);
+
+  // Show the last known news instantly, then refresh quietly in the background.
+  useEffect(() => {
+    const cached = readNewsCache();
+    if (cached && cached.length > 0) { setNewsArticles(cached); setLoadingNews(false); }
+  }, []);
 
   useEffect(() => { fetchNews(); }, [fetchNews]);
 
@@ -2767,8 +2935,9 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   );
 
   useEffect(() => { loadNotifications(); }, [loadNotifications]);
+  useEffect(() => { loadSuggestedProfiles(); }, [myProfile.id]); // preload in the background
   useEffect(() => {
-    if (mobileTab === "search") loadSuggestedProfiles();
+    if (mobileTab === "search" && !suggestedLoaded) loadSuggestedProfiles();
   }, [mobileTab]);
   useEffect(() => {
     const interval = setInterval(() => { loadNotifications(); }, 4000);
@@ -3109,24 +3278,53 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   useEffect(() => {
     if (!activeId) { setMessagesLoadedFor(null); return; }
     let cancelled = false;
-    setMessagesLoadedFor(null);
-    setMessages([]); setHasMore(true); setReplyingTo(null); setReactionsByMsg({});
+    const cached = messagesCacheRef.current.get(activeId);
+    setReplyingTo(null);
     setPeerTyping(false);
-    lastMessageCreatedAtRef.current = null;
-    lastMessageIdRef.current = null;
+    if (cached) {
+      // Loaded before: show it instantly and refresh quietly in the background.
+      setMessages(cached.messages);
+      setHasMore(cached.hasMore);
+      setReactionsByMsg(cached.reactions);
+      setMessagesLoadedFor(activeId);
+      const last = cached.messages[cached.messages.length - 1];
+      lastMessageCreatedAtRef.current = last?.created_at ?? null;
+      lastMessageIdRef.current = last?.id ?? null;
+    } else {
+      setMessagesLoadedFor(null);
+      setMessages([]); setHasMore(true); setReactionsByMsg({});
+      lastMessageCreatedAtRef.current = null;
+      lastMessageIdRef.current = null;
+    }
 
     (async () => {
-      const { data } = await supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: false }).limit(PAGE_SIZE);
+      const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", activeId).order("created_at", { ascending: false }).limit(PAGE_SIZE);
       if (cancelled) return;
-      const ordered = (data ?? []).slice().reverse();
-      setMessages(ordered);
-      setMessagesLoadedFor(activeId);
-      setHasMore((data ?? []).length === PAGE_SIZE);
-      if (ordered.length > 0) {
-        lastMessageCreatedAtRef.current = ordered[ordered.length - 1].created_at;
-        lastMessageIdRef.current = ordered[ordered.length - 1].id;
+      if (cached && (error || !data)) return; // keep what we already have if the quiet refresh fails
+      const fresh = ((data ?? []) as Message[]).slice().reverse();
+      const complete = fresh.length < PAGE_SIZE;
+      if (cached) {
+        setMessages((prev) => {
+          const merged = mergeFreshMessages(prev, fresh, complete);
+          return sameMessages(prev, merged) ? prev : merged;
+        });
+        if (complete) setHasMore(false);
+      } else {
+        setMessages(fresh);
+        setMessagesLoadedFor(activeId);
+        setHasMore(!complete);
       }
-      loadReactionsFor(ordered.map((m) => m.id));
+      if (fresh.length > 0) {
+        const latest = fresh[fresh.length - 1];
+        const known = lastMessageCreatedAtRef.current;
+        if (!known || messageTime(latest) >= new Date(known).getTime()) {
+          lastMessageCreatedAtRef.current = latest.created_at;
+          lastMessageIdRef.current = latest.id;
+        }
+      }
+      const ids = new Set(fresh.map((m) => m.id));
+      if (cached) for (const m of messagesRef.current) if (!m.id.startsWith("temp-")) ids.add(m.id);
+      loadReactionsFor(Array.from(ids));
     })();
 
     const channel = supabase.channel(`messages:${activeId}`)
@@ -3178,6 +3376,57 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
       activeChannelRef.current = null;
     };
   }, [activeId, supabase, loadConversations]);
+
+  function putChatCache(convoId: string, entry: ChatCacheEntry) {
+    const cache = messagesCacheRef.current;
+    cache.delete(convoId);
+    cache.set(convoId, entry);
+    while (cache.size > MESSAGES_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  }
+
+  // Keep the open chat's cache up to date (messages, edits, reactions).
+  useEffect(() => {
+    if (!activeId || messagesLoadedFor !== activeId) return;
+    putChatCache(activeId, {
+      messages: messages.filter((m) => !m.id.startsWith("temp-")),
+      hasMore,
+      reactions: reactionsByMsg,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, hasMore, reactionsByMsg, activeId, messagesLoadedFor]);
+
+  async function prefetchChat(convoId: string) {
+    if (messagesCacheRef.current.has(convoId)) return;
+    const { data, error } = await supabase.from("messages").select("*").eq("conversation_id", convoId).order("created_at", { ascending: false }).limit(PAGE_SIZE);
+    if (error || !data) return;
+    const ordered = (data as Message[]).slice().reverse();
+    const reactions: Record<string, Reaction[]> = {};
+    if (ordered.length > 0) {
+      const { data: rx } = await supabase.from("message_reactions").select("*").in("message_id", ordered.map((m) => m.id));
+      (rx ?? []).forEach((r: Reaction) => { reactions[r.message_id] = [...(reactions[r.message_id] ?? []), r]; });
+    }
+    if (messagesCacheRef.current.has(convoId)) return; // opened in the meantime
+    putChatCache(convoId, { messages: ordered, hasMore: data.length === PAGE_SIZE, reactions });
+  }
+
+  // Right after the app opens: quietly load the most recent chats (and avatars) so opening one never waits.
+  const chatPrefetchStartedRef = useRef(false);
+  useEffect(() => {
+    if (loadingConvos || conversations.length === 0 || chatPrefetchStartedRef.current) return;
+    chatPrefetchStartedRef.current = true;
+    conversations.forEach((c) => warmMedia(c.otherProfile?.avatar_url));
+    runWhenIdle(async () => {
+      const ids = conversations.slice(0, PREFETCH_CHAT_COUNT).map((c) => c.id);
+      for (let i = 0; i < ids.length; i += 2) {
+        await Promise.all(ids.slice(i, i + 2).map((id) => prefetchChat(id)));
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingConvos, conversations]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -4152,6 +4401,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   async function handleLogout() {
+    try { localStorage.removeItem(STATUS_CACHE_PREFIX + myProfile.id); } catch {}
     await supabase.auth.signOut();
     router.push("/login"); router.refresh();
   }
@@ -4200,13 +4450,45 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     setMyProfile((prev) => ({ ...prev, bio: trimmed }));
   }
 
+  const statusesJsonRef = useRef("");
   const loadStatuses = useCallback(async () => {
-    const { data } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
-    setStatuses((data ?? []) as any);
+    const { data, error } = await supabase.from("statuses").select("*, profile:profiles(*)").gt("expires_at", new Date().toISOString()).order("created_at", { ascending: true });
+    if (!error) {
+      const next = (data ?? []) as Status[];
+      const json = JSON.stringify(next);
+      // Only touch state when something really changed, so an open status never restarts.
+      if (json !== statusesJsonRef.current) {
+        statusesJsonRef.current = json;
+        setStatuses(next);
+        writeStatusCache(myProfile.id, next);
+      }
+    }
     setStatusesLoaded(true);
-  }, [supabase]);
+  }, [supabase, myProfile.id]);
+
+  // Show the last known statuses instantly, then refresh quietly in the background.
+  useEffect(() => {
+    const cached = readStatusCache(myProfile.id);
+    if (cached && cached.length > 0) {
+      statusesJsonRef.current = JSON.stringify(cached);
+      setStatuses(cached);
+      setStatusesLoaded(true);
+    }
+  }, [myProfile.id]);
 
   useEffect(() => { loadStatuses(); }, [loadStatuses]);
+
+  // Download status photos / clips / avatars in the background so opening a status is instant.
+  useEffect(() => {
+    if (statuses.length === 0) return;
+    return runWhenIdle(() => {
+      const ordered = [...statuses].sort((a, b) => Number(a.user_id === myProfile.id) - Number(b.user_id === myProfile.id));
+      for (const st of ordered) {
+        warmMedia(st.profile?.avatar_url);
+        if (st.media_url) warmMedia(st.media_url, st.media_type === "video" ? "video" : "image");
+      }
+    });
+  }, [statuses, myProfile.id]);
 
   useEffect(() => {
     const channel = supabase.channel("statuses-realtime").on("postgres_changes", { event: "*", schema: "public", table: "statuses" }, () => loadStatuses()).subscribe();
@@ -4452,6 +4734,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }
 
   const activeStatusListForEffects = statusViewerUserId ? (statusViewerUserId === myProfile.id ? myStatuses : otherStatusesGrouped[statusViewerUserId] ?? []) : [];
+  const activeStatusIdsKey = activeStatusListForEffects.map((s) => s.id).join(",");
   const activeStatusIdForEffects = activeStatusListForEffects[statusViewerIndex]?.id ?? null;
   const statusViewersList: StatusViewer[] = activeStatusIdForEffects ? statusViewersByStatus[activeStatusIdForEffects] ?? [] : [];
 
@@ -4735,7 +5018,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
     };
     statusRafRef.current = requestAnimationFrame(tick);
     return () => { if (statusRafRef.current) cancelAnimationFrame(statusRafRef.current); };
-  }, [statusViewerUserId, statusViewerIndex, statuses]);
+  }, [statusViewerUserId, statusViewerIndex, activeStatusIdsKey]);
 
   async function startCall() {
     if (!active?.otherProfile || callStatus !== "idle") return;
@@ -6745,8 +7028,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
         </div>
       </aside>
 
-      <section className={`${activeId ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}>
-        <div className="pointer-events-none absolute inset-0 bg-aurora opacity-40" />
+      <section
+        className={`${activeId ? "flex" : "hidden md:flex"} relative min-w-0 flex-1 flex-col`}
+        style={themedChat && active && !showContactInfo ? chatWallpaperStyle(chatTheme) : undefined}
+      >
+        <div className={`pointer-events-none absolute inset-0 bg-aurora opacity-40 ${themedChat && active && !showContactInfo ? "hidden" : ""}`} />
 
         {!active ? (
           <div className="relative z-10 flex flex-1 flex-col items-center justify-center text-center">
@@ -6828,9 +7114,18 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           </div>
         ) : (
           <>
-            <header className="relative z-10 flex items-center gap-3 border-b border-white/[0.06] bg-[#0B0D14]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6">
-              <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-violet/[0.05] via-transparent to-transparent" />
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/50 to-transparent" />
+            <header
+              className="relative z-10 flex items-center gap-3 border-b border-white/[0.06] bg-[#0B0D14]/85 px-4 py-3.5 backdrop-blur-2xl md:px-6"
+              style={themedChat ? chatGlassStyle(chatTheme) : undefined}
+            >
+              <div
+                className="pointer-events-none absolute inset-0 bg-gradient-to-b from-violet/[0.05] via-transparent to-transparent"
+                style={themedChat ? { backgroundImage: `linear-gradient(to bottom, ${chatTheme.accent}14, transparent)` } : undefined}
+              />
+              <div
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-violet/50 to-transparent"
+                style={themedChat ? { backgroundImage: `linear-gradient(90deg, transparent, ${chatTheme.accent}80, transparent)` } : undefined}
+              />
               <button onClick={() => setActiveId(null)} className="relative z-10 mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.06] hover:text-white active:scale-90 md:hidden" aria-label="Back to conversations">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </button>
@@ -6901,7 +7196,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[#0A0C12] px-4 py-6 md:px-8"
               style={
                 themedChat
-                  ? chatWallpaperStyle(chatTheme)
+                  ? { backgroundColor: "transparent", backgroundImage: "none" }
                   : {
                       backgroundImage:
                         "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
@@ -7106,7 +7401,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
             )}
 
             {replyingTo && (
-              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#171A24] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out" }}>
+              <div className="relative z-10 mx-3 mb-1.5 flex items-center justify-between rounded-2xl border border-white/[0.06] bg-[#171A24] px-4 py-2.5 shadow-[0_4px_16px_-6px_rgba(0,0,0,0.5)] md:mx-6" style={{ animation: "scrollBtnPop 0.16s ease-out", ...(themedChat ? chatGlassStyle(chatTheme) : {}) }}>
                 <div className="min-w-0 flex-1 border-l-2 border-violet-light pl-2.5">
                   <p className="text-xs font-semibold text-violet-light">Replying to {replyingTo.sender_id === myProfile.id ? "yourself" : active.otherProfile?.display_name ?? "message"}</p>
                   <p className="truncate text-xs text-mist">{previewForQuote(replyingTo)}</p>
@@ -7115,9 +7410,19 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               </div>
             )}
 
-            <form onSubmit={sendMessage} className="relative z-10 border-t border-white/[0.06] bg-[#0B0D14] px-3 py-3 md:px-6">
+            <form
+              onSubmit={sendMessage}
+              className="relative z-10 border-t border-white/[0.06] bg-[#0B0D14] px-3 py-3 md:px-6"
+              style={themedChat ? chatGlassStyle(chatTheme) : undefined}
+            >
+              {themedChat && (
+                <style>{`.ci-pill:focus-within{border-color:${chatTheme.accent}66 !important;box-shadow:0 0 0 3px ${chatTheme.accent}26 !important}`}</style>
+              )}
               <input ref={mediaInputRef} type="file" accept="image/*" className="hidden" onChange={handleMediaFilePick} />
-              <div className="flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#171A24] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]">
+              <div
+                className="ci-pill flex items-center gap-1.5 rounded-[28px] border border-white/[0.08] bg-[#171A24] px-1.5 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_8px_24px_-8px_rgba(0,0,0,0.5)] transition-all duration-200 focus-within:border-violet/40 focus-within:shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_0_3px_rgba(124,92,255,0.12)]"
+                style={themedChat ? { backgroundColor: "rgba(255,255,255,0.09)", borderColor: "rgba(255,255,255,0.14)" } : undefined}
+              >
                 <button type="button" onClick={() => mediaInputRef.current?.click()} disabled={uploadingMedia} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-mist transition-all hover:bg-white/[0.08] hover:text-white hover:scale-105 active:scale-95 disabled:opacity-30" aria-label="Send image">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
                     <rect x="2" y="4" width="20" height="16" rx="3" stroke="currentColor" strokeWidth="1.6"/>
