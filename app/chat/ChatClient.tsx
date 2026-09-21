@@ -417,21 +417,6 @@ const STATUS_RING_GRADIENT =
 const STATUS_RING_VIEWED = "linear-gradient(215deg, #5A6172 0%, #3A3F4C 100%)";
 const STATUS_RING_GLOW = "0 0 14px -3px rgba(214,107,224,0.6), inset 0 0 0 1px rgba(255,255,255,0.2)";
 
-function StatusSparkle() {
-  return (
-    <svg
-      aria-hidden="true"
-      width="11"
-      height="11"
-      viewBox="0 0 24 24"
-      className="pointer-events-none absolute -right-[3px] -top-[3px] animate-pulse motion-reduce:animate-none"
-      style={{ filter: "drop-shadow(0 0 3px rgba(255,255,255,0.95))" }}
-    >
-      <path d="M12 0C12.6 6.5 17.5 11.4 24 12C17.5 12.6 12.6 17.5 12 24C11.4 17.5 6.5 12.6 0 12C6.5 11.4 11.4 6.5 12 0Z" fill="white" />
-    </svg>
-  );
-}
-
 function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewed: boolean; children: React.ReactNode }) {
   if (!hasStatus) return <>{children}</>;
   return (
@@ -443,7 +428,6 @@ function StatusRing({ hasStatus, viewed, children }: { hasStatus: boolean; viewe
       }}
     >
       <div className="rounded-full bg-ink-900 p-[2.5px]">{children}</div>
-      {!viewed && <StatusSparkle />}
     </div>
   );
 }
@@ -906,14 +890,46 @@ function formatUsageDuration(sec: number) {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+// ---- Daily time limit (saved per user on this device) ----
+const USAGE_LIMIT_PREFIX = "airalance-timelimit:";
+const USAGE_LIMIT_SHOWN_PREFIX = "airalance-timelimit-shown:";
+let usageLimitMinutes: number | null = null; // in-memory copy read by the tracker
+let usageLimitShown = ""; // "<day>|<minutes>" once the popup was shown
+
+function readUsageLimit(userId: string): number | null {
+  try {
+    const n = Number(localStorage.getItem(USAGE_LIMIT_PREFIX + userId));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeUsageLimit(userId: string, minutes: number | null) {
+  usageLimitMinutes = minutes && minutes > 0 ? minutes : null;
+  usageLimitShown = "";
+  try {
+    if (usageLimitMinutes) localStorage.setItem(USAGE_LIMIT_PREFIX + userId, String(usageLimitMinutes));
+    else localStorage.removeItem(USAGE_LIMIT_PREFIX + userId);
+    localStorage.removeItem(USAGE_LIMIT_SHOWN_PREFIX + userId);
+  } catch {}
+}
+
 // Counts seconds while the app is visible and saves them per day.
-function useUsageTracker(userId: string | undefined) {
+// Calls onLimitReached once per day when today's time reaches the saved daily limit.
+function useUsageTracker(userId: string | undefined, onLimitReached: (minutes: number) => void) {
+  const onLimitRef = useRef(onLimitReached);
+  onLimitRef.current = onLimitReached;
+
   useEffect(() => {
     if (!userId || typeof window === "undefined") return;
     let pending = 0;
     let pendingDay = localDateKey(new Date());
+    let storedToday = readUsage(userId)[pendingDay] ?? 0;
     let last = Date.now();
     let ticks = 0;
+    usageLimitMinutes = readUsageLimit(userId);
+    try { usageLimitShown = localStorage.getItem(USAGE_LIMIT_SHOWN_PREFIX + userId) ?? ""; } catch { usageLimitShown = ""; }
 
     const flush = () => {
       const whole = Math.floor(pending);
@@ -925,6 +941,7 @@ function useUsageTracker(userId: string | undefined) {
         for (const k of days.slice(0, Math.max(0, days.length - USAGE_KEEP_DAYS))) delete data[k];
         localStorage.setItem(USAGE_STORAGE_PREFIX + userId, JSON.stringify(data));
         pending -= whole;
+        storedToday += whole;
       } catch {}
     };
 
@@ -938,8 +955,20 @@ function useUsageTracker(userId: string | undefined) {
         flush();
         pending = 0;
         pendingDay = day;
+        storedToday = readUsage(userId)[day] ?? 0;
       }
-      if (document.visibilityState === "visible") pending += delta;
+      if (document.visibilityState === "visible") {
+        pending += delta;
+        const limit = usageLimitMinutes;
+        if (limit && storedToday + pending >= limit * 60) {
+          const marker = `${day}|${limit}`;
+          if (usageLimitShown !== marker) {
+            usageLimitShown = marker;
+            try { localStorage.setItem(USAGE_LIMIT_SHOWN_PREFIX + userId, marker); } catch {}
+            onLimitRef.current(limit);
+          }
+        }
+      }
       ticks += 1;
       if (ticks % 15 === 0) flush();
     };
@@ -964,9 +993,9 @@ function useUsageTracker(userId: string | undefined) {
   }, [userId]);
 }
 
-type SettingsScreenId = "home" | "time" | "verify" | "blocked" | "mentions" | "invite" | "account" | "subscription";
+type SettingsScreenId = "home" | "time" | "timelimit" | "verify" | "blocked" | "mentions" | "invite" | "account" | "subscription";
 type SettingsGlyphName =
-  | "clock" | "badge" | "ban" | "at" | "invite" | "shield" | "one"
+  | "clock" | "badge" | "ban" | "at" | "invite" | "shield" | "one" | "timer" | "heart" | "sprout" | "calendar"
   | "chevron-right" | "chevron-left" | "copy" | "share" | "check" | "alert" | "camera";
 
 function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: number }) {
@@ -979,6 +1008,10 @@ function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: nu
       {name === "invite" && (<><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="19" y1="8" x2="19" y2="14" /><line x1="22" y1="11" x2="16" y2="11" /></>)}
       {name === "shield" && (<><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="m9 12 2 2 4-4" /></>)}
       {name === "one" && (<><circle cx="12" cy="12" r="10" /><path d="m10 9.5 2.5-1.5V16" /></>)}
+      {name === "timer" && (<><line x1="10" y1="2" x2="14" y2="2" /><line x1="12" y1="14" x2="15" y2="11" /><circle cx="12" cy="14" r="8" /></>)}
+      {name === "heart" && <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />}
+      {name === "sprout" && (<><path d="M7 20h10" /><path d="M10 20c5.5-2.5.8-6.4 3-10" /><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" /><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" /></>)}
+      {name === "calendar" && (<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /><path d="M8 14h.01" /><path d="M12 14h.01" /><path d="M16 14h.01" /><path d="M8 18h.01" /><path d="M12 18h.01" /></>)}
       {name === "chevron-right" && <path d="m9 18 6-6-6-6" />}
       {name === "chevron-left" && <path d="m15 18-6-6 6-6" />}
       {name === "copy" && (<><rect x="8" y="8" width="14" height="14" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>)}
@@ -990,8 +1023,65 @@ function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: nu
   );
 }
 
+const SETTINGS_TINTS = {
+  blue: "linear-gradient(135deg, #6EA8FF 0%, #5B6CFF 100%)",
+  teal: "linear-gradient(135deg, #3EE0C4 0%, #12A08F 100%)",
+  coral: "linear-gradient(135deg, #FF8A8A 0%, #F0475F 100%)",
+  violet: "linear-gradient(135deg, #B79CFF 0%, #7C5CFF 100%)",
+  amber: "linear-gradient(135deg, #FFC857 0%, #F59E0B 100%)",
+  green: "linear-gradient(135deg, #4ADE9A 0%, #10B981 100%)",
+  pink: "linear-gradient(135deg, #F0A0FF 0%, #F4607A 100%)",
+};
+type SettingsTint = keyof typeof SETTINGS_TINTS;
+
+const SETTINGS_CARD_CLASS = "overflow-hidden rounded-2xl bg-white/[0.045] ring-1 ring-inset ring-white/[0.07]";
+
 const SETTINGS_FIELD_CLASS =
   "w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-3 text-base text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-violet";
+
+function SettingsTile({ icon, tint, size = 36 }: { icon: SettingsGlyphName; tint: SettingsTint; size?: number }) {
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]"
+      style={{ width: size, height: size, borderRadius: Math.round(size * 0.28), background: SETTINGS_TINTS[tint] }}
+    >
+      <SettingsGlyph name={icon} size={Math.round(size * 0.53)} />
+    </span>
+  );
+}
+
+function SettingsSection({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-6 first:mt-0">
+      {title && <h3 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-mist">{title}</h3>}
+      {children}
+    </section>
+  );
+}
+
+function SettingsGroup({ title, children }: { title?: string; children: React.ReactNode }) {
+  return (
+    <SettingsSection title={title}>
+      <div className={`${SETTINGS_CARD_CLASS} divide-y divide-white/[0.06]`}>{children}</div>
+    </SettingsSection>
+  );
+}
+
+function SettingsRow({
+  icon, tint, title, subtitle, value, onClick,
+}: { icon: SettingsGlyphName; tint: SettingsTint; title: string; subtitle?: string; value?: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex w-full items-center gap-3.5 px-4 py-3 text-left transition hover:bg-white/[0.03] active:bg-white/[0.07]">
+      <SettingsTile icon={icon} tint={tint} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-medium text-white">{title}</span>
+        {subtitle && <span className="mt-0.5 block truncate text-xs text-mist">{subtitle}</span>}
+      </span>
+      {value && <span className="shrink-0 text-sm text-mist">{value}</span>}
+      <span className="shrink-0 text-white/25"><SettingsGlyph name="chevron-right" size={18} /></span>
+    </button>
+  );
+}
 
 function SettingsScreen({
   supabase,
@@ -1012,6 +1102,7 @@ function SettingsScreen({
   const titles: Record<SettingsScreenId, string> = {
     home: "Settings",
     time: "Time management",
+    timelimit: "Time limit",
     verify: "Request verification",
     blocked: "Blocked",
     mentions: "Tag & mention",
@@ -1020,69 +1111,84 @@ function SettingsScreen({
     subscription: "Aira One",
   };
 
-  const rows: { id: Exclude<SettingsScreenId, "home">; icon: SettingsGlyphName; title: string; subtitle: string }[] = [
-    { id: "time", icon: "clock", title: "Time management", subtitle: "See how much time you spend on Airalance" },
-    { id: "verify", icon: "badge", title: "Request verification", subtitle: verified ? "Your account is verified" : "Apply for the verified badge" },
-    { id: "blocked", icon: "ban", title: "Blocked", subtitle: "Accounts you've blocked" },
-    { id: "mentions", icon: "at", title: "Tag & mention", subtitle: "Choose who can tag or mention you" },
-    { id: "invite", icon: "invite", title: "Invite friends", subtitle: "Share Airalance with your friends" },
-    { id: "account", icon: "shield", title: "Account status", subtitle: "Check your account's standing" },
-  ];
+  function goBack() {
+    if (screen === "home") onClose();
+    else setScreen(screen === "timelimit" ? "time" : "home");
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-ink-900" style={{ height: "100dvh" }}>
-      <div className="flex h-full w-full max-w-lg flex-col">
-        <header className="flex items-center gap-1 border-b border-white/5 px-2 pb-2.5" style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}>
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-64"
+        style={{ background: "radial-gradient(60% 100% at 50% 0%, rgba(124,92,255,0.20) 0%, rgba(124,92,255,0) 100%)" }}
+      />
+      <div className="relative flex h-full w-full max-w-lg flex-col">
+        <header className="flex items-center gap-1 px-2 pb-2" style={{ paddingTop: "max(0.625rem, env(safe-area-inset-top))" }}>
           <button
-            onClick={() => (screen === "home" ? onClose() : setScreen("home"))}
+            onClick={goBack}
             aria-label="Back"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:bg-white/5 active:scale-95"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-white transition hover:bg-white/5 active:scale-95"
           >
-            <SettingsGlyph name="chevron-left" size={22} />
+            <SettingsGlyph name="chevron-left" size={24} />
           </button>
           <h2 className="font-display text-lg font-bold text-white">{titles[screen]}</h2>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-4 pt-4" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-4 pt-3" style={{ paddingBottom: "max(2rem, env(safe-area-inset-bottom))" }}>
           {screen === "home" && (
             <>
-              <p className="px-1 pb-2 text-xs font-semibold text-mist">General</p>
-              <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
-                {rows.map((row) => (
-                  <button
-                    key={row.id}
-                    onClick={() => setScreen(row.id)}
-                    className="flex w-full items-center gap-3 px-3.5 py-3.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06]"
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-violet-light">
-                      <SettingsGlyph name={row.icon} size={19} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[15px] font-semibold text-white">{row.title}</span>
-                      <span className="block truncate text-xs text-mist">{row.subtitle}</span>
-                    </span>
-                    <span className="shrink-0 text-white/30"><SettingsGlyph name="chevron-right" size={18} /></span>
-                  </button>
-                ))}
+              <div
+                className="flex items-center gap-3.5 rounded-2xl p-4 ring-1 ring-inset ring-white/[0.08]"
+                style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.16), rgba(34,211,184,0.06))" }}
+              >
+                <Avatar name={myProfile.display_name} color={myProfile.avatar_color} avatarUrl={myProfile.avatar_url} size={56} />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center truncate text-base font-semibold text-white">
+                    <span className="truncate">{myProfile.display_name}</span>
+                    {verified && <VerifiedBadge size={16} />}
+                  </p>
+                  <p className="truncate text-sm text-mist">@{myProfile.username}</p>
+                </div>
               </div>
 
-              <p className="px-1 pb-2 pt-6 text-xs font-semibold text-mist">Subscription</p>
-              <div className="overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+              <SettingsGroup title="How you use Airalance">
+                <SettingsRow icon="clock" tint="blue" title="Time management" subtitle="See how much time you spend on Airalance" onClick={() => setScreen("time")} />
+              </SettingsGroup>
+
+              <SettingsGroup title="Privacy">
+                <SettingsRow icon="at" tint="violet" title="Tag & mention" subtitle="Choose who can tag or mention you" onClick={() => setScreen("mentions")} />
+                <SettingsRow icon="ban" tint="coral" title="Blocked" subtitle="Accounts you've blocked" onClick={() => setScreen("blocked")} />
+              </SettingsGroup>
+
+              <SettingsGroup title="Account">
+                <SettingsRow icon="badge" tint="teal" title="Request verification" subtitle={verified ? "Your account is verified" : "Apply for the verified badge"} onClick={() => setScreen("verify")} />
+                <SettingsRow icon="shield" tint="green" title="Account status" subtitle="Check your account's standing" onClick={() => setScreen("account")} />
+                <SettingsRow icon="invite" tint="amber" title="Invite friends" subtitle="Share Airalance with your friends" onClick={() => setScreen("invite")} />
+              </SettingsGroup>
+
+              <SettingsSection title="Subscription">
                 <button
                   onClick={() => setScreen("subscription")}
-                  className="flex w-full items-center gap-3 px-3.5 py-3.5 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06]"
+                  className="block w-full rounded-2xl p-[1px] text-left transition active:scale-[0.99]"
+                  style={{ background: "linear-gradient(135deg, rgba(167,139,250,0.75), rgba(244,96,122,0.55))" }}
                 >
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.07] text-violet-light">
-                    <SettingsGlyph name="one" size={19} />
+                  <span
+                    className="flex w-full items-center gap-3.5 rounded-[15px] bg-ink-900 px-4 py-3.5"
+                    style={{ backgroundImage: "linear-gradient(135deg, rgba(124,92,255,0.20), rgba(244,96,122,0.10))" }}
+                  >
+                    <SettingsTile icon="one" tint="pink" size={40} />
+                    <span className="min-w-0 flex-1 truncate font-display text-base font-bold text-white">Aira One</span>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${subscribed ? "bg-violet/25 text-violet-light" : "bg-white/10 text-mist"}`}>
+                      {subscribed ? "Subscribed" : "Unsubscribed"}
+                    </span>
+                    <span className="shrink-0 text-white/30"><SettingsGlyph name="chevron-right" size={18} /></span>
                   </span>
-                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-white">Aira One</span>
-                  <span className="shrink-0 text-sm text-mist">{subscribed ? "Subscribed" : "Unsubscribed"}</span>
-                  <span className="shrink-0 text-white/30"><SettingsGlyph name="chevron-right" size={18} /></span>
                 </button>
-              </div>
+              </SettingsSection>
             </>
           )}
-          {screen === "time" && <TimeManagementPanel userId={myProfile.id} />}
+          {screen === "time" && <TimeManagementPanel userId={myProfile.id} onOpenLimit={() => setScreen("timelimit")} />}
+          {screen === "timelimit" && <TimeLimitPanel userId={myProfile.id} />}
           {screen === "verify" && <VerificationPanel supabase={supabase} myProfile={myProfile} verified={verified} />}
           {screen === "blocked" && <BlockedPanel supabase={supabase} myId={myProfile.id} onUnblocked={onUnblocked} />}
           {screen === "mentions" && <MentionPrivacyPanel supabase={supabase} myId={myProfile.id} />}
@@ -1096,9 +1202,10 @@ function SettingsScreen({
 }
 
 // ---- 1. Time management ----
-function TimeManagementPanel({ userId }: { userId: string }) {
+function TimeManagementPanel({ userId, onOpenLimit }: { userId: string; onOpenLimit: () => void }) {
   const [data, setData] = useState<Record<string, number>>({});
   const [selected, setSelected] = useState(6);
+  const [limit] = useState<number | null>(() => readUsageLimit(userId));
 
   useEffect(() => {
     const load = () => { flushUsageNow?.(); setData(readUsage(userId)); };
@@ -1131,17 +1238,20 @@ function TimeManagementPanel({ userId }: { userId: string }) {
 
   return (
     <div>
-      <p className="text-sm text-mist">Daily average</p>
-      <p className="mt-1 font-display text-4xl font-bold tabular-nums text-white">{formatUsageDuration(avg)}</p>
+      <div
+        className="rounded-3xl p-5 ring-1 ring-inset ring-white/[0.08]"
+        style={{ background: "linear-gradient(160deg, rgba(124,92,255,0.16) 0%, rgba(255,255,255,0.03) 60%)" }}
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-mist">Daily average</p>
+        <p className="mt-1 font-display text-5xl font-bold tabular-nums text-white">{formatUsageDuration(avg)}</p>
 
-      <div className="mt-6 rounded-2xl bg-white/[0.04] p-4 ring-1 ring-inset ring-white/[0.06]">
-        <div className="relative h-44">
+        <div className="relative mt-7 h-40">
           {avg > 0 && (
             <div className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-white/30" style={{ bottom: `${(avg / yMax) * 100}%` }}>
               <span className="absolute -top-4 right-0 text-[10px] text-white/50">avg</span>
             </div>
           )}
-          <div className="flex h-full items-end gap-2">
+          <div className="flex h-full items-end gap-2.5">
             {days.map((d, i) => {
               const pct = (d.secs / yMax) * 100;
               const isSel = i === selected;
@@ -1153,7 +1263,7 @@ function TimeManagementPanel({ userId }: { userId: string }) {
                   className="flex h-full flex-1 flex-col justify-end"
                 >
                   <span
-                    className={`block w-full rounded-t-md transition-all duration-200 ${isSel ? "" : d.secs > 0 ? "bg-violet/40" : "bg-white/10"}`}
+                    className={`block w-full rounded-t-lg transition-all duration-200 ${isSel ? "" : d.secs > 0 ? "bg-violet/40" : "bg-white/10"}`}
                     style={{
                       height: d.secs > 0 ? `${Math.max(pct, 3)}%` : "3px",
                       background: isSel ? "linear-gradient(180deg, #A78BFA 0%, #7C5CFF 100%)" : undefined,
@@ -1164,21 +1274,195 @@ function TimeManagementPanel({ userId }: { userId: string }) {
             })}
           </div>
         </div>
-        <div className="mt-2 flex gap-2">
+        <div className="mt-2 flex gap-2.5">
           {days.map((d, i) => (
             <span key={d.key} className={`flex-1 text-center text-[11px] ${i === selected ? "font-semibold text-white" : "text-white/45"}`}>
               {d.date.toLocaleDateString(undefined, { weekday: "short" })}
             </span>
           ))}
         </div>
+
+        <div className="mt-4 flex items-center justify-between rounded-xl bg-white/[0.07] px-3.5 py-3">
+          <span className="text-sm text-mist">{selLabel}</span>
+          <span className="font-display text-lg font-bold tabular-nums text-white">{formatUsageDuration(sel.secs)}</span>
+        </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between rounded-2xl bg-white/[0.04] px-4 py-3.5 ring-1 ring-inset ring-white/[0.06]">
-        <span className="text-sm text-mist">{selLabel}</span>
-        <span className="font-display text-lg font-bold tabular-nums text-white">{formatUsageDuration(sel.secs)}</span>
+      <SettingsGroup title="Limits">
+        <SettingsRow
+          icon="timer"
+          tint="blue"
+          title="Time Limit"
+          subtitle="Get a reminder when you reach your daily limit"
+          value={limit ? formatUsageDuration(limit * 60) : "Off"}
+          onClick={onOpenLimit}
+        />
+      </SettingsGroup>
+
+      <p className="mt-4 px-2 text-xs leading-relaxed text-white/45">Time is counted while Airalance is open on this device.</p>
+    </div>
+  );
+}
+
+// ---- Time limit ----
+const TIME_LIMIT_QUESTIONS: { icon: SettingsGlyphName; text: string }[] = [
+  { icon: "heart", text: "Which activities, online or offline, deserve most of your time?" },
+  { icon: "sprout", text: "When does being online matter less than what's around you?" },
+  { icon: "calendar", text: "Is there a part of your day when you'd like to put the phone down?" },
+];
+
+const WHEEL_ITEM_HEIGHT = 40;
+const WHEEL_HEIGHT = 200;
+
+// iOS-style scroll wheel: snaps to one value at a time, selected value sits in the middle.
+function WheelColumn({ count, value, onChange, unit }: { count: number; value: number; onChange: (n: number) => void; unit: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = value * WHEEL_ITEM_HEIGHT;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleScroll() {
+    const el = ref.current;
+    if (!el) return;
+    const idx = Math.max(0, Math.min(count - 1, Math.round(el.scrollTop / WHEEL_ITEM_HEIGHT)));
+    if (idx !== value) onChange(idx);
+  }
+
+  const mask = "linear-gradient(to bottom, transparent 0%, #000 28%, #000 72%, transparent 100%)";
+  const pad = (WHEEL_HEIGHT - WHEEL_ITEM_HEIGHT) / 2;
+
+  return (
+    <div className="relative h-full flex-1">
+      <div
+        ref={ref}
+        onScroll={handleScroll}
+        className="h-full overflow-y-scroll overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        style={{ scrollSnapType: "y mandatory", maskImage: mask, WebkitMaskImage: mask, paddingTop: pad, paddingBottom: pad }}
+        role="listbox"
+        aria-label={unit}
+      >
+        {Array.from({ length: count }, (_, i) => {
+          const d = Math.abs(i - value);
+          return (
+            <div
+              key={i}
+              className="flex items-center justify-end pr-16"
+              style={{ height: WHEEL_ITEM_HEIGHT, scrollSnapAlign: "center", scrollSnapStop: "always" }}
+            >
+              <span
+                className="font-display text-[22px] tabular-nums text-white"
+                style={{ opacity: d === 0 ? 1 : d === 1 ? 0.5 : d === 2 ? 0.28 : 0.15, fontWeight: d === 0 ? 600 : 500 }}
+              >
+                {i}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-semibold text-white">{unit}</span>
+    </div>
+  );
+}
+
+function TimeLimitPanel({ userId }: { userId: string }) {
+  const [savedLimit, setSavedLimit] = useState<number | null>(() => readUsageLimit(userId));
+  const initial = savedLimit ?? 60;
+  const [hours, setHours] = useState(Math.floor(initial / 60));
+  const [mins, setMins] = useState(initial % 60);
+  const [justSaved, setJustSaved] = useState(false);
+
+  useEffect(() => {
+    if (!justSaved) return;
+    const t = setTimeout(() => setJustSaved(false), 1800);
+    return () => clearTimeout(t);
+  }, [justSaved]);
+
+  const totalMinutes = hours * 60 + mins;
+  const dirty = totalMinutes > 0 && totalMinutes !== savedLimit;
+
+  function save() {
+    if (!dirty) return;
+    writeUsageLimit(userId, totalMinutes);
+    setSavedLimit(totalMinutes);
+    setJustSaved(true);
+  }
+
+  function remove() {
+    writeUsageLimit(userId, null);
+    setSavedLimit(null);
+    setJustSaved(false);
+  }
+
+  return (
+    <div>
+      <h3 className="font-display text-2xl font-bold leading-tight text-white">Make your time count</h3>
+      <p className="mt-2 text-[15px] leading-relaxed text-mist">
+        Screen time isn&apos;t only about how long you spend. It&apos;s about what matters to you when you&apos;re online.
+      </p>
+
+      <p className="mt-6 font-display text-base font-bold text-white">Ask yourself questions like:</p>
+      <div className="mt-3 flex flex-col gap-4">
+        {TIME_LIMIT_QUESTIONS.map((q) => (
+          <div key={q.icon} className="flex items-start gap-3.5">
+            <span className="mt-0.5 shrink-0 text-violet-light"><SettingsGlyph name={q.icon} size={24} /></span>
+            <p className="text-[15px] leading-snug text-white/90">{q.text}</p>
+          </div>
+        ))}
       </div>
 
-      <p className="mt-4 px-1 text-xs leading-relaxed text-white/45">Time is counted while Airalance is open on this device.</p>
+      <p className="mt-6 font-display text-base font-bold leading-snug text-white">
+        Keep your answers in mind and set a daily limit that feels right for you.
+      </p>
+
+      <SettingsSection title="Daily limit">
+        <div className={`${SETTINGS_CARD_CLASS} px-2 py-3`}>
+          <div className="relative flex" style={{ height: WHEEL_HEIGHT }}>
+            <div className="pointer-events-none absolute inset-x-1 top-1/2 h-10 -translate-y-1/2 rounded-xl bg-white/[0.10]" />
+            <WheelColumn count={24} value={hours} onChange={setHours} unit="hours" />
+            <WheelColumn count={60} value={mins} onChange={setMins} unit="min" />
+          </div>
+        </div>
+        <p className="mt-3 px-2 text-xs leading-relaxed text-white/45">
+          You&apos;ll see a reminder when you reach this time each day.
+        </p>
+      </SettingsSection>
+
+      <button
+        onClick={save}
+        disabled={!dirty}
+        className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition active:scale-[0.99] disabled:opacity-50 disabled:shadow-none"
+      >
+        {justSaved && <SettingsGlyph name="check" size={16} />}
+        {justSaved ? "Saved" : "Save time limit"}
+      </button>
+
+      {savedLimit !== null && (
+        <button onClick={remove} className="mt-2 w-full rounded-full py-3 text-sm font-semibold text-red-400 transition hover:bg-white/5 active:scale-[0.99]">
+          Remove limit
+        </button>
+      )}
+    </div>
+  );
+}
+
+// Shown once per day when today's time reaches the saved daily limit.
+function TimeLimitPopup({ minutes, onContinue }: { minutes: number; onContinue: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-6 backdrop-blur-md" role="dialog" aria-modal="true" aria-label="Time limit">
+      <div className="w-full max-w-sm rounded-3xl border border-white/10 bg-ink-800 p-6 text-center shadow-2xl">
+        <div className="mx-auto w-fit"><SettingsTile icon="timer" tint="blue" size={56} /></div>
+        <p className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-mist">Time limit</p>
+        <p className="mt-1 font-display text-4xl font-bold tabular-nums text-white">{formatUsageDuration(minutes * 60)}</p>
+        <p className="mt-2 text-sm text-mist">You&apos;ve reached your daily limit.</p>
+        <button
+          onClick={onContinue}
+          className="mt-6 w-full rounded-full bg-gradient-to-r from-violet to-violet-light py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition active:scale-[0.99]"
+        >
+          Continue
+        </button>
+      </div>
     </div>
   );
 }
@@ -1297,6 +1581,14 @@ function VerificationPanel({ supabase, myProfile, verified }: { supabase: Supaba
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-3.5 rounded-2xl bg-white/[0.045] p-4 ring-1 ring-inset ring-white/[0.07]">
+        <SettingsTile icon="badge" tint="teal" size={44} />
+        <div className="min-w-0">
+          <p className="text-[15px] font-semibold text-white">Get verified</p>
+          <p className="text-xs text-mist">Fill in your details and add a selfie with your document.</p>
+        </div>
+      </div>
+
       {requestStatus === "rejected" && (
         <p className="rounded-xl bg-red-500/10 px-3.5 py-3 text-sm text-red-300 ring-1 ring-inset ring-red-500/20">
           Your last request wasn't approved. You can submit a new one.
@@ -1638,23 +1930,34 @@ function SubscriptionPanel({ subscribed }: { subscribed: boolean }) {
 
   return (
     <div>
-      <p className="px-1 pb-2 text-xs font-semibold text-mist">Features</p>
-      <div className="divide-y divide-white/5 overflow-hidden rounded-2xl bg-white/[0.04] ring-1 ring-inset ring-white/[0.06]">
+      <div
+        className="flex items-center gap-4 rounded-3xl p-5 ring-1 ring-inset ring-white/[0.08]"
+        style={{ background: "linear-gradient(135deg, rgba(124,92,255,0.24), rgba(244,96,122,0.12))" }}
+      >
+        <SettingsTile icon="one" tint="pink" size={52} />
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-xl font-bold text-white">Aira One</p>
+          <p className="text-sm text-mist">{subscribed ? "Subscribed" : "Unsubscribed"}</p>
+        </div>
+      </div>
+
+      <SettingsGroup title="Features">
         {AIRA_ONE_FEATURES.map((feature) => (
-          <div key={feature} className="flex items-center gap-3 px-4 py-4">
+          <div key={feature} className="flex items-center gap-3 px-4 py-3.5">
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet/20 text-violet-light">
               <SettingsGlyph name="check" size={14} />
             </span>
             <span className="text-[15px] font-medium text-white">{feature}</span>
           </div>
         ))}
-      </div>
+      </SettingsGroup>
 
-      <p className="mt-6 px-1 text-sm text-mist">Cost</p>
-      <p className="mt-1 px-1">
-        <span className="font-display text-3xl font-bold text-white">$2</span>
-        <span className="ml-1.5 text-sm text-mist">per month</span>
-      </p>
+      <SettingsSection title="Cost">
+        <div className={`${SETTINGS_CARD_CLASS} px-4 py-4`}>
+          <span className="font-display text-3xl font-bold text-white">$2</span>
+          <span className="ml-1.5 text-sm text-mist">per month</span>
+        </div>
+      </SettingsSection>
 
       <button
         onClick={handleSubscribe}
@@ -1768,6 +2071,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const dismissedAppIdsRef = useRef<Set<string> | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [timeLimitPopup, setTimeLimitPopup] = useState<number | null>(null);
   const [dismissedRequestIds, setDismissedRequestIds] = useState<Set<string>>(new Set());
   const visibleNotifications = useMemo(
     () => notifications.filter((n) => !dismissedRequestIds.has(n.id)),
@@ -2441,7 +2745,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   }, [myProfile.id, supabase, activeStatusOn]);
 
   // Time management (Settings): counts time the app is open, per day, on this device.
-  useUsageTracker(myProfile.id);
+  useUsageTracker(myProfile.id, (minutes) => setTimeLimitPopup(minutes));
 
   useEffect(() => {
     const otherId = active?.otherProfile?.id;
@@ -6144,7 +6448,6 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                         <span className="block rounded-full bg-ink-900 p-[2.5px]">
                           <Avatar name={myProfile.display_name} color={myProfile.avatar_color} size={82} avatarUrl={myProfile.avatar_url} />
                         </span>
-                        {ownActive > 0 && <StatusSparkle />}
                       </span>
                       {uploading && (
                         <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55">
@@ -6710,6 +7013,11 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           onClose={() => setShowSettings(false)}
           onUnblocked={(id) => saveProfileCache(id, { blocked: false })}
         />,
+        document.body
+      )}
+
+      {timeLimitPopup !== null && typeof document !== "undefined" && createPortal(
+        <TimeLimitPopup minutes={timeLimitPopup} onContinue={() => setTimeLimitPopup(null)} />,
         document.body
       )}
 
