@@ -993,9 +993,9 @@ function useUsageTracker(userId: string | undefined, onLimitReached: (minutes: n
   }, [userId]);
 }
 
-type SettingsScreenId = "home" | "time" | "timelimit" | "verify" | "blocked" | "mentions" | "invite" | "account" | "subscription";
+type SettingsScreenId = "home" | "time" | "timelimit" | "verify" | "blocked" | "mentions" | "invite" | "account" | "subscription" | "appearance";
 type SettingsGlyphName =
-  | "clock" | "badge" | "ban" | "at" | "invite" | "shield" | "one" | "timer" | "heart" | "sprout" | "calendar"
+  | "clock" | "badge" | "ban" | "at" | "invite" | "shield" | "one" | "timer" | "heart" | "sprout" | "calendar" | "palette"
   | "chevron-right" | "chevron-left" | "copy" | "share" | "check" | "alert" | "camera";
 
 function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: number }) {
@@ -1012,6 +1012,7 @@ function SettingsGlyph({ name, size = 20 }: { name: SettingsGlyphName; size?: nu
       {name === "heart" && <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />}
       {name === "sprout" && (<><path d="M7 20h10" /><path d="M10 20c5.5-2.5.8-6.4 3-10" /><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z" /><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z" /></>)}
       {name === "calendar" && (<><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4" /><path d="M8 2v4" /><path d="M3 10h18" /><path d="M8 14h.01" /><path d="M12 14h.01" /><path d="M16 14h.01" /><path d="M8 18h.01" /><path d="M12 18h.01" /></>)}
+      {name === "palette" && (<><circle cx="13.5" cy="6.5" r=".5" fill="currentColor" /><circle cx="17.5" cy="10.5" r=".5" fill="currentColor" /><circle cx="8.5" cy="7.5" r=".5" fill="currentColor" /><circle cx="6.5" cy="12.5" r=".5" fill="currentColor" /><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" /></>)}
       {name === "chevron-right" && <path d="m9 18 6-6-6-6" />}
       {name === "chevron-left" && <path d="m15 18-6-6 6-6" />}
       {name === "copy" && (<><rect x="8" y="8" width="14" height="14" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></>)}
@@ -1031,6 +1032,7 @@ const SETTINGS_TINTS = {
   amber: "linear-gradient(135deg, #FFC857 0%, #F59E0B 100%)",
   green: "linear-gradient(135deg, #4ADE9A 0%, #10B981 100%)",
   pink: "linear-gradient(135deg, #F0A0FF 0%, #F4607A 100%)",
+  orange: "linear-gradient(135deg, #FFB067 0%, #FF6B4A 100%)",
 };
 type SettingsTint = keyof typeof SETTINGS_TINTS;
 
@@ -1088,11 +1090,15 @@ function SettingsScreen({
   myProfile,
   onClose,
   onUnblocked,
+  chatThemeId,
+  onChatThemeChange,
 }: {
   supabase: SupabaseClientLike;
   myProfile: Profile;
   onClose: () => void;
   onUnblocked?: (userId: string) => void;
+  chatThemeId: string;
+  onChatThemeChange: (id: string) => void;
 }) {
   const [screen, setScreen] = useState<SettingsScreenId>("home");
   const verified = isVerified(myProfile.username, myProfile.verified);
@@ -1109,6 +1115,7 @@ function SettingsScreen({
     invite: "Invite friends",
     account: "Account status",
     subscription: "Aira One",
+    appearance: "Appearance",
   };
 
   function goBack() {
@@ -1153,6 +1160,7 @@ function SettingsScreen({
 
               <SettingsGroup title="How you use Airalance">
                 <SettingsRow icon="clock" tint="blue" title="Time management" subtitle="See how much time you spend on Airalance" onClick={() => setScreen("time")} />
+                <SettingsRow icon="palette" tint="orange" title="Appearance" subtitle="Chat theme and wallpaper" onClick={() => setScreen("appearance")} />
               </SettingsGroup>
 
               <SettingsGroup title="Privacy">
@@ -1195,8 +1203,171 @@ function SettingsScreen({
           {screen === "invite" && <InvitePanel />}
           {screen === "account" && <AccountStatusPanel />}
           {screen === "subscription" && <SubscriptionPanel subscribed={subscribed} />}
+          {screen === "appearance" && <AppearancePanel chatThemeId={chatThemeId} onChange={onChatThemeChange} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// Chat themes (wallpaper + bubble colours) — chosen in Settings > Appearance
+// =====================================================================
+const CHAT_THEME_STORAGE_PREFIX = "airalance-chat-theme:";
+
+type ChatTheme = {
+  id: string;
+  name: string;
+  bg: string; // wallpaper base colour
+  image: string; // CSS background-image (doodles + gradient)
+  sizes: (tile: number) => string; // CSS background-size matching `image`
+  bubble: string; // your message bubble (CSS background)
+  bubbleShadow: string;
+  incoming: string; // other person's bubble colour
+};
+
+const DOODLE_ICONS: Record<string, string> = {
+  heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
+  star: '<path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.9L12 17.8 5.8 21.1 7 14.2 2 9.3l6.9-1z"/>',
+  bubble: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5c-1.35 0-2.62-.32-3.75-.9L3 21l1.9-5.75A8.47 8.47 0 0 1 3.5 11.5 8.5 8.5 0 0 1 12 3a8.5 8.5 0 0 1 9 8.5Z"/>',
+  smile: '<circle cx="12" cy="12" r="9"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01M15 9h.01"/>',
+  plane: '<path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+  moon: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+  note: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
+  cloud: '<path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9z"/>',
+  bolt: '<path d="M13 2 3 14h9l-1 8 10-12h-9z"/>',
+  sparkle: '<path d="M12 3c.6 4.5 2.6 6.4 7 7-4.4.6-6.4 2.5-7 7-.6-4.5-2.6-6.4-7-7 4.4-.6 6.4-2.5 7-7z"/>',
+};
+
+// [icon, x, y, rotation] inside a 240x240 tile (kept away from the edges so the tile repeats cleanly)
+const DOODLE_LAYOUT: [string, number, number, number][] = [
+  ["heart", 20, 20, -12], ["star", 100, 14, 10], ["bubble", 176, 30, 8],
+  ["smile", 52, 78, 6], ["plane", 130, 76, -14], ["moon", 196, 100, 12],
+  ["note", 14, 140, -8], ["cloud", 86, 136, 0], ["bolt", 160, 150, 10],
+  ["sparkle", 44, 200, 0], ["heart", 120, 196, 14], ["star", 196, 196, -10],
+];
+
+// WhatsApp-style doodle wallpaper as a tiling SVG.
+function chatDoodle(stroke: string) {
+  const items = DOODLE_LAYOUT
+    .map(([k, x, y, r]) => `<g transform="translate(${x} ${y}) rotate(${r} 12 12)">${DOODLE_ICONS[k]}</g>`)
+    .join("");
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none" stroke="${stroke}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">${items}</svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+const CHAT_THEMES: ChatTheme[] = [
+  {
+    id: "default",
+    name: "Default",
+    bg: "#0A0C12",
+    image:
+      "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
+    sizes: () => "auto, auto, 22px 22px",
+    bubble: "linear-gradient(135deg, #A78BFA 0%, #7C5CFF 55%, #5B3FE0 100%)",
+    bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.18), 0 4px 16px -4px rgba(124,92,255,0.5)",
+    incoming: "#171A24",
+  },
+  {
+    id: "ocean",
+    name: "Ocean",
+    bg: "#0A1A30",
+    image: `${chatDoodle("rgba(140,190,255,0.10)")}, linear-gradient(180deg, #0C2140 0%, #081528 100%)`,
+    sizes: (t) => `${t}px ${t}px, auto`,
+    bubble: "linear-gradient(135deg, #4F8DFF 0%, #2F6BFF 55%, #2050D8 100%)",
+    bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px -4px rgba(47,107,255,0.55)",
+    incoming: "#14284A",
+  },
+  {
+    id: "forest",
+    name: "Forest",
+    bg: "#08211B",
+    image: `${chatDoodle("rgba(110,231,183,0.09)")}, linear-gradient(180deg, #0B2B22 0%, #071B15 100%)`,
+    sizes: (t) => `${t}px ${t}px, auto`,
+    bubble: "linear-gradient(135deg, #1FBF83 0%, #0F9E69 55%, #0B7F55 100%)",
+    bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px -4px rgba(15,158,105,0.5)",
+    incoming: "#12332A",
+  },
+  {
+    id: "sunset",
+    name: "Sunset",
+    bg: "#241026",
+    image: `${chatDoodle("rgba(255,170,140,0.09)")}, linear-gradient(180deg, #3A1430 0%, #1E0D22 100%)`,
+    sizes: (t) => `${t}px ${t}px, auto`,
+    bubble: "linear-gradient(135deg, #F2664F 0%, #E63E69 55%, #C4305F 100%)",
+    bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 16px -4px rgba(230,62,105,0.5)",
+    incoming: "#36192F",
+  },
+  {
+    id: "midnight",
+    name: "Midnight",
+    bg: "#050608",
+    image: `${chatDoodle("rgba(255,255,255,0.05)")}, linear-gradient(180deg, #0A0B10 0%, #000000 100%)`,
+    sizes: (t) => `${t}px ${t}px, auto`,
+    bubble: "linear-gradient(135deg, #4B5163 0%, #2C303C 100%)",
+    bubbleShadow: "inset 0 1px 0 rgba(255,255,255,0.12), 0 4px 16px -6px rgba(0,0,0,0.6)",
+    incoming: "#14151B",
+  },
+];
+
+function chatThemeById(id: string | null | undefined): ChatTheme {
+  return CHAT_THEMES.find((t) => t.id === id) ?? CHAT_THEMES[0];
+}
+
+function chatWallpaperStyle(theme: ChatTheme, tile = 260): React.CSSProperties {
+  return { backgroundColor: theme.bg, backgroundImage: theme.image, backgroundSize: theme.sizes(tile) };
+}
+
+function ChatThemeThumb({ theme, selected, onSelect }: { theme: ChatTheme; selected: boolean; onSelect: () => void }) {
+  return (
+    <button onClick={onSelect} aria-pressed={selected} aria-label={`${theme.name} theme`} className="flex flex-col items-center gap-2 transition active:scale-[0.97]">
+      <span
+        className={`relative block w-full overflow-hidden rounded-2xl transition ${selected ? "ring-2 ring-violet-light" : "ring-1 ring-white/10"}`}
+        style={{ aspectRatio: "3 / 4", ...chatWallpaperStyle(theme, 120) }}
+      >
+        <span className="absolute left-2.5 top-3 h-4 w-11 rounded-full rounded-bl-sm ring-1 ring-white/10" style={{ background: theme.incoming }} />
+        <span className="absolute right-2.5 top-[44%] h-4 w-12 rounded-full rounded-br-sm" style={{ background: theme.bubble, boxShadow: theme.bubbleShadow }} />
+        <span className="absolute left-2.5 top-[62%] h-4 w-9 rounded-full rounded-bl-sm ring-1 ring-white/10" style={{ background: theme.incoming }} />
+        {selected && (
+          <span className="absolute bottom-2 right-2 flex h-5 w-5 items-center justify-center rounded-full bg-violet-light text-white shadow">
+            <SettingsGlyph name="check" size={12} />
+          </span>
+        )}
+      </span>
+      <span className={`text-xs font-medium ${selected ? "text-white" : "text-mist"}`}>{theme.name}</span>
+    </button>
+  );
+}
+
+function AppearancePanel({ chatThemeId, onChange }: { chatThemeId: string; onChange: (id: string) => void }) {
+  const theme = chatThemeById(chatThemeId);
+  const bubbleBase = "max-w-[78%] rounded-[18px] px-3.5 py-2 text-[13.5px] leading-snug text-white";
+  return (
+    <div>
+      <div className="overflow-hidden rounded-3xl ring-1 ring-inset ring-white/[0.08]" style={{ height: 232, ...chatWallpaperStyle(theme) }}>
+        <div className="flex h-full flex-col justify-end gap-2 p-4">
+          <div className={`${bubbleBase} self-start rounded-bl-md ring-1 ring-white/[0.07]`} style={{ background: theme.incoming }}>
+            Hey! Are we still on for tonight?
+          </div>
+          <div className={`${bubbleBase} self-end rounded-br-md`} style={{ background: theme.bubble, boxShadow: theme.bubbleShadow }}>
+            Yes! See you at 8 🎉
+          </div>
+          <div className={`${bubbleBase} self-start rounded-bl-md ring-1 ring-white/[0.07]`} style={{ background: theme.incoming }}>
+            Perfect, can&apos;t wait 😄
+          </div>
+        </div>
+      </div>
+
+      <SettingsSection title="Chat theme">
+        <div className={`${SETTINGS_CARD_CLASS} p-4`}>
+          <div className="grid grid-cols-3 gap-x-3 gap-y-4">
+            {CHAT_THEMES.map((t) => (
+              <ChatThemeThumb key={t.id} theme={t} selected={t.id === theme.id} onSelect={() => onChange(t.id)} />
+            ))}
+          </div>
+        </div>
+        <p className="mt-3 px-2 text-xs leading-relaxed text-white/45">The chat bubble and wallpaper will both change.</p>
+      </SettingsSection>
     </div>
   );
 }
@@ -2072,6 +2243,7 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
   const [showNotifications, setShowNotifications] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [timeLimitPopup, setTimeLimitPopup] = useState<number | null>(null);
+  const [chatThemeId, setChatThemeId] = useState<string>("default");
   const [dismissedRequestIds, setDismissedRequestIds] = useState<Set<string>>(new Set());
   const visibleNotifications = useMemo(
     () => notifications.filter((n) => !dismissedRequestIds.has(n.id)),
@@ -2746,6 +2918,20 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
 
   // Time management (Settings): counts time the app is open, per day, on this device.
   useUsageTracker(myProfile.id, (minutes) => setTimeLimitPopup(minutes));
+
+  // Chat theme (wallpaper + bubble colours), saved per user on this device.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(CHAT_THEME_STORAGE_PREFIX + myProfile.id);
+      if (saved) setChatThemeId(chatThemeById(saved).id);
+    } catch {}
+  }, [myProfile.id]);
+  function changeChatTheme(id: string) {
+    setChatThemeId(id);
+    try { localStorage.setItem(CHAT_THEME_STORAGE_PREFIX + myProfile.id, id); } catch {}
+  }
+  const chatTheme = chatThemeById(chatThemeId);
+  const themedChat = chatTheme.id !== "default";
 
   useEffect(() => {
     const otherId = active?.otherProfile?.id;
@@ -6713,11 +6899,15 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
               ref={scrollRef}
               onScroll={handleMessagesScroll}
               className="relative z-10 flex-1 space-y-1 overflow-y-auto overflow-x-hidden bg-[#0A0C12] px-4 py-6 md:px-8"
-              style={{
-                backgroundImage:
-                  "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
-                backgroundSize: "auto, auto, 22px 22px",
-              }}
+              style={
+                themedChat
+                  ? chatWallpaperStyle(chatTheme)
+                  : {
+                      backgroundImage:
+                        "radial-gradient(ellipse 60% 40% at 15% 0%, rgba(124,92,255,0.10), transparent 60%), radial-gradient(ellipse 55% 35% at 100% 100%, rgba(34,211,184,0.06), transparent 60%), radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)",
+                      backgroundSize: "auto, auto, 22px 22px",
+                    }
+              }
             >
               {loadingMore && <MessagesSkeleton compact />}
               {messages.map((m, idx) => {
@@ -6804,7 +6994,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
                           {isPinned && (
                             <div className="absolute -top-3 -right-1 text-xs text-violet-light">📌</div>
                           )}
-                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet-light via-violet to-violet-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-4px_rgba(124,92,255,0.5)]"} rounded-br-md text-white` : `${isImage ? "" : "bg-[#171A24] ring-1 ring-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_10px_-4px_rgba(0,0,0,0.4)]"} rounded-bl-md text-[color:var(--color-text)]`}`}>
+                          <div className={`text-[15.5px] leading-relaxed transition-shadow duration-150 ${isImage ? "overflow-hidden rounded-[20px] p-1" : "rounded-[20px] px-4 py-2.5"} ${mine ? `${isImage ? "" : "bg-gradient-to-br from-violet-light via-violet to-violet-dark shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_4px_16px_-4px_rgba(124,92,255,0.5)]"} rounded-br-md text-white` : `${isImage ? "" : "bg-[#171A24] ring-1 ring-white/[0.07] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_2px_10px_-4px_rgba(0,0,0,0.4)]"} rounded-bl-md text-[color:var(--color-text)]`}`}
+                            style={themedChat && !isImage ? (mine ? { background: chatTheme.bubble, boxShadow: chatTheme.bubbleShadow } : { backgroundColor: chatTheme.incoming }) : undefined}>
                             {quoted && (
                               <div className={`mb-1.5 rounded-lg border-l-2 border-violet-light bg-black/25 px-2 py-1 text-xs ${isImage ? "mx-2 mt-2" : ""}`}>
                                 <p className="font-medium text-violet-light">{quoted.sender_id === myProfile.id ? "You" : active.otherProfile?.display_name ?? "Message"}</p>
@@ -7012,6 +7203,8 @@ export default function ChatClient({ profile: initialProfile }: { profile: Profi
           myProfile={myProfile}
           onClose={() => setShowSettings(false)}
           onUnblocked={(id) => saveProfileCache(id, { blocked: false })}
+          chatThemeId={chatThemeId}
+          onChatThemeChange={changeChatTheme}
         />,
         document.body
       )}
