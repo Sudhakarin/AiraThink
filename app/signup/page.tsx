@@ -5,6 +5,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const MIN_AGE = 13;
+
+function calcAge(dob: Date): number {
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 export default function SignupPage() {
   const router = useRouter();
   const supabase = createClient();
@@ -13,6 +23,7 @@ export default function SignupPage() {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [dob, setDob] = useState("");
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +38,31 @@ export default function SignupPage() {
       return;
     }
 
+    if (!dob) {
+      setError("Please select your date of birth.");
+      return;
+    }
+
+    const dobDate = new Date(dob);
+    if (isNaN(dobDate.getTime())) {
+      setError("Please enter a valid date of birth.");
+      return;
+    }
+
+    const age = calcAge(dobDate);
+    if (age < MIN_AGE) {
+      setError(`You must be at least ${MIN_AGE} years old to use this app.`);
+      return;
+    }
+    if (age > 120) {
+      setError("Please enter a valid date of birth.");
+      return;
+    }
+
     setLoading(true);
+
+    // ISO format: YYYY-MM-DD
+    const dobISO = dobDate.toISOString().split("T")[0];
 
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -36,6 +71,7 @@ export default function SignupPage() {
         data: {
           username: username.trim().toLowerCase(),
           display_name: displayName.trim() || username.trim(),
+          date_of_birth: dobISO,
           privacy_accepted_at: new Date().toISOString(),
         },
       },
@@ -56,13 +92,18 @@ export default function SignupPage() {
     }
   }
 
+  // Max date: 13 years ago (prevents underage picker)
+  const maxDate = new Date();
+  maxDate.setFullYear(maxDate.getFullYear() - MIN_AGE);
+  const maxDateStr = maxDate.toISOString().split("T")[0];
+
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-ink-900 px-6">
       <div className="pointer-events-none absolute inset-0 bg-aurora" />
 
       <div className="glass animate-fadeUp relative z-10 w-full max-w-md rounded-3xl p-8 shadow-2xl">
         <Link href="/" className="font-display text-lg font-bold text-white">
-                    Aira<span className="text-gradient">Think!</span>
+          Aira<span className="text-gradient">Think!</span>
         </Link>
 
         {done ? (
@@ -121,6 +162,22 @@ export default function SignupPage() {
                   placeholder="you@example.com"
                   className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none"
                 />
+              </div>
+
+              {/* ✅ NEW: Date of birth */}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-mist-light">Date of birth</label>
+                <input
+                  type="date"
+                  required
+                  value={dob}
+                  max={maxDateStr}
+                  onChange={(e) => setDob(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-ink-800 px-4 py-3 text-sm text-white placeholder:text-mist/50 focus:border-violet focus:outline-none [color-scheme:dark]"
+                />
+                <p className="mt-1.5 ml-1 text-[11px] text-mist">
+                  You must be at least {MIN_AGE} years old
+                </p>
               </div>
 
               <div>
