@@ -14,7 +14,7 @@ export default async function Home() {
 
   // 👇 Tera GitHub release URL
   const APK_URL =
-    "https://github.com/Sudhakarin/AiraThink/releases/download/v1.0.0/app-release.apk.4";
+    "https://github.com/Sudhakarin/AiraThink/releases/download/v1.0.0/app-release.2.apk";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-ink-900">
