@@ -12,6 +12,10 @@ export default async function Home() {
     redirect("/chat");
   }
 
+  // 👇 Tera GitHub release URL
+  const APK_URL =
+    "https://github.com/Sudhakarin/AiraThink/releases/download/v1.0.0/app-release.apk.4";
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-ink-900">
       {/* Background layers */}
@@ -67,19 +71,85 @@ export default async function Home() {
           out of your way.
         </p>
 
+        {/* 👇 Hero buttons — Download App + Create account */}
         <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+          {/* Download button (was "I already have one") */}
+          <a
+            href={APK_URL}
+            className="group relative flex items-center justify-center gap-2.5 overflow-hidden rounded-full border border-white/10 bg-white/5 px-8 py-3.5 text-sm font-semibold text-white backdrop-blur-sm transition hover:border-teal/40 hover:bg-white/10"
+          >
+            {/* subtle glow */}
+            <span className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-r from-violet/0 via-teal/10 to-violet/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+            {/* Android icon */}
+            <svg
+              width="17"
+              height="17"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="relative text-teal transition group-hover:scale-110"
+            >
+              <path
+                d="M7 9h10v8a1 1 0 0 1-1 1h-1v3h-2v-3h-2v3H9v-3H8a1 1 0 0 1-1-1V9Z"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M7 9a5 5 0 0 1 10 0"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+              <circle cx="9.5" cy="6.5" r="0.6" fill="currentColor" />
+              <circle cx="14.5" cy="6.5" r="0.6" fill="currentColor" />
+              <path
+                d="M5 10v6M19 10v6"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+
+            <span className="relative">Download App</span>
+
+            {/* Arrow that slides down on hover */}
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="relative text-mist-light transition group-hover:translate-y-0.5 group-hover:text-white"
+            >
+              <path
+                d="M12 5v14m0 0 5-5m-5 5-5-5"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </a>
+
+          {/* Existing create account button (kept) */}
           <Link
             href="/signup"
             className="rounded-full bg-gradient-to-r from-violet to-violet-light px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet/30 transition hover:shadow-violet/50"
           >
             Create your account
           </Link>
-          <Link
-            href="/login"
-            className="rounded-full border border-white/10 bg-white/5 px-8 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10"
-          >
-            I already have one
-          </Link>
+        </div>
+
+        {/* Small meta line under buttons */}
+        <div className="mt-4 flex items-center gap-3 text-[11px] text-mist/60">
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-teal" />
+            v1.0.0
+          </span>
+          <span className="text-mist/30">·</span>
+          <span>Android 8.0+</span>
+          <span className="text-mist/30">·</span>
+          <span>Free</span>
         </div>
 
         {/* Feature strip */}
