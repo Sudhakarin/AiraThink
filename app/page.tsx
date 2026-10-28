@@ -14,7 +14,7 @@ export default async function Home() {
 
   // 👇 Tera GitHub release URL
   const APK_URL =
-    "https://github.com/Sudhakarin/Airalance/releases/download/v1.0.3/app-release.3.apk";
+    "https://github.com/Sudhakarin/Airalance/actions/runs/40639211461/artifacts/12795710387";
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-ink-900">
