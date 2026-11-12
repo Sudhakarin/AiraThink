@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage() {
         <h1 className="mt-6 font-display text-3xl font-bold text-white">Privacy Policy</h1>
         <p className="mt-1 text-sm text-mist">for Airalance</p>
         {/* UPDATE THIS DATE BEFORE PUBLISHING */}
-        <p className="mt-4 text-xs font-medium text-mist-light">Last Updated: November 11, 2026</p>
+        <p className="mt-4 text-xs font-medium text-mist-light">Last Updated: November 12, 2026</p>
 
         <p className="mt-6 text-sm leading-relaxed text-mist">
           Airalance (referred to as &ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) is an
@@ -40,8 +40,8 @@ export default function PrivacyPolicyPage() {
           <p className="font-semibold text-mist-light">Information you provide:</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>Account details (name, email, phone number) when you sign up</li>
-            <li>Profile information you choose to add (bio, profile picture)</li>
-            <li>Messages, voice notes, and media you send through chat</li>
+            <li>Profile information you choose to add</li>
+            <li>Messages and content you send through chat</li>
             <li>Comments, reactions, and posts you make on the news feed</li>
             <li>Any feedback or support requests</li>
           </ul>
@@ -54,11 +54,6 @@ export default function PrivacyPolicyPage() {
             <li>Approximate location (for local news relevance, only with your permission)</li>
           </ul>
 
-          <p className="mt-4 font-semibold text-mist-light">Device Permissions:</p>
-          <p>
-            To provide our services, we may request access to your Camera and Microphone (for voice/video calls and sending media), and Storage/Photos (to send images and save media).
-          </p>
-
           <p className="mt-4 font-semibold text-mist-light">Information from third parties:</p>
           <p>
             If you log in via social media platforms, we may access your name, email, and profile
@@ -69,7 +64,7 @@ export default function PrivacyPolicyPage() {
         <Section title="2. How We Use Your Information">
           <ul className="list-disc space-y-1 pl-5">
             <li>To create and manage your account</li>
-            <li>To enable chat, voice/video calling, and messaging features</li>
+            <li>To enable chat and messaging features</li>
             <li>To deliver personalized news feed content</li>
             <li>To improve app performance and user experience</li>
             <li>To send important updates, security alerts, and support messages</li>
@@ -106,36 +101,38 @@ export default function PrivacyPolicyPage() {
           </p>
         </Section>
 
-        <Section title="6. Your Rights & Choices (Data Deletion)">
+        <Section title="6. Your Rights & Choices">
           <p>You have the right to:</p>
           <ul className="list-disc space-y-1 pl-5">
             <li>Access the personal data we hold about you</li>
             <li>Correct inaccurate or incomplete information</li>
             <li>
-              <strong>Delete your account and personal data.</strong> You can do this directly via the &ldquo;Delete Account&rdquo; option in the App Settings, or by visiting our dedicated web page:{" "}
+              Delete your account and personal data (via &ldquo;Delete Account&rdquo; in settings or
+              by contacting us, or visit{" "}
               <Link href="/delete-account" className="font-medium text-violet-light hover:underline">
                 airalance.com/delete-account
               </Link>
+              )
             </li>
             <li>Withdraw consent for data processing at any time</li>
             <li>Opt-out of marketing communications</li>
+            <li>Nominate someone to exercise your rights in case of incapacity</li>
           </ul>
           <p>To exercise these rights, contact us at the details below.</p>
         </Section>
 
-        <Section title="7. Children's Privacy (Age Requirement)">
+        <Section title="7. Children's Privacy">
           <p>
-            Airalance is intended for users aged <strong>13 years and older</strong>. 
-            We do not knowingly collect personal information from children under the age of 13. 
-            If we become aware that a user is under 13, we will promptly delete their account and associated data. 
-            If you are a parent or guardian and believe your child has provided us with personal information, please contact us.
+            Airalance is not intended for users under 13 years of age. We do not knowingly collect
+            data from children without verifiable parental consent, as required under applicable
+            laws.
           </p>
         </Section>
 
         <Section title="8. Security">
           <p>
             We implement reasonable security measures to protect your data from unauthorized
-            access, disclosure, or destruction. However, no method of transmission over the internet or electronic storage is 100% secure.
+            access, disclosure, or destruction.
           </p>
         </Section>
 
@@ -149,14 +146,9 @@ export default function PrivacyPolicyPage() {
         <Section title="10. Grievance Redressal">
           <p>If you have privacy concerns or complaints, please contact our Grievance Officer:</p>
           <div className="mt-2 rounded-xl border border-white/10 bg-ink-800 px-4 py-3">
-            <p>
-              <span className="text-mist-light">Name:</span>{" "}
-              <Link href="/about" className="font-medium text-violet-light hover:underline">
-                Sudhakar Mishra
-              </Link>
-            </p>
+            <p><span className="text-mist-light">Name:</span> Priya Sharma</p>
             <p><span className="text-mist-light">Email:</span> help@airalance.com</p>
-            <p><span className="text-mist-light">Phone:</span> 7055520186</p>
+            <p><span className="text-mist-light">Phone:</span> 9848796053</p>
             <p><span className="text-mist-light">Response Time:</span> We aim to respond within 30 days.</p>
           </div>
         </Section>
@@ -173,12 +165,11 @@ export default function PrivacyPolicyPage() {
           <p>For any privacy-related questions:</p>
           <p>Email: help@airalance.com</p>
           <p>Phone: 7055520186</p>
+          <p className="pt-2">
+            Airalance is an application under AiraThink. This policy applies to all services
+            provided.
+          </p>
         </Section>
-
-        <p className="mt-8 border-t border-white/10 pt-6 text-xs text-mist">
-          Airalance is an application under AiraThink. This policy applies to all services
-          provided by Airalance through our website and mobile app.
-        </p>
 
         <Link
           href="/signup"
