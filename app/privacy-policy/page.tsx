@@ -41,7 +41,7 @@ export default function PrivacyPolicyPage() {
           <ul className="list-disc space-y-1 pl-5">
             <li>Account details (name, email, phone number) when you sign up</li>
             <li>Profile information you choose to add</li>
-            <li>Messages and content you send through chat</li>
+            <li>Messages, voice notes, and media you send through chat</li>
             <li>Comments, reactions, and posts you make on the news feed</li>
             <li>Any feedback or support requests</li>
           </ul>
@@ -51,8 +51,17 @@ export default function PrivacyPolicyPage() {
             <li>Device information (model, OS version, unique identifiers, IP address)</li>
             <li>Usage data (features accessed, time spent, interactions)</li>
             <li>Log data (app crashes, system activity, clickstream)</li>
-            <li>Approximate location (for local news relevance, only with your permission)</li>
+            <li>Precise location (to show news from your area and keep the community safe, only with your permission)</li>
           </ul>
+
+          <p className="mt-4 font-semibold text-mist-light">Device permissions (only with your consent):</p>
+          <ul className="list-disc space-y-1 pl-5">
+            <li>Camera and Microphone &mdash; for voice/video calls, voice messages, and sending media</li>
+            <li>Photos/Storage &mdash; to send images and save media</li>
+            <li>Contacts (names, phone numbers, emails) &mdash; to show which friends are on Airalance, improve recommendations, and keep the community safe</li>
+            <li>Notifications &mdash; to send updates, security alerts, and call notifications</li>
+          </ul>
+          <p>You can change or withdraw these permissions at any time in your device settings.</p>
 
           <p className="mt-4 font-semibold text-mist-light">Information from third parties:</p>
           <p>
@@ -64,8 +73,9 @@ export default function PrivacyPolicyPage() {
         <Section title="2. How We Use Your Information">
           <ul className="list-disc space-y-1 pl-5">
             <li>To create and manage your account</li>
-            <li>To enable chat and messaging features</li>
-            <li>To deliver personalized news feed content</li>
+            <li>To enable chat, voice/video calling, and messaging features</li>
+            <li>To deliver personalized and local news feed content</li>
+            <li>To show which friends are on Airalance and improve recommendations</li>
             <li>To improve app performance and user experience</li>
             <li>To send important updates, security alerts, and support messages</li>
             <li>To maintain platform safety and prevent fraud/abuse</li>
